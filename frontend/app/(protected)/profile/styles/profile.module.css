@@ -1,0 +1,82 @@
+.accountSurface {
+  padding: 1.5rem;
+  border-radius: 40px;
+}
+
+.accountHeader {
+  margin-bottom: 1.2rem;
+}
+
+.avatarPanel {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.avatarLarge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #eff6ff;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--support) 100%);
+  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.2);
+}
+
+.avatarActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.35rem;
+}
+
+.infoCard {
+  min-height: 146px;
+  padding: 1.55rem 1.8rem;
+  border: 1px solid rgba(191, 219, 254, 0.7);
+  border-radius: 32px;
+  background: rgba(241, 245, 249, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.infoLabel {
+  display: block;
+  margin-bottom: 0.85rem;
+  font-size: 1.05rem;
+  color: #6c7b96;
+}
+
+.infoValue {
+  display: block;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  color: #1b2740;
+  word-break: break-word;
+}
+
+@media (max-width: 900px) {
+  .avatarPanel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .infoGrid {
+    grid-template-columns: 1fr;
+  }
+}

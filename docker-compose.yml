@@ -1,14 +1,66 @@
-version: "3.9"
-
 services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: flowpilot
+      MYSQL_USER: flowpilot
+      MYSQL_PASSWORD: flowpilot123
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data_seeded:/var/lib/mysql
+      - ./docker/mysql/conf.d/compat.cnf:/etc/mysql/conf.d/compat.cnf:ro
+      - ./docker/mysql/init/10-import-dump.sql:/docker-entrypoint-initdb.d/10-import-dump.sql:ro
+      - ./AI-Powered_Project_Management_System.sql:/seed/flowpilot.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
-    # Backend service
-    build:
+    build: 
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql+pymysql://flowpilot:flowpilot123@mysql:3306/flowpilot
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
-    # Frontend service
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - API_BASE_URL_INTERNAL=http://backend:8000
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data_seeded:
+  redis_data:
