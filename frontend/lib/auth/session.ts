@@ -42,14 +42,8 @@ function readStoredSessionSnapshot() {
 function writeStoredSessionSnapshot(session: AuthSession, remember: boolean) {
   const snapshot = toClientSessionSnapshot(session);
 
-  if (remember) {
-    window.localStorage.setItem(STORAGE_KEY, snapshot);
-    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    return;
-  }
-
-  window.sessionStorage.setItem(SESSION_STORAGE_KEY, snapshot);
-  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.setItem(STORAGE_KEY, snapshot);
+  window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
 }
 
 function getStoredSessionTarget() {

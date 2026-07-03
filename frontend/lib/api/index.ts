@@ -303,7 +303,7 @@ async function requestApi<T>(
     throw new Error(NETWORK_ERROR_MESSAGE);
   }
 
-  if (response.status === 401 && endpoint.path !== "/refresh" && endpoint.path !== "/login") {
+  if (response.status === 401 && endpoint.path !== "/refresh" && endpoint.path !== "/login" && endpoint.path !== "/logout") {
     try {
       const refreshRes = await fetch(`${getApiBaseUrl()}/refresh`, {
         method: "GET",
