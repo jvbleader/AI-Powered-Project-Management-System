@@ -1,5 +1,7 @@
-from sqlalchemy import Column, String, Integer
-from datetime import datetime
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, String
+
 from database.connection import Base
 
 
@@ -14,8 +16,8 @@ class Sprint(Base):
     goal = Column(String(255), nullable=True)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
-    status = Column(Enum(""))
+    status = Column(String(50), nullable=False, default="planning")
     review_note = Column(String)
-    created_by_member_id = Column(Integer, ForeignKey("project_members.id"))
-    created_at = Column(Datetime, default=datetime.now(timezone.utc))
-    updated_at = Column(Datetime)
+    created_by_member_id = Column(Integer, ForeignKey("project_members.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
