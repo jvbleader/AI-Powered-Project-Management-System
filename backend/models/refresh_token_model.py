@@ -17,12 +17,13 @@ class RefreshToken(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     token_hash = Column(String(512), nullable=False, unique=True)
     jti = Column(String(255), nullable=False, unique=True)
-    revoked = Column(Boolean, nullable=False, default=False)
+    revoked = Column(Boolean, nullable=False, default=False, index=True)
     ip_address = Column(String(255))
     user_agent = Column(String(255))
     expires_at = Column(
         DateTime,
         nullable=False,
+        index=True,
         default=datetime.now(timezone.utc) + timedelta(days=EXPIRE_DAYS),
     )
     created_at = Column(DateTime, nullable=False, default=datetime.now(timezone.utc))

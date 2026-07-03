@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { restoreSession, signOut } from "@/lib/auth/session";
+import { restoreSession, signOut, readSessionSnapshot } from "@/lib/auth/session";
 import { useAuthSession } from "@/lib/auth/use-session";
 
 import styles from "./styles/auth-shell.module.css";
@@ -21,6 +21,14 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     async function verifySession() {
       setGuardStatus("checking");
 
+      if (!readSessionSnapshot()) {
+        await signOut();
+        if (!isCancelled) {
+          router.replace("/login");
+        }
+        return;
+      }
+
       try {
         await restoreSession();
 
@@ -36,10 +44,20 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
       }
     }
 
+    const handleSessionExpired = async () => {
+      await signOut();
+      if (!isCancelled) {
+        router.replace("/login");
+      }
+    };
+
+    window.addEventListener("flowpilot-session-expired", handleSessionExpired);
+
     void verifySession();
 
     return () => {
       isCancelled = true;
+      window.removeEventListener("flowpilot-session-expired", handleSessionExpired);
     };
   }, [router]);
 

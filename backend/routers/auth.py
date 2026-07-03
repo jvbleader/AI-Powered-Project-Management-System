@@ -8,7 +8,7 @@ from dependencies import get_current_user
 from models.refresh_token_model import RefreshToken
 from models.user_model import User
 from schemas.user_schema import ChangePassword, UserLogin
-from utils.jwt_handler import create_access_token, create_refresh_token, decode_token
+from utils.jwt_handler import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, create_access_token, create_refresh_token, decode_token
 from utils.password_hash import hash_password, verify_password
 
 router = APIRouter()
@@ -36,7 +36,7 @@ def login(user: UserLogin, db: Session = Depends(get_db), response: Response = N
     if refresh_token:
         jti = uuid.uuid4().hex
         new_rf_token = RefreshToken(
-            user_id=db_user.id, refresh_token=refresh_token, jti=jti
+            user_id=db_user.id, token_hash=refresh_token, jti=jti
         )
         db.add(new_rf_token)
         db.commit()
@@ -47,11 +47,11 @@ def login(user: UserLogin, db: Session = Depends(get_db), response: Response = N
         httponly=True,
         # secure=True,
         samesite="lax",
-        max_age=15 * 60,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
     if user.remember_me:
-        refresh_max_age = 30 * 24 * 60 * 60
+        refresh_max_age = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     else:
         refresh_max_age = None
 
@@ -103,7 +103,7 @@ def refresh_access_token(
     db_token = (
         db.query(RefreshToken)
         .filter(
-            RefreshToken.refresh_token == refresh_token, RefreshToken.revoked == False
+            RefreshToken.token_hash == refresh_token, RefreshToken.revoked == False
         )
         .first()
     )
@@ -121,7 +121,7 @@ def refresh_access_token(
         httponly=True,
         # secure=True,
         samesite="lax",
-        max_age=15 * 60,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
     return {"message": "Access Token mới", "user_id": user_id}

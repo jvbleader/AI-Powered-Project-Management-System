@@ -26,6 +26,16 @@ import {
   normalizeViewer,
   summarizeTaskCategories,
 } from "@/lib/mock/permissions";
+import {
+  createDirectoryUser,
+  getDirectoryUserByEmail,
+  getDirectoryUsers,
+  listDirectoryUsers,
+  updateDirectoryAvatar,
+  updateDirectoryProfile,
+  updateDirectoryUserRoles,
+  updateDirectoryUserStatus,
+} from "@/lib/users/directory";
 import type {
   AiMessage,
   AiReport,
@@ -41,6 +51,7 @@ import type {
   LogworkEntry,
   LogworkFilters,
   LoginPayload,
+  PaginatedUsers,
   Project,
   ProjectFilters,
   Sprint,
@@ -48,8 +59,12 @@ import type {
   Task,
   TaskComment,
   TaskFilters,
+  UpdateProfilePayload,
+  UserDirectoryFilters,
   UserProfile,
   UserRole,
+  UserRolesUpdatePayload,
+  UserStatusUpdatePayload,
   WorkspaceShellData,
 } from "@/types/dto";
 
@@ -68,7 +83,7 @@ const NETWORK_ERROR_MESSAGE = "Không kết nối được API backend. Vui lòn
 const BACKEND_WORKSPACE_ID = "flowpilot";
 const BACKEND_SESSION_EXPIRES_IN = 60;
 const USER_ADMIN_UNAVAILABLE_MESSAGE =
-  "Backend hiện tại chưa hỗ trợ API quản trị nhân sự. Frontend đã chuyển màn này sang chế độ chỉ xem.";
+  "Backend hiện tại chưa hỗ trợ API quản trị người dùng. Tác vụ này mới chỉ chạy ở chế độ preview trên frontend.";
 const DEFAULT_INTERNAL_API_BASE_URL = `http://backend:${DEFAULT_API_PORT}`;
 
 function getBackendMeta(): ApiResponse<null>["meta"] {
@@ -288,6 +303,30 @@ async function requestApi<T>(
     throw new Error(NETWORK_ERROR_MESSAGE);
   }
 
+  if (response.status === 401 && endpoint.path !== "/refresh" && endpoint.path !== "/login") {
+    try {
+      const refreshRes = await fetch(`${getApiBaseUrl()}/refresh`, {
+        method: "GET",
+        credentials: "include",
+      });
+      if (refreshRes.ok) {
+        response = await fetch(`${getApiBaseUrl()}${endpoint.path}`, {
+          ...init,
+          method: endpoint.method,
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...init?.headers,
+          },
+        });
+      } else {
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("flowpilot-session-expired"));
+      }
+    } catch {
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("flowpilot-session-expired"));
+    }
+  }
+
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -300,7 +339,29 @@ async function requestApi<T>(
 
 async function fetchCurrentUserProfile() {
   const response = await requestApi<BackendUserResponse>(apiEndpoints.auth.me);
-  return toFrontendUserProfile(response.data);
+  const backendProfile = toFrontendUserProfile(response.data);
+  const storedProfile = getDirectoryUserByEmail(backendProfile.email, backendProfile);
+
+  if (!storedProfile) {
+    return backendProfile;
+  }
+
+  return {
+    ...storedProfile,
+    ...backendProfile,
+    role: backendProfile.role,
+    roles: storedProfile.roles?.length ? storedProfile.roles : [backendProfile.role],
+    title: storedProfile.jobTitle?.trim() || storedProfile.title || backendProfile.title,
+    avatarUrl: storedProfile.avatarUrl ?? backendProfile.avatarUrl,
+    phoneNumber: storedProfile.phoneNumber ?? "",
+    department: storedProfile.department ?? "",
+    jobTitle: storedProfile.jobTitle ?? storedProfile.title ?? backendProfile.title,
+    address: storedProfile.address ?? "",
+    employeeCode: storedProfile.employeeCode,
+    status: storedProfile.status ?? (backendProfile.isActive ? "ACTIVE" : "SUSPENDED"),
+    lastLoginAt: storedProfile.lastLoginAt,
+    lastUpdatedAt: storedProfile.lastUpdatedAt,
+  };
 }
 
 function containsSearch(value: string, search?: string) {
@@ -789,31 +850,88 @@ export const logworkApi = {
 export const userApi = {
   async list(viewer?: UserProfile | null) {
     const currentViewer = normalizeViewer(viewer);
-    const visibleUsers = isPrivilegedUser(currentViewer) ? [...users] : [currentViewer];
-    const existingIndex = visibleUsers.findIndex((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase());
-
-    if (existingIndex >= 0) {
-      visibleUsers[existingIndex] = {
-        ...visibleUsers[existingIndex],
-        ...currentViewer,
-      };
-    } else {
-      visibleUsers.unshift(currentViewer);
-    }
+    const visibleUsers = isPrivilegedUser(currentViewer)
+      ? getDirectoryUsers(currentViewer)
+      : getDirectoryUsers(currentViewer).filter((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase());
 
     return respond(visibleUsers, 100);
   },
 
   async updateRole(userId: string, role: (typeof users)[number]["role"]) {
-    const index = users.findIndex((user) => user.id === userId);
-    const updated = { ...users[index], role };
-    users[index] = updated;
+    const updated = updateDirectoryUserRoles({ userId, roles: [role] });
     return respond(updated, 150);
   },
 
+  async listDirectory(filters?: UserDirectoryFilters, viewer?: UserProfile | null) {
+    const currentViewer = normalizeViewer(viewer);
+    const data = isPrivilegedUser(currentViewer)
+      ? listDirectoryUsers(filters, currentViewer)
+      : listDirectoryUsers({ ...filters, page: 1 }, currentViewer);
+
+    if (isPrivilegedUser(currentViewer)) {
+      return respond<PaginatedUsers>(data, 110);
+    }
+
+    return respond<PaginatedUsers>(
+      {
+        ...data,
+        items: data.items.filter((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase()),
+        total: 1,
+        page: 1,
+        totalPages: 1,
+      },
+      110,
+    );
+  },
+
+  async getCurrentProfile(viewer: UserProfile) {
+    const currentViewer = normalizeViewer(viewer);
+    const matchedUser =
+      getDirectoryUsers(currentViewer).find((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase()) ??
+      currentViewer;
+
+    return respond(matchedUser, 100);
+  },
+
+  async updateCurrentProfile(viewer: UserProfile, payload: UpdateProfilePayload) {
+    const updated = updateDirectoryProfile(normalizeViewer(viewer), payload);
+    return respond(updated, 140);
+  },
+
+  async updateCurrentAvatar(viewer: UserProfile, avatarUrl?: string) {
+    const updated = updateDirectoryAvatar(normalizeViewer(viewer), avatarUrl);
+    return respond(updated, 120);
+  },
+
+  async updateStatus(payload: UserStatusUpdatePayload, viewer?: UserProfile | null) {
+    const currentViewer = normalizeViewer(viewer);
+
+    if (currentViewer.role !== "ADMIN") {
+      throw new Error("Chỉ quản trị viên mới có thể thay đổi trạng thái tài khoản.");
+    }
+
+    const updated = updateDirectoryUserStatus(payload, currentViewer);
+    return respond(updated, 140);
+  },
+
+  async updateRoles(payload: UserRolesUpdatePayload, viewer?: UserProfile | null) {
+    const currentViewer = normalizeViewer(viewer);
+
+    if (currentViewer.role !== "ADMIN") {
+      throw new Error("Chỉ quản trị viên mới có thể gán hoặc thu hồi vai trò.");
+    }
+
+    const updated = updateDirectoryUserRoles(payload, currentViewer);
+    return respond(updated, 140);
+  },
+
   async create(payload: CreateUserPayload): Promise<ApiResponse<UserProfile>> {
-    void payload;
-    throw new Error(USER_ADMIN_UNAVAILABLE_MESSAGE);
+    try {
+      const created = createDirectoryUser(payload);
+      return respond(created, 180);
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
+    }
   },
 
   async deactivate(payload: AdminDeactivateUserPayload): Promise<
@@ -825,8 +943,27 @@ export const userApi = {
       revokedAt: string | null;
     }>
   > {
-    void payload;
-    throw new Error(USER_ADMIN_UNAVAILABLE_MESSAGE);
+    const targetUser = getDirectoryUsers().find((user) => user.email.toLowerCase() === payload.email.toLowerCase());
+
+    if (!targetUser) {
+      throw new Error("Không tìm thấy người dùng trong danh sách preview.");
+    }
+
+    const updated = updateDirectoryUserStatus({
+      userId: targetUser.id,
+      status: "LOCKED",
+    });
+
+    return respond(
+      {
+        email: updated.email,
+        isActive: updated.isActive,
+        message: "Đã khóa tài khoản trong chế độ preview của frontend.",
+        revokedRefreshTokens: 0,
+        revokedAt: new Date().toISOString(),
+      },
+      140,
+    );
   },
 
   async resetPassword(payload: AdminResetPasswordPayload): Promise<
@@ -844,6 +981,7 @@ export const userApi = {
 
 export const backendCapabilities = {
   userAdmin: false,
+  userAdminPreview: true,
 } as const;
 
 function quickAnswer(prompt: string) {

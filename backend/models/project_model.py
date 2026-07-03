@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 
 from database.connection import Base
 
@@ -18,7 +18,7 @@ class Role(Base):
     id = Column(
         Integer, primary_key=True, autoincrement=True, nullable=False, index=True
     )
-    name = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False, unique=True)
 
 
 class Project(Base):
@@ -28,10 +28,10 @@ class Project(Base):
         Integer, primary_key=True, autoincrement=True, nullable=False, index=True
     )
     name = Column(String(255), nullable=False)
-    description = Column(String(255))
-    status = Column(String(50), nullable=False, default="active")
-    start_date = Column(Date, default=lambda: datetime.now(timezone.utc).date())
-    end_date = Column(Date, nullable=True)
+    description = Column(Text)
+    status = Column(String(50), nullable=False, default="active", index=True)
+    start_date = Column(Date, default=lambda: datetime.now(timezone.utc).date(), index=True)
+    end_date = Column(Date, nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
