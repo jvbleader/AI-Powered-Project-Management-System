@@ -1,1 +1,35 @@
+# =========================
+# Root only
+# =========================
 
+# OS files at project root
+/.DS_Store
+/Thumbs.db
+/Desktop.ini
+
+# Editor config at project root
+/.idea/
+/.vscode/
+
+# Root environment files only
+/.env
+/.env.local
+/.env.development
+/.env.production
+/.env.test
+
+# Keep example env
+!/.env.example
+
+# Root logs / temp only
+/logs/
+/tmp/
+/temp/
+
+# Docker override at root only
+/docker-compose.override.yml
+
+# Backup files at root only
+/*.bak
+/*.backup
+/*.tmp

@@ -1,0 +1,53 @@
+.screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 440px;
+  padding: 2rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+}
+
+.cardHeader strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.cardHeader p {
+  font-size: 0.92rem;
+  color: #5d6b82;
+}
+
+.cardHeader :global(.software-logo-copy strong) {
+  font-size: 1.04rem;
+  color: #132540;
+}
+
+.cardHeader :global(.software-logo-copy p) {
+  color: #5d6b82;
+}
+
+@media (max-width: 900px) {
+  .screen {
+    padding: 1rem;
+  }
+}
