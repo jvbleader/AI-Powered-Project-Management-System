@@ -41,19 +41,21 @@ def login(user: UserLogin, db: Session = Depends(get_db), response: Response = N
         db.add(new_rf_token)
         db.commit()
 
+    if user.remember_me:
+        access_max_age = ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        refresh_max_age = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+    else:
+        access_max_age = None
+        refresh_max_age = None
+
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
         # secure=True,
         samesite="lax",
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        max_age=access_max_age,
     )
-
-    if user.remember_me:
-        refresh_max_age = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-    else:
-        refresh_max_age = None
 
     response.set_cookie(
         key="refresh_token",

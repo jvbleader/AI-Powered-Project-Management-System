@@ -21,14 +21,6 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     async function verifySession() {
       setGuardStatus("checking");
 
-      if (!readSessionSnapshot()) {
-        await signOut();
-        if (!isCancelled) {
-          router.replace("/login");
-        }
-        return;
-      }
-
       try {
         await restoreSession();
 
@@ -39,7 +31,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
         await signOut();
 
         if (!isCancelled) {
-          router.replace("/login");
+          window.location.assign("/login");
         }
       }
     }
@@ -60,6 +52,12 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
       window.removeEventListener("flowpilot-session-expired", handleSessionExpired);
     };
   }, [router]);
+
+  useEffect(() => {
+    if (guardStatus === "ready" && !session) {
+      window.location.assign("/login");
+    }
+  }, [guardStatus, session]);
 
   if (guardStatus !== "ready" || !session) {
     return (
