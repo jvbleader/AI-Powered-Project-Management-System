@@ -1,90 +1,26 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
-
 import { PasswordField } from "@/components/password-field";
-import { signIn, STORAGE_KEY } from "@/services/auth/session";
-import {
-  clearRememberedLogin,
-  readRememberedLogin,
-  readRememberedLoginSnapshot,
-  removeLegacyRememberedPassword,
-  storeRememberedLogin,
-  subscribeToRememberedLogin,
-} from "@/services/auth/remember-login";
-
+import { useLoginForm } from "./use-login-form";
 import styles from "./styles/login-form.module.css";
 
-function getServerRememberedLoginSnapshot() {
-  return null;
-}
-
 export default function LoginForm() {
-  const router = useRouter();
-  const storedRememberedLogin = useSyncExternalStore(
-    subscribeToRememberedLogin,
-    readRememberedLoginSnapshot,
-    getServerRememberedLoginSnapshot,
-  );
-  const rememberedLogin = useMemo(() => {
-    if (!storedRememberedLogin) {
-      return null;
-    }
-
-    return readRememberedLogin();
-  }, [storedRememberedLogin]);
-  const [emailInput, setEmailInput] = useState<string | null>(null);
-  const [passwordInput, setPasswordInput] = useState<string | null>(null);
-  const [rememberInput, setRememberInput] = useState<boolean | null>(null);
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const email = emailInput ?? rememberedLogin?.email ?? "";
-  const password = passwordInput ?? "";
-  const rememberMe = rememberInput ?? rememberedLogin?.remember ?? false;
-
-  useEffect(() => {
-    removeLegacyRememberedPassword();
-  }, []);
-
-  useEffect(() => {
-    function handleStorageChange(event: StorageEvent) {
-      if (event.key === STORAGE_KEY && event.newValue) {
-        window.location.assign("/dashboard");
-      }
-    }
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
+  const {
+    email,
+    password,
+    rememberMe,
+    isPasswordVisible,
+    error,
+    isPending,
+    setEmailInput,
+    setPasswordInput,
+    handleRememberChange,
+    togglePasswordVisibility,
+    handleSubmit,
+  } = useLoginForm();
 
   return (
-    <form
-      className={styles.form}
-      onSubmit={(event) => {
-        event.preventDefault();
-        setError(null);
-
-        startTransition(async () => {
-          try {
-            const normalizedEmail = email.trim();
-
-            await signIn({ email: normalizedEmail, password }, { remember: rememberMe });
-
-            if (rememberMe) {
-              storeRememberedLogin({ email: normalizedEmail, remember: true });
-            } else {
-              clearRememberedLogin();
-            }
-
-            router.push("/dashboard");
-            router.refresh();
-          } catch (error) {
-            setError(error instanceof Error ? error.message : "Không thể đăng nhập. Vui lòng thử lại.");
-          }
-        });
-      }}
-    >
+    <form className={styles.form} onSubmit={handleSubmit}>
       <label className={styles.field}>
         <span>Email</span>
         <input
@@ -102,7 +38,7 @@ export default function LoginForm() {
           onChange={(event) => setPasswordInput(event.target.value)}
           required
           isVisible={isPasswordVisible}
-          onToggleVisibility={() => setIsPasswordVisible((current) => !current)}
+          onToggleVisibility={togglePasswordVisibility}
           autoComplete="current-password"
         />
       </label>
@@ -111,18 +47,10 @@ export default function LoginForm() {
         <label className={styles.rememberOption}>
           <input
             checked={rememberMe}
-            onChange={(event) => {
-              const checked = event.target.checked;
-
-              setRememberInput(checked);
-
-              if (!checked) {
-                clearRememberedLogin();
-              }
-            }}
+            onChange={(event) => handleRememberChange(event.target.checked)}
             type="checkbox"
           />
-          <span>Ghi nhớ đăng nhập</span>
+            <span>Ghi nhớ đăng nhập</span>
         </label>
       </div>
 
