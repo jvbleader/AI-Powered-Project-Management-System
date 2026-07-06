@@ -12,9 +12,6 @@ services:
       - "3307:3306"
     volumes:
       - mysql_data_seeded:/var/lib/mysql
-      - ./docker/mysql/conf.d/compat.cnf:/etc/mysql/conf.d/compat.cnf:ro
-      - ./docker/mysql/init/10-import-dump.sql:/docker-entrypoint-initdb.d/10-import-dump.sql:ro
-      - ./AI-Powered_Project_Management_System.sql:/seed/flowpilot.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123"]
       interval: 10s

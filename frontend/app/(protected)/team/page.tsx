@@ -1,812 +1,697 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 
-import { PasswordField } from "@/components/password-field";
+import { EmptyState, Surface, StatusPill } from "@/components/ui";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { EmptyState, ProgressBar, StatusPill, Surface } from "@/components/ui";
-import { backendCapabilities, taskApi, userApi, workspaceApi } from "@/lib/api";
-import { signOut } from "@/lib/auth/session";
-import { isPrivilegedUser, normalizeViewer } from "@/lib/mock/permissions";
-import { formatDate, formatDateTime, formatHours, presenceLabel, roleLabel, taskPriorityLabel, taskStatusLabel } from "@/lib/utils/format";
+import { taskApi, userApi, workspaceApi } from "@/lib/api";
+import { updateSessionCurrentUser } from "@/lib/auth/session";
 import { useAuthSession } from "@/lib/auth/use-session";
-import type { EnrichedTask, JobRole, UserProfile, WorkspaceShellData } from "@/types/dto";
+import { normalizeViewer } from "@/lib/mock/permissions";
+import { formatDateTime, roleLabel, userStatusLabel } from "@/lib/utils/format";
+import type {
+  EnrichedTask,
+  PaginatedUsers,
+  UserDirectoryFilters,
+  UserProfile,
+  UserRole,
+  UserStatus,
+  WorkspaceShellData,
+} from "@/types/dto";
 
-type TeamState = {
-  shellData: WorkspaceShellData;
-  tasks: EnrichedTask[];
-  users: UserProfile[];
+import styles from "./styles/team.module.css";
+
+const ROLE_OPTIONS: UserRole[] = ["ADMIN", "MANAGER", "LEADER", "MEMBER"];
+const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "SUSPENDED", "LOCKED"];
+const PAGE_SIZE_OPTIONS = [6, 8, 12];
+
+const EMPTY_DIRECTORY: PaginatedUsers = {
+  items: [],
+  total: 0,
+  page: 1,
+  pageSize: 8,
+  totalPages: 1,
 };
 
-const JOB_ROLE_OPTIONS: Array<{ value: JobRole; label: string }> = [
-  { value: "FULLSTACK", label: "Fullstack Developer" },
-  { value: "BACKEND", label: "Backend Developer (BE)" },
-  { value: "FRONTEND", label: "Frontend Developer (FE)" },
-  { value: "AI_ENGINEER", label: "AI Engineer (AIE)" },
-  { value: "QA", label: "QA Engineer" },
-  { value: "DEVOPS", label: "DevOps Engineer" },
-  { value: "UI_UX", label: "UI/UX Designer" },
-  { value: "PROJECT_MANAGER", label: "Project Manager" },
-];
+function getStatusTone(status: UserStatus) {
+  if (status === "ACTIVE") {
+    return "on-track" as const;
+  }
 
-const EMPTY_CREATE_FORM = {
-  name: "",
-  email: "",
-  password: "",
-  jobRole: "FULLSTACK" as JobRole,
-  isAdmin: false,
-};
+  if (status === "SUSPENDED") {
+    return "watch" as const;
+  }
 
-const EMPTY_RESET_FORM = {
-  newPassword: "",
-  confirmPassword: "",
-};
+  return "critical" as const;
+}
 
-const TASK_STATUS_ORDER = {
-  BLOCKED: 0,
-  IN_PROGRESS: 1,
-  REVIEW: 2,
-  TODO: 3,
-  DONE: 4,
-} as const;
+function getRoleTone(role: UserRole) {
+  if (role === "ADMIN") {
+    return "critical" as const;
+  }
+
+  if (role === "MANAGER" || role === "LEADER") {
+    return "accent" as const;
+  }
+
+  return "neutral" as const;
+}
 
 export default function TeamPage() {
-  const router = useRouter();
   const session = useAuthSession();
-  const viewer = normalizeViewer(session?.currentUser);
-  const [teamState, setTeamState] = useState<TeamState | null>(null);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
-  const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
-  const [createError, setCreateError] = useState("");
-  const [createNotice, setCreateNotice] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
-  const [resetForm, setResetForm] = useState(EMPTY_RESET_FORM);
-  const [isDeactivating, setIsDeactivating] = useState(false);
-  const [deactivateError, setDeactivateError] = useState("");
-  const [deactivateNotice, setDeactivateNotice] = useState("");
-  const [isResetting, setIsResetting] = useState(false);
-  const [resetError, setResetError] = useState("");
-  const [resetNotice, setResetNotice] = useState("");
-  const [isResetPasswordVisible, setIsResetPasswordVisible] = useState(false);
-  const [isResetConfirmVisible, setIsResetConfirmVisible] = useState(false);
-  const supportsUserAdmin = backendCapabilities.userAdmin;
+  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
+  const currentActor = useMemo(() => session?.currentUser ?? viewer, [session?.currentUser, viewer]);
+  const [shellData, setShellData] = useState<WorkspaceShellData>({
+    currentUser: viewer,
+    activeProjects: 0,
+    openTasks: 0,
+    missingLogwork: 0,
+    alertCount: 0,
+  });
+  const [directory, setDirectory] = useState<PaginatedUsers>(EMPTY_DIRECTORY);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [taskBoard, setTaskBoard] = useState<EnrichedTask[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<UserDirectoryFilters["status"]>("ALL");
+  const [roleFilter, setRoleFilter] = useState<UserDirectoryFilters["role"]>("ALL");
+  const [pageSize, setPageSize] = useState(8);
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
+  const [isSavingRoles, setIsSavingRoles] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [statusDraft, setStatusDraft] = useState<UserStatus>("ACTIVE");
+  const [roleDraft, setRoleDraft] = useState<UserRole[]>(["MEMBER"]);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const canManageUsers = currentActor.role === "ADMIN";
 
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadTeam() {
-      const [{ data: shellData }, { data: users }, { data: tasks }] = await Promise.all([
-        workspaceApi.getShellData(viewer),
-        userApi.list(viewer),
-        taskApi.getEnrichedBoard(undefined, viewer),
-      ]);
+    async function loadStaticData() {
+      try {
+        const [{ data: nextShellData }, { data: nextUsers }, { data: nextTasks }] = await Promise.all([
+          workspaceApi.getShellData(currentActor),
+          userApi.list(currentActor),
+          taskApi.getEnrichedBoard(undefined, currentActor),
+        ]);
 
-      if (isCancelled) {
-        return;
+        if (isCancelled) {
+          return;
+        }
+
+        setShellData(nextShellData);
+        setAllUsers(nextUsers);
+        setTaskBoard(nextTasks);
+      } catch (loadError) {
+        if (!isCancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Không thể tải danh sách người dùng.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
       }
-
-      setTeamState({ shellData, tasks, users });
     }
 
-    void loadTeam();
+    void loadStaticData();
 
     return () => {
       isCancelled = true;
     };
-  }, [viewer]);
+  }, [currentActor, reloadKey]);
 
   useEffect(() => {
-    if (!isCreateModalOpen && !selectedUser) {
-      return;
+    let isCancelled = false;
+
+    async function loadDirectory() {
+      try {
+        const { data } = await userApi.listDirectory(
+          {
+            search,
+            status: statusFilter,
+            role: roleFilter,
+            page,
+            pageSize,
+          },
+          currentActor,
+        );
+
+        if (isCancelled) {
+          return;
+        }
+
+        setDirectory(data);
+        if (data.page !== page) {
+          setPage(data.page);
+        }
+      } catch (loadError) {
+        if (!isCancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Không thể tải bảng người dùng.");
+        }
+      }
     }
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
-        return;
-      }
+    void loadDirectory();
 
-      if (selectedUser && !isResetting && !isDeactivating) {
-        setSelectedUser(null);
-        setDeactivateError("");
-        setDeactivateNotice("");
-        setResetError("");
-        setResetNotice("");
-        setResetForm(EMPTY_RESET_FORM);
-        setIsResetPasswordVisible(false);
-        setIsResetConfirmVisible(false);
-        return;
-      }
-
-      if (isCreateModalOpen && !isCreating) {
-        setIsCreateModalOpen(false);
-        setCreateError("");
-        setCreateForm(EMPTY_CREATE_FORM);
-      }
+    return () => {
+      isCancelled = true;
     };
+  }, [currentActor, page, pageSize, reloadKey, roleFilter, search, statusFilter]);
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isCreateModalOpen, isCreating, isDeactivating, isResetting, selectedUser]);
+  const summary = useMemo(() => {
+    const active = allUsers.filter((user) => user.status === "ACTIVE").length;
+    const suspended = allUsers.filter((user) => user.status === "SUSPENDED").length;
+    const locked = allUsers.filter((user) => user.status === "LOCKED").length;
 
-  function closeCreateModal() {
-    if (isCreating) {
-      return;
-    }
+    return {
+      total: allUsers.length,
+      active,
+      suspended,
+      locked,
+    };
+  }, [allUsers]);
 
-    setIsCreateModalOpen(false);
-    setCreateError("");
-    setCreateForm(EMPTY_CREATE_FORM);
-  }
-
-  function openDetailModal(user: UserProfile) {
-    setSelectedUser(user);
-    setDeactivateError("");
-    setDeactivateNotice("");
-    setResetError("");
-    setResetNotice("");
-    setResetForm(EMPTY_RESET_FORM);
-    setIsResetPasswordVisible(false);
-    setIsResetConfirmVisible(false);
-  }
-
-  function closeDetailModal() {
-    if (isResetting || isDeactivating) {
-      return;
-    }
-
-    setSelectedUser(null);
-    setDeactivateError("");
-    setDeactivateNotice("");
-    setResetError("");
-    setResetNotice("");
-    setResetForm(EMPTY_RESET_FORM);
-    setIsResetPasswordVisible(false);
-    setIsResetConfirmVisible(false);
-  }
-
-  async function handleCreateEmployee(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setCreateError("");
-    setCreateNotice("");
-    setIsCreating(true);
-
-    try {
-      const { data: createdUser } = await userApi.create({
-        email: createForm.email.trim(),
-        name: createForm.name.trim(),
-        password: createForm.password,
-        jobRole: createForm.jobRole,
-        isAdmin: createForm.isAdmin,
-      });
-
-      setTeamState((current) =>
-        current
-          ? {
-              ...current,
-              users: current.users.some((user) => user.email === createdUser.email)
-                ? current.users
-                : [...current.users, createdUser],
-            }
-          : current,
-      );
-      setCreateNotice(`Đã tạo tài khoản cho ${createdUser.name}.`);
-      setCreateForm(EMPTY_CREATE_FORM);
-      setIsCreateModalOpen(false);
-    } catch (error) {
-      setCreateError(error instanceof Error ? error.message : "Không thể tạo tài khoản nhân viên.");
-    } finally {
-      setIsCreating(false);
-    }
-  }
-
-  async function handleDeactivateUser() {
-    if (!selectedUser) {
-      return;
-    }
-
-    setIsDeactivating(true);
-    setDeactivateError("");
-    setDeactivateNotice("");
-
-    try {
-      const { data } = await userApi.deactivate({
-        email: selectedUser.email,
-      });
-
-      if (selectedUser.email.toLowerCase() === viewer.email.toLowerCase()) {
-        await signOut();
-        router.push("/login");
-        return;
+  const taskSummaryByUserId = useMemo(() => {
+    return taskBoard.reduce<Record<string, { total: number; open: number; blocked: number }>>((summary, task) => {
+      const entry = summary[task.assigneeId] ?? { total: 0, open: 0, blocked: 0 };
+      entry.total += 1;
+      if (task.status !== "DONE") {
+        entry.open += 1;
       }
+      if (task.status === "BLOCKED") {
+        entry.blocked += 1;
+      }
+      summary[task.assigneeId] = entry;
+      return summary;
+    }, {});
+  }, [taskBoard]);
 
-      setTeamState((current) =>
-        current
-          ? {
-              ...current,
-              users: current.users.map((user) =>
-                user.email.toLowerCase() === data.email.toLowerCase()
-                  ? { ...user, isActive: data.isActive }
-                  : user,
-              ),
-            }
-          : current,
-      );
-      setSelectedUser((current) =>
-        current && current.email.toLowerCase() === data.email.toLowerCase()
-          ? { ...current, isActive: data.isActive }
-          : current,
-      );
-      setDeactivateNotice(data.message);
-    } catch (error) {
-      setDeactivateError(error instanceof Error ? error.message : "Không thể cập nhật trạng thái nghỉ việc lúc này.");
-    } finally {
-      setIsDeactivating(false);
-    }
-  }
-
-  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!selectedUser) {
-      return;
+  const selectedUser = useMemo(() => {
+    if (!selectedUserId) {
+      return null;
     }
 
-    setResetError("");
-    setResetNotice("");
-
-    const hasLetter = Array.from(resetForm.newPassword).some(
-      (character) => character.toLocaleLowerCase() !== character.toLocaleUpperCase(),
+    return (
+      allUsers.find((user) => user.id === selectedUserId) ??
+      directory.items.find((user) => user.id === selectedUserId) ??
+      null
     );
-    const hasNumber = Array.from(resetForm.newPassword).some((character) => /\d/u.test(character));
+  }, [allUsers, directory.items, selectedUserId]);
 
-    if (!hasLetter || !hasNumber) {
-      setResetError("Mật khẩu phải chứa chữ cái và chữ số.");
+  const selectedUserTaskSummary = selectedUser
+    ? taskSummaryByUserId[selectedUser.id] ?? { total: 0, open: 0, blocked: 0 }
+    : { total: 0, open: 0, blocked: 0 };
+
+  function patchUser(updatedUser: UserProfile) {
+    setAllUsers((current) => current.map((user) => (user.id === updatedUser.id ? updatedUser : user)));
+    setDirectory((current) => ({
+      ...current,
+      items: current.items.map((user) => (user.id === updatedUser.id ? updatedUser : user)),
+    }));
+
+    if (session?.currentUser?.email && session.currentUser.email.toLowerCase() === updatedUser.email.toLowerCase()) {
+      updateSessionCurrentUser({
+        ...session.currentUser,
+        ...updatedUser,
+      });
+    }
+  }
+
+  async function handleSaveStatus() {
+    if (!selectedUser) {
       return;
     }
 
-    if (resetForm.newPassword !== resetForm.confirmPassword) {
-      setResetError("Mật khẩu xác nhận chưa khớp.");
-      return;
-    }
-
-    setIsResetting(true);
+    setError(null);
+    setNotice(null);
+    setIsSavingStatus(true);
 
     try {
-      await userApi.resetPassword({
-        email: selectedUser.email,
-        newPassword: resetForm.newPassword,
-      });
+      const { data: updatedUser } = await userApi.updateStatus(
+        {
+          userId: selectedUser.id,
+          status: statusDraft,
+        },
+        session?.currentUser ?? viewer,
+      );
 
-      if (selectedUser.email.toLowerCase() === viewer.email.toLowerCase()) {
-        await signOut();
-        router.push("/login");
-        return;
-      }
-
-      setResetNotice(`Đã reset mật khẩu cho ${selectedUser.name}.`);
-      setResetForm(EMPTY_RESET_FORM);
-      setIsResetPasswordVisible(false);
-      setIsResetConfirmVisible(false);
-    } catch (error) {
-      setResetError(error instanceof Error ? error.message : "Không thể reset mật khẩu lúc này.");
+      patchUser(updatedUser);
+      setReloadKey((current) => current + 1);
+      setNotice(`Đã cập nhật trạng thái của ${updatedUser.name} trong chế độ preview frontend.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Không thể cập nhật trạng thái.");
     } finally {
-      setIsResetting(false);
+      setIsSavingStatus(false);
     }
   }
 
-  function getUtilization(user: UserProfile) {
-    if (!user.capacityHours) {
-      return 0;
-    }
-
-    return Math.round((user.workloadHours / user.capacityHours) * 100);
-  }
-
-  function getUserStatusLabel(user: UserProfile) {
-    return user.isActive ? presenceLabel(user.presence) : "Đã nghỉ việc";
-  }
-
-  function getUserStatusTone(user: UserProfile) {
-    if (!user.isActive) {
-      return "critical" as const;
-    }
-
-    if (user.presence === "offline") {
-      return "neutral" as const;
-    }
-
-    if (user.presence === "focus") {
-      return "watch" as const;
-    }
-
-    return "on-track" as const;
-  }
-
-  function handleMemberCardKeyDown(event: ReactKeyboardEvent<HTMLDivElement>, user: UserProfile) {
-    if (event.key !== "Enter" && event.key !== " ") {
+  async function handleSaveRoles() {
+    if (!selectedUser) {
       return;
     }
 
-    event.preventDefault();
-    openDetailModal(user);
+    setError(null);
+    setNotice(null);
+    setIsSavingRoles(true);
+
+    try {
+      const { data: updatedUser } = await userApi.updateRoles(
+        {
+          userId: selectedUser.id,
+          roles: roleDraft,
+        },
+        session?.currentUser ?? viewer,
+      );
+
+      patchUser(updatedUser);
+      setReloadKey((current) => current + 1);
+      setNotice(`Đã cập nhật vai trò của ${updatedUser.name} trong chế độ preview frontend.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Không thể cập nhật vai trò.");
+    } finally {
+      setIsSavingRoles(false);
+    }
   }
 
-  const selectedUserTasks = selectedUser
-    ? [...(teamState?.tasks ?? [])]
-        .filter((task) => task.assigneeId === selectedUser.id)
-        .sort((left, right) => {
-          const statusOrder = TASK_STATUS_ORDER[left.status] - TASK_STATUS_ORDER[right.status];
-          if (statusOrder !== 0) {
-            return statusOrder;
-          }
+  function toggleRole(role: UserRole) {
+    setRoleDraft((current) => {
+      if (current.includes(role)) {
+        const nextRoles = current.filter((value) => value !== role);
+        return nextRoles.length ? nextRoles : ["MEMBER"];
+      }
 
-          return left.dueDate.localeCompare(right.dueDate);
-        })
-    : [];
-  const selectedUserActiveTasks = selectedUserTasks.filter((task) => task.status !== "DONE");
-  const selectedUserCompletedTasks = selectedUserTasks.length - selectedUserActiveTasks.length;
-  const selectedUserProjectCount = new Set(selectedUserTasks.map((task) => task.projectId)).size;
-  const selectedUserUtilization = selectedUser ? getUtilization(selectedUser) : 0;
-
-  const shellData =
-    teamState?.shellData ??
-    ({
-      currentUser: viewer,
-      activeProjects: 0,
-      openTasks: 0,
-      missingLogwork: 0,
-      alertCount: 0,
-    } satisfies WorkspaceShellData);
+      return [...current, role];
+    });
+  }
 
   return (
     <WorkspaceShell
       shellData={shellData}
-      heading={isPrivilegedUser(viewer) ? "Năng lực đội ngũ" : "Thông tin cá nhân"}
-      subheading={
-        isPrivilegedUser(viewer)
-          ? "Theo dõi vai trò, công suất làm việc và mức độ tập trung để cân đối nguồn lực."
-          : "Thành viên chỉ xem thông tin của chính mình trong màn này."
-      }
-      highlightLabel="Nhân sự"
-      highlightValue={`${teamState?.users.length ?? 0}`}
+      heading="Danh sách người dùng"
+      subheading="Giao diện bảng hỗ trợ tìm kiếm nhanh, phân trang và thao tác quản trị tài khoản theo đúng luồng vận hành."
+      highlightLabel="Users"
+      highlightValue={`${directory.total}`}
     >
-      {viewer.role === "ADMIN" ? (
-        <section className="team-management-bar">
+      <div className={styles.pageStack}>
+        <section className={styles.previewBanner}>
           <div>
-            <span className="kicker">Quản lý tài khoản</span>
-            <h2>{supportsUserAdmin ? "Thêm nhân sự vào hệ thống" : "Màn này đang ở chế độ chỉ xem"}</h2>
-            <p>
-              {supportsUserAdmin
-                ? "Tạo thông tin đăng nhập và phân loại chuyên môn cho nhân viên mới."
-                : "Backend hiện tại chỉ hỗ trợ xác thực cá nhân, chưa có API tạo tài khoản, reset mật khẩu hoặc nghỉ việc."}
-            </p>
+            <span className="kicker">Frontend Preview</span>
+            <h2>Bảng quản trị người dùng đã được dựng xong ở phía giao diện</h2>
+            <p>Dữ liệu hiện được lọc, phân trang và cập nhật trong frontend. Các API backend tương ứng mình sẽ ghi ra file Markdown để bạn duyệt trước khi triển khai.</p>
           </div>
-          {supportsUserAdmin ? (
-            <button
-              type="button"
-              className="primary-button team-create-button"
-              onClick={() => {
-                setCreateError("");
-                setCreateNotice("");
-                setIsCreateModalOpen(true);
-              }}
-            >
-              <span aria-hidden="true">+</span>
-              Tạo nhân viên
-            </button>
-          ) : null}
+          <div className={styles.summaryPills}>
+            <StatusPill label={`${summary.active} hoạt động`} tone="on-track" />
+            <StatusPill label={`${summary.suspended} tạm dừng`} tone="watch" />
+            <StatusPill label={`${summary.locked} khóa`} tone="critical" />
+          </div>
         </section>
-      ) : null}
 
-      {createNotice ? (
-        <p className="form-success team-create-notice" role="status">
-          {createNotice}
-        </p>
-      ) : null}
+        <div className={styles.metricGrid}>
+          <article className={styles.metricCard}>
+            <span>Tổng người dùng</span>
+            <strong>{summary.total}</strong>
+            <p>Trong phạm vi hiển thị hiện tại của tài khoản đăng nhập.</p>
+          </article>
+          <article className={styles.metricCard}>
+            <span>Trang hiện tại</span>
+            <strong>{directory.page}/{directory.totalPages}</strong>
+            <p>Mỗi trang đang hiển thị {directory.pageSize} bản ghi.</p>
+          </article>
+          <article className={styles.metricCard}>
+            <span>Tìm kiếm</span>
+            <strong>{search.trim() ? `"${search.trim()}"` : "Tất cả"}</strong>
+            <p>Hỗ trợ tên, email, phòng ban và mã định danh.</p>
+          </article>
+        </div>
 
-      <section className="card-grid">
-        {(teamState?.users ?? []).map((user) => {
-          const utilization = getUtilization(user);
+        <Surface title="Bộ lọc danh sách" kicker="Search & Pagination" className={styles.filterSurface}>
+          <div className={styles.filterGrid}>
+            <label className={styles.filterField}>
+              <span>Tìm nhanh</span>
+              <input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Tên, email hoặc mã người dùng"
+              />
+            </label>
 
-          return (
-            <div
-              key={user.id}
-              className="team-member-card-trigger"
-              role="button"
-              tabIndex={0}
-              onClick={() => openDetailModal(user)}
-              onKeyDown={(event) => handleMemberCardKeyDown(event, user)}
-            >
-              <Surface
-                title={user.name}
-                kicker={roleLabel(user.role)}
-                className="team-member-card"
-                aside={
-                  <StatusPill
-                    label={getUserStatusLabel(user)}
-                    tone={getUserStatusTone(user)}
-                  />
-                }
+            <label className={styles.filterField}>
+              <span>Trạng thái</span>
+              <select
+                value={statusFilter}
+                onChange={(event) => {
+                  setStatusFilter(event.target.value as UserDirectoryFilters["status"]);
+                  setPage(1);
+                }}
               >
-                <p>{user.title}</p>
-                <ProgressBar value={utilization} label="Công suất đang sử dụng" />
-                <div className="stack-list compact">
-                  <div className="line-item">
-                    <span>Công suất</span>
-                    <strong>{formatHours(user.capacityHours)}</strong>
-                  </div>
-                  <div className="line-item">
-                    <span>Đã phân bổ</span>
-                    <strong>{formatHours(user.workloadHours)}</strong>
-                  </div>
-                  <div className="line-item">
-                    <span>Điểm tập trung</span>
-                    <strong>{user.focusScore}/100</strong>
-                  </div>
+                <option value="ALL">Tất cả trạng thái</option>
+                {STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {userStatusLabel(status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.filterField}>
+              <span>Vai trò</span>
+              <select
+                value={roleFilter}
+                onChange={(event) => {
+                  setRoleFilter(event.target.value as UserDirectoryFilters["role"]);
+                  setPage(1);
+                }}
+              >
+                <option value="ALL">Tất cả vai trò</option>
+                {ROLE_OPTIONS.map((role) => (
+                  <option key={role} value={role}>
+                    {roleLabel(role)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.filterField}>
+              <span>Kích thước trang</span>
+              <select
+                value={pageSize}
+                onChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  setPage(1);
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option} dòng
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </Surface>
+
+        <Surface title="Bảng người dùng" kicker="Directory Table" className={styles.tableSurface}>
+          {directory.items.length ? (
+            <>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Người dùng</th>
+                      <th>Mã</th>
+                      <th>Liên hệ</th>
+                      <th>Vai trò</th>
+                      <th>Trạng thái</th>
+                      <th>Tải việc</th>
+                      <th>Cập nhật</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {directory.items.map((user) => {
+                      const summaryByUser = taskSummaryByUserId[user.id] ?? { total: 0, open: 0, blocked: 0 };
+
+                      return (
+                        <tr key={user.id}>
+                          <td>
+                            <button type="button" className={styles.userCellButton} onClick={() => {
+                              setSelectedUserId(user.id);
+                              setStatusDraft(user.status ?? "ACTIVE");
+                              setRoleDraft(user.roles?.length ? user.roles : [user.role]);
+                              setNotice(null);
+                              setError(null);
+                            }}>
+                              <span className={styles.avatarToken}>
+                                {user.avatarUrl ? (
+                                  <Image src={user.avatarUrl} alt={user.name} width={40} height={40} className="avatar-image" unoptimized />
+                                ) : (
+                                  user.initials
+                                )}
+                              </span>
+                              <span className={styles.userCellCopy}>
+                                <strong>{user.name}</strong>
+                                <small>{user.jobTitle ?? user.title}</small>
+                              </span>
+                            </button>
+                          </td>
+                          <td>{user.employeeCode ?? user.id}</td>
+                          <td>
+                            <div className={styles.contactCell}>
+                              <span>{user.email}</span>
+                              <small>{user.phoneNumber || "Chưa có số điện thoại"}</small>
+                            </div>
+                          </td>
+                          <td>
+                            <div className={styles.roleStack}>
+                              {(user.roles?.length ? user.roles : [user.role]).map((role) => (
+                                <StatusPill key={role} label={roleLabel(role)} tone={getRoleTone(role)} />
+                              ))}
+                            </div>
+                          </td>
+                          <td>
+                            <StatusPill label={userStatusLabel(user.status ?? "ACTIVE")} tone={getStatusTone(user.status ?? "ACTIVE")} />
+                          </td>
+                          <td>
+                            <div className={styles.contactCell}>
+                              <span>{summaryByUser.open} task mở</span>
+                              <small>{summaryByUser.blocked} task blocked</small>
+                            </div>
+                          </td>
+                          <td>{user.lastUpdatedAt ? formatDateTime(user.lastUpdatedAt) : "Chưa có"}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => {
+                                setSelectedUserId(user.id);
+                                setStatusDraft(user.status ?? "ACTIVE");
+                                setRoleDraft(user.roles?.length ? user.roles : [user.role]);
+                                setNotice(null);
+                                setError(null);
+                              }}
+                            >
+                              Chi tiết
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className={styles.paginationBar}>
+                <p>
+                  Hiển thị {(directory.page - 1) * directory.pageSize + 1} - {Math.min(directory.page * directory.pageSize, directory.total)} trên tổng {directory.total} người dùng.
+                </p>
+                <div className={styles.paginationActions}>
+                  <button type="button" className="secondary-button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={directory.page <= 1}>
+                    Trang trước
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => setPage((current) => Math.min(directory.totalPages, current + 1))}
+                    disabled={directory.page >= directory.totalPages}
+                  >
+                    Trang sau
+                  </button>
                 </div>
-              </Surface>
-            </div>
-          );
-        })}
-      </section>
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              title={isLoading ? "Đang tải danh sách người dùng" : "Không tìm thấy người dùng phù hợp"}
+              description={
+                isLoading
+                  ? "Hệ thống đang dựng dữ liệu preview cho màn quản lý người dùng."
+                  : "Thử đổi từ khóa tìm kiếm hoặc bỏ bớt bộ lọc để xem nhiều kết quả hơn."
+              }
+            />
+          )}
+        </Surface>
+      </div>
 
       {selectedUser ? (
-        <div className="modal-backdrop" role="presentation" onMouseDown={closeDetailModal}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedUserId(null)}>
           <section
-            className="password-modal employee-modal team-detail-modal"
+            className={`password-modal employee-modal ${styles.detailModal}`}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="employee-detail-title"
+            aria-labelledby="user-detail-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="password-modal-header">
               <div>
-                <span className="eyebrow">Chi tiết nhân sự</span>
-                <h2 id="employee-detail-title">{selectedUser.name}</h2>
-                <p>{selectedUser.title}</p>
+                <span className="eyebrow">Chi tiết người dùng</span>
+                <h2 id="user-detail-title">{selectedUser.name}</h2>
+                <p>{selectedUser.email}</p>
               </div>
-              <button type="button" className="icon-button" onClick={closeDetailModal} aria-label="Đóng" disabled={isResetting || isDeactivating}>
+              <button type="button" className="icon-button" onClick={() => setSelectedUserId(null)} aria-label="Đóng">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m6 6 12 12M18 6 6 18" />
                 </svg>
               </button>
             </div>
 
-            <div className="team-detail-layout">
-              <section className="team-detail-panel">
-                <div className="team-detail-identity">
-                  <div className="team-detail-copy">
-                    <span className="kicker">{roleLabel(selectedUser.role)}</span>
-                    <h3>{selectedUser.name}</h3>
-                    <p>{selectedUser.email}</p>
-                  </div>
-                  <div className="team-detail-badges">
-                    <StatusPill
-                      label={getUserStatusLabel(selectedUser)}
-                      tone={getUserStatusTone(selectedUser)}
-                    />
-                  </div>
-                </div>
-
-                <div className="team-detail-fact-grid">
-                  <article className="team-detail-fact">
-                    <span>Quyền hệ thống</span>
-                    <strong>{roleLabel(selectedUser.role)}</strong>
-                  </article>
-                  {/* <article className="team-detail-fact">
-                    <span>Trạng thái tài khoản</span>
-                    <strong>{selectedUser.isActive ? "is_active = 1" : "is_active = 0"}</strong>
-                  </article> */}
-                  <article className="team-detail-fact">
-                    <span>Công suất sử dụng</span>
-                    <strong>{selectedUserUtilization}%</strong>
-                  </article>
-                  <article className="team-detail-fact">
-                    <span>Giờ khả dụng</span>
-                    <strong>{formatHours(selectedUser.capacityHours)}</strong>
-                  </article>
-                  <article className="team-detail-fact">
-                    <span>Giờ đã phân bổ</span>
-                    <strong>{formatHours(selectedUser.workloadHours)}</strong>
-                  </article>
-                  <article className="team-detail-fact">
-                    <span>Điểm tập trung</span>
-                    <strong>{selectedUser.focusScore}/100</strong>
-                  </article>
-                  <article className="team-detail-fact">
-                    <span>Dự án đang tham gia</span>
-                    <strong>{selectedUserProjectCount}</strong>
-                  </article>
-                </div>
-
-                <ProgressBar value={selectedUserUtilization} label="Tỷ lệ phân bổ hiện tại" />
-
-                {viewer.role === "ADMIN" && supportsUserAdmin ? (
-                  <section className="team-detail-panel team-security-panel">
-                    <div className="group-block">
-                      <div className="team-detail-section-title">
-                        <div>
-                          {/* <span className="kicker">Trạng thái</span> */}
-                          <h3>Trạng thái</h3>
-                        </div>
-                        <StatusPill
-                          label={selectedUser.isActive ? "Đang làm việc" : "Đã nghỉ việc"}
-                          tone={selectedUser.isActive ? "on-track" : "critical"}
-                        />
-                      </div>
-
-                      {/* <p className="team-password-helper">Nút này chuyển tài khoản nhân viên từ `is_active = 1` sang `is_active = 0` và ngắt toàn bộ phiên đăng nhập hiện tại.</p> */}
-
-                      {deactivateError ? <p className="form-error" role="alert">{deactivateError}</p> : null}
-                      {deactivateNotice ? <p className="form-success" role="status">{deactivateNotice}</p> : null}
-
-                      <div className="team-security-actions">
-                        <button
-                          type="button"
-                          className={selectedUser.isActive ? "secondary-button" : "primary-button"}
-                          disabled={isDeactivating || !selectedUser.isActive}
-                          onClick={handleDeactivateUser}
-                        >
-                          {isDeactivating ? "Đang cập nhật..." : selectedUser.isActive ? "Dừng công tác" : "Đã nghỉ việc"}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="group-block">
-                      <div className="team-detail-section-title">
-                        <div>
-                          <span className="kicker">Bảo mật</span>
-                          <h3>Reset mật khẩu</h3>
-                        </div>
-                      </div>
-
-                      <form className="password-form team-reset-form" onSubmit={handleResetPassword}>
-                        <div className="team-password-grid">
-                          <label>
-                            <span>Mật khẩu mới</span>
-                            <PasswordField
-                              value={resetForm.newPassword}
-                              onChange={(event) => setResetForm((current) => ({ ...current, newPassword: event.target.value }))}
-                              isVisible={isResetPasswordVisible}
-                              onToggleVisibility={() => setIsResetPasswordVisible((current) => !current)}
-                              minLength={8}
-                              required
-                              autoComplete="new-password"
-                            />
-                          </label>
-
-                          <label>
-                            <span>Xác nhận mật khẩu</span>
-                            <PasswordField
-                              value={resetForm.confirmPassword}
-                              onChange={(event) => setResetForm((current) => ({ ...current, confirmPassword: event.target.value }))}
-                              isVisible={isResetConfirmVisible}
-                              onToggleVisibility={() => setIsResetConfirmVisible((current) => !current)}
-                              minLength={8}
-                              required
-                              autoComplete="new-password"
-                            />
-                          </label>
-                        </div>
-
-                        <p className="team-password-helper">Chỉ admin mới có quyền reset mật khẩu và toàn bộ phiên đăng nhập cũ của người dùng sẽ bị thu hồi.</p>
-
-                        {resetError ? <p className="form-error" role="alert">{resetError}</p> : null}
-                        {resetNotice ? <p className="form-success" role="status">{resetNotice}</p> : null}
-
-                        <div className="team-security-actions">
-                          <button type="submit" className="primary-button" disabled={isResetting}>
-                            {isResetting ? "Đang reset..." : "Reset mật khẩu"}
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  </section>
-                ) : null}
-
-                {viewer.role === "ADMIN" && !supportsUserAdmin ? (
-                  <section className="team-detail-panel team-security-panel">
-                    <div className="group-block">
-                      <div className="team-detail-section-title">
-                        <div>
-                          <span className="kicker">Hạn chế backend</span>
-                          <h3>Quản trị tài khoản</h3>
-                        </div>
-                      </div>
-
-                      <p className="team-password-helper">
-                        Backend hiện tại chưa cung cấp API quản trị nhân sự, nên phần tạo tài khoản, reset mật khẩu và dừng công tác đang được tắt ở frontend.
-                      </p>
-                    </div>
-                  </section>
-                ) : null}
-              </section>
-
-              <section className="team-detail-panel">
-                <div className="team-detail-section-title">
+            <div className={styles.detailLayout}>
+              <section className={styles.detailPanel}>
+                <div className={styles.detailIdentity}>
+                  <span className={styles.detailAvatar}>
+                    {selectedUser.avatarUrl ? (
+                      <Image src={selectedUser.avatarUrl} alt={selectedUser.name} width={84} height={84} className="avatar-image" unoptimized />
+                    ) : (
+                      selectedUser.initials
+                    )}
+                  </span>
                   <div>
-                    <span className="kicker">Công việc</span>
-                    <h3>Task đang phụ trách</h3>
+                    <strong>{selectedUser.name}</strong>
+                    <p>{selectedUser.jobTitle ?? selectedUser.title}</p>
                   </div>
-                  <StatusPill label={`${selectedUserActiveTasks.length} task mở`} tone="accent" />
                 </div>
 
-                {selectedUserActiveTasks.length ? (
-                  <div className="team-task-list">
-                    {selectedUserActiveTasks.map((task) => (
-                      <article key={task.id} className="team-task-card">
-                        <div className="team-task-card-topline">
-                          <strong>{task.key}</strong>
-                          <div className="team-task-badges">
-                            <StatusPill
-                              label={taskStatusLabel(task.status)}
-                              tone={
-                                task.status === "BLOCKED"
-                                  ? "critical"
-                                  : task.status === "REVIEW"
-                                    ? "watch"
-                                    : task.status === "IN_PROGRESS"
-                                      ? "accent"
-                                      : "neutral"
-                              }
-                            />
-                            <StatusPill
-                              label={taskPriorityLabel(task.priority)}
-                              tone={
-                                task.priority === "CRITICAL"
-                                  ? "critical"
-                                  : task.priority === "HIGH"
-                                    ? "watch"
-                                    : "neutral"
-                              }
-                            />
-                          </div>
-                        </div>
+                <div className={styles.detailFacts}>
+                  <article>
+                    <span>Mã định danh</span>
+                    <strong>{selectedUser.employeeCode ?? selectedUser.id}</strong>
+                  </article>
+                  <article>
+                    <span>Phòng ban</span>
+                    <strong>{selectedUser.department || "Chưa cập nhật"}</strong>
+                  </article>
+                  <article>
+                    <span>Số điện thoại</span>
+                    <strong>{selectedUser.phoneNumber || "Chưa cập nhật"}</strong>
+                  </article>
+                  <article>
+                    <span>Địa chỉ</span>
+                    <strong>{selectedUser.address || "Chưa cập nhật"}</strong>
+                  </article>
+                </div>
 
-                        <h3>{task.title}</h3>
-                        <p>{task.description}</p>
+                <div className={styles.detailFacts}>
+                  <article>
+                    <span>Tổng task</span>
+                    <strong>{selectedUserTaskSummary.total}</strong>
+                  </article>
+                  <article>
+                    <span>Task mở</span>
+                    <strong>{selectedUserTaskSummary.open}</strong>
+                  </article>
+                  <article>
+                    <span>Task blocked</span>
+                    <strong>{selectedUserTaskSummary.blocked}</strong>
+                  </article>
+                  <article>
+                    <span>Cập nhật gần nhất</span>
+                    <strong>{selectedUser.lastUpdatedAt ? formatDateTime(selectedUser.lastUpdatedAt) : "Chưa có"}</strong>
+                  </article>
+                </div>
+              </section>
 
-                        <div className="team-task-meta">
-                          <span>{task.project.name}</span>
-                          <span>Hạn {formatDate(task.dueDate)}</span>
-                        </div>
-                        <div className="team-task-meta">
-                          <span>{task.sprint ? task.sprint.name : "Chưa vào sprint"}</span>
-                          <span>{formatHours(task.spentHours)} / {formatHours(task.estimateHours)}</span>
-                        </div>
-                        <div className="team-task-meta">
-                          <span>{task.commentsCount} bình luận</span>
-                          <span>Cập nhật {formatDateTime(task.lastActivity)}</span>
-                        </div>
-
-                        {task.blockers.length ? (
-                          <div className="team-task-blockers">
-                            {task.blockers.map((blocker) => (
-                              <span key={blocker} className="soft-token soft-token-alert">{blocker}</span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </article>
-                    ))}
+              <section className={styles.detailPanel}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <span className="kicker">Trạng thái truy cập</span>
+                    <h3>Quản trị trạng thái</h3>
                   </div>
-                ) : (
-                  <EmptyState
-                    title="Không có task đang mở"
-                    description={
-                      selectedUserCompletedTasks
-                        ? `${selectedUser.name} hiện không có task active. Đã hoàn thành ${selectedUserCompletedTasks} task trong dữ liệu hiện có.`
-                        : "Nhân sự này chưa được gán task nào trong dữ liệu hiện tại."
-                    }
-                  />
-                )}
+                  <StatusPill label={userStatusLabel(statusDraft)} tone={getStatusTone(statusDraft)} />
+                </div>
+
+                <div className={styles.optionGrid}>
+                  {STATUS_OPTIONS.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      className={`${styles.optionButton} ${statusDraft === status ? styles.optionButtonActive : ""}`}
+                      onClick={() => setStatusDraft(status)}
+                      disabled={!canManageUsers}
+                    >
+                      <strong>{userStatusLabel(status)}</strong>
+                      <small>
+                        {status === "ACTIVE"
+                          ? "Người dùng được truy cập bình thường."
+                          : status === "SUSPENDED"
+                            ? "Tạm khóa quyền truy cập trong thời gian ngắn."
+                            : "Khóa tài khoản cho tới khi được mở lại."}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleSaveStatus}
+                  disabled={!canManageUsers || isSavingStatus || statusDraft === (selectedUser.status ?? "ACTIVE")}
+                >
+                  {isSavingStatus ? "Đang lưu..." : "Lưu trạng thái"}
+                </button>
+
+                <div className={styles.panelHeader}>
+                  <div>
+                    <span className="kicker">Vai trò hệ thống</span>
+                    <h3>Gán hoặc thu hồi quyền</h3>
+                  </div>
+                </div>
+
+                <div className={styles.roleChecklist}>
+                  {ROLE_OPTIONS.map((role) => {
+                    const checked = roleDraft.includes(role);
+
+                    return (
+                      <label key={role} className={styles.roleOption}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleRole(role)}
+                          disabled={!canManageUsers}
+                        />
+                        <span>
+                          <strong>{roleLabel(role)}</strong>
+                          <small>
+                            {role === "ADMIN"
+                              ? "Toàn quyền quản trị người dùng."
+                              : role === "MANAGER"
+                                ? "Điều phối danh sách và theo dõi nguồn lực."
+                                : role === "LEADER"
+                                  ? "Giám sát nhóm và phân phối công việc."
+                                  : "Vai trò vận hành cơ bản."}
+                          </small>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleSaveRoles}
+                  disabled={
+                    !canManageUsers ||
+                    isSavingRoles ||
+                    JSON.stringify(roleDraft.slice().sort()) === JSON.stringify((selectedUser.roles?.length ? selectedUser.roles : [selectedUser.role]).slice().sort())
+                  }
+                >
+                  {isSavingRoles ? "Đang lưu..." : "Lưu vai trò"}
+                </button>
+
+                {!canManageUsers ? (
+                  <p className={styles.helperText}>Tài khoản hiện tại chỉ có quyền xem. Chỉ `ADMIN` mới được thay đổi trạng thái và vai trò.</p>
+                ) : null}
+                {error ? <p className="form-error">{error}</p> : null}
+                {notice ? <p className="form-success">{notice}</p> : null}
               </section>
             </div>
-          </section>
-        </div>
-      ) : null}
-
-      {viewer.role === "ADMIN" && supportsUserAdmin && isCreateModalOpen ? (
-        <div className="modal-backdrop" role="presentation" onMouseDown={closeCreateModal}>
-          <section
-            className="password-modal employee-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-employee-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="password-modal-header">
-              <div>
-                <span className="eyebrow">Nhân sự mới</span>
-                <h2 id="create-employee-title">Tạo tài khoản nhân viên</h2>
-                <p>Nhân viên sẽ dùng email và mật khẩu này để đăng nhập.</p>
-              </div>
-              <button type="button" className="icon-button" onClick={closeCreateModal} aria-label="Đóng" disabled={isCreating}>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m6 6 12 12M18 6 6 18" />
-                </svg>
-              </button>
-            </div>
-
-            <form className="password-form employee-form" onSubmit={handleCreateEmployee}>
-              <div className="employee-form-grid">
-                <label>
-                  <span>Họ và tên</span>
-                  <input
-                    value={createForm.name}
-                    onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
-                    placeholder="Nguyễn Văn An"
-                    autoComplete="name"
-                    required
-                  />
-                </label>
-
-                <label>
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    value={createForm.email}
-                    onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
-                    placeholder="an@company.com"
-                    autoComplete="email"
-                    required
-                  />
-                </label>
-
-                <label>
-                  <span>Mật khẩu khởi tạo</span>
-                  <input
-                    type="password"
-                    value={createForm.password}
-                    onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
-                    placeholder="Tối thiểu 8 ký tự, gồm chữ và số"
-                    autoComplete="new-password"
-                    minLength={8}
-                    required
-                  />
-                </label>
-
-                <label>
-                  <span>Vai trò chuyên môn</span>
-                  <select
-                    value={createForm.jobRole}
-                    onChange={(event) =>
-                      setCreateForm((current) => ({ ...current, jobRole: event.target.value as JobRole }))
-                    }
-                  >
-                    {JOB_ROLE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <label className="admin-checkbox">
-                <input
-                  type="checkbox"
-                  checked={createForm.isAdmin}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, isAdmin: event.target.checked }))}
-                />
-                <span>
-                  <strong>Cấp quyền Admin</strong>
-                  <small>Cho phép quản trị tài khoản và truy cập toàn bộ dữ liệu dự án.</small>
-                </span>
-              </label>
-
-              {createError ? <p className="form-error" role="alert">{createError}</p> : null}
-
-              <div className="password-modal-actions">
-                <button type="button" className="secondary-button" onClick={closeCreateModal} disabled={isCreating}>
-                  Hủy
-                </button>
-                <button type="submit" className="primary-button" disabled={isCreating}>
-                  {isCreating ? "Đang tạo..." : "Tạo tài khoản"}
-                </button>
-              </div>
-            </form>
           </section>
         </div>
       ) : null}

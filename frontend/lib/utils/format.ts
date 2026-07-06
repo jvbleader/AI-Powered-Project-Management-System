@@ -5,6 +5,7 @@ import type {
   TaskPriority,
   TaskStatus,
   UserRole,
+  UserStatus,
 } from "@/types/dto";
 
 const dateFormatter = new Intl.DateTimeFormat("vi-VN", {
@@ -96,6 +97,14 @@ export function presenceLabel(status: "online" | "focus" | "offline") {
     online: "Đang hoạt động",
     focus: "Đang tập trung",
     offline: "Ngoại tuyến",
+  }[status];
+}
+
+export function userStatusLabel(status: UserStatus) {
+  return {
+    ACTIVE: "Đang hoạt động",
+    SUSPENDED: "Tạm dừng",
+    LOCKED: "Đã khóa",
   }[status];
 }
 

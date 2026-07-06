@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 
 import { PasswordField } from "@/components/password-field";
-import { signIn } from "@/lib/auth/session";
+import { signIn, STORAGE_KEY } from "@/lib/auth/session";
 import {
   clearRememberedLogin,
   readRememberedLogin,
@@ -48,6 +48,16 @@ export default function LoginForm() {
     removeLegacyRememberedPassword();
   }, []);
 
+  useEffect(() => {
+    function handleStorageChange(event: StorageEvent) {
+      if (event.key === STORAGE_KEY && event.newValue) {
+        window.location.assign("/dashboard");
+      }
+    }
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
   return (
     <form
       className={styles.form}
@@ -68,6 +78,7 @@ export default function LoginForm() {
             }
 
             router.push("/dashboard");
+            router.refresh();
           } catch (error) {
             setError(error instanceof Error ? error.message : "Không thể đăng nhập. Vui lòng thử lại.");
           }

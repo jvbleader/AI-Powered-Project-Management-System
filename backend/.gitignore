@@ -60,8 +60,3 @@ __pycache__/
 /*.log
 /pip-log.txt
 /pip-delete-this-directory.txt
-
-# Flask / Django local files
-/instance/
-/.webassets-cache
-/local_settings.py

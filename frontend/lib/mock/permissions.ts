@@ -1,4 +1,5 @@
 import { logworkEntries, projects, sprints, tasks, users } from "@/lib/mock/data";
+import { getDirectoryUserByEmail, getDirectoryUserById } from "@/lib/users/directory";
 import type {
   LogworkEntry,
   Project,
@@ -19,7 +20,11 @@ export function getDemoUserByEmail(email?: string | null) {
     return null;
   }
 
-  return users.find((user) => user.email.toLowerCase() === email.toLowerCase()) ?? null;
+  return (
+    getDirectoryUserByEmail(email) ??
+    users.find((user) => user.email.toLowerCase() === email.toLowerCase()) ??
+    null
+  );
 }
 
 export function getDemoUserById(id?: string | null) {
@@ -27,7 +32,7 @@ export function getDemoUserById(id?: string | null) {
     return null;
   }
 
-  return users.find((user) => user.id === id) ?? null;
+  return getDirectoryUserById(id) ?? users.find((user) => user.id === id) ?? null;
 }
 
 export function normalizeViewer(viewer?: UserProfile | null) {

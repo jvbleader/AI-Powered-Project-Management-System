@@ -1,9 +1,9 @@
-from fastapi import Depends, HTTPException, status, Cookie
+from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database.connection import get_db
-from utils.jwt_handler import decode_token
 from models.user_model import User
+from utils.jwt_handler import decode_token
 
 
 def get_current_user(

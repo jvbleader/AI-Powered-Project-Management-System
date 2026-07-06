@@ -45,12 +45,12 @@ function writeStoredSessionSnapshot(session: AuthSession, remember: boolean) {
   if (remember) {
     window.localStorage.setItem(STORAGE_KEY, snapshot);
     window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    return;
+  } else {
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, snapshot);
+    window.localStorage.removeItem(STORAGE_KEY);
   }
-
-  window.sessionStorage.setItem(SESSION_STORAGE_KEY, snapshot);
-  window.localStorage.removeItem(STORAGE_KEY);
 }
+
 
 function getStoredSessionTarget() {
   if (window.localStorage.getItem(STORAGE_KEY) !== null) {
