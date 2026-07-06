@@ -21,7 +21,16 @@ function readAvatarMap(): AvatarMap {
 }
 
 function writeAvatarMap(nextMap: AvatarMap) {
-  window.localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(nextMap));
+  try {
+    window.localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(nextMap));
+  } catch (error) {
+    if (error instanceof Error && error.name === "QuotaExceededError") {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      // Try again after clearing
+      try { window.localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(nextMap)); } catch {}
+    }
+  }
 }
 
 export function readStoredAvatar(userId: string) {

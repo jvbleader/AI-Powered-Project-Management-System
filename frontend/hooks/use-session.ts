@@ -2,8 +2,8 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 
-import { readSession, readSessionSnapshot, SESSION_CHANGE_EVENT } from "@/lib/auth/session";
-import type { AuthSession } from "@/types/dto";
+import { readSession, readSessionSnapshot, SESSION_CHANGE_EVENT } from "@/services/auth/session";
+import type { AuthSession } from "@/types";
 
 function subscribeToSession(onStoreChange: () => void) {
   window.addEventListener("storage", onStoreChange);

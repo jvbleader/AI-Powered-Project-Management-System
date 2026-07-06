@@ -755,6 +755,9 @@ p {
 
 .quick-chip {
   min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .quick-chip strong,

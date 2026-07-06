@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { restoreSession, signOut, readSessionSnapshot } from "@/lib/auth/session";
-import { useAuthSession } from "@/lib/auth/use-session";
+import { restoreSession, signOut, readSessionSnapshot } from "@/services/auth/session";
+import { useAuthSession } from "@/hooks/use-session";
 
 import styles from "./styles/auth-shell.module.css";
 

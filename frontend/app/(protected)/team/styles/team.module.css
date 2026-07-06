@@ -62,10 +62,15 @@
   border-radius: 32px;
 }
 
+.filterSurface {
+  position: relative;
+  z-index: 20;
+}
+
 .filterGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 1.5rem;
 }
 
 .filterField {
@@ -86,6 +91,24 @@
   padding: 0.92rem 1rem;
   color: var(--ink);
   background: rgba(248, 250, 252, 0.98);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.filterField input:focus,
+.filterField select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.filterField select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1.2rem center;
+  background-size: 1.1rem;
+  cursor: pointer;
 }
 
 .tableWrap {
@@ -315,6 +338,36 @@
 .roleOption small,
 .helperText {
   color: var(--muted);
+}
+
+.addModal {
+  max-width: 520px;
+  width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.addForm {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  padding: 0 1.5rem 1.5rem;
+}
+
+.addActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--surface-border);
+}
+
+.disabledInput {
+  background: rgba(241, 245, 249, 0.6) !important;
+  color: var(--muted) !important;
+  cursor: not-allowed;
+  user-select: none;
 }
 
 @media (max-width: 1100px) {

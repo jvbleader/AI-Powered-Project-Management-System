@@ -8,7 +8,7 @@ import type {
   UserProfile,
   UserRole,
   UserStatus,
-} from "@/types/dto";
+} from "@/types";
 
 const STORAGE_KEY = "flowpilot-user-directory-v1";
 const DEFAULT_PAGE_SIZE = 8;
@@ -73,7 +73,7 @@ function normalizeUserProfile(user: Partial<UserProfile> & Pick<UserProfile, "id
     (user.roles?.length ? user.roles : user.role ? [user.role] : ["MEMBER"]) as UserRole[],
   );
   const role = getPrimaryRole(roles);
-  const status = user.status ?? (user.isActive === false ? "SUSPENDED" : "ACTIVE");
+  const status = user.status ?? (user.isActive === false ? "INACTIVE" : "ACTIVE");
   const name = user.name.trim() || user.email.split("@")[0] || "Người dùng";
   const avatarUrl = user.avatarUrl ?? readStoredAvatar(user.id) ?? undefined;
   const jobTitle = user.jobTitle?.trim() || user.title?.trim() || ROLE_TITLES[role];
@@ -108,7 +108,7 @@ function buildSeedDirectory() {
     normalizeUserProfile({
       ...user,
       roles: [user.role],
-      status: user.isActive ? "ACTIVE" : "SUSPENDED",
+      status: user.isActive ? "ACTIVE" : "INACTIVE",
       employeeCode: buildEmployeeCode(index),
       phoneNumber: `090${String(index + 1).padStart(7, "0")}`,
       department: ROLE_DEPARTMENTS[user.role],
@@ -143,7 +143,15 @@ function writeStoredDirectory(users: UserProfile[]) {
     return;
   }
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+  } catch (error) {
+    if (error instanceof Error && error.name === "QuotaExceededError") {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      // Ignore saving if we still can't save
+    }
+  }
 }
 
 function matchUser(left: Pick<UserProfile, "id" | "email">, right: Pick<UserProfile, "id" | "email">) {
@@ -179,7 +187,7 @@ function syncViewer(users: UserProfile[], viewer?: UserProfile | null) {
   const normalizedViewer = normalizeUserProfile({
     ...viewer,
     roles: viewer.roles?.length ? viewer.roles : [viewer.role],
-    status: viewer.status ?? (viewer.isActive ? "ACTIVE" : "SUSPENDED"),
+    status: viewer.status ?? (viewer.isActive ? "ACTIVE" : "INACTIVE"),
   });
 
   return mergeUsers(users, [normalizedViewer]);
@@ -360,8 +368,8 @@ export function createDirectoryUser(payload: CreateUserPayload, viewer?: UserPro
     email,
     role: payload.isAdmin ? "ADMIN" : "MEMBER",
     roles: payload.isAdmin ? ["ADMIN"] : ["MEMBER"],
-    title: payload.jobRole.replaceAll("_", " "),
-    jobTitle: payload.jobRole.replaceAll("_", " "),
+    title: payload.role.replaceAll("_", " "),
+    jobTitle: payload.role.replaceAll("_", " "),
     department: payload.isAdmin ? ROLE_DEPARTMENTS.ADMIN : ROLE_DEPARTMENTS.MEMBER,
     employeeCode: buildEmployeeCode(users.length),
     status: "ACTIVE",

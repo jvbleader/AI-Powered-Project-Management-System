@@ -5,19 +5,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
-import { signOut } from "@/lib/auth/session";
-import { authApi } from "@/lib/api";
+import { signOut } from "@/services/auth/session";
+import { authApi } from "@/services/api";
 import { AssistantBubble } from "@/components/assistant-bubble";
 import { PasswordField } from "@/components/password-field";
-import { useAuthSession } from "@/lib/auth/use-session";
-import type { WorkspaceShellData } from "@/types/dto";
+import { useAuthSession } from "@/hooks/use-session";
+import type { WorkspaceShellData } from "@/types";
 
 const navigation = [
   { href: "/dashboard", label: "Tổng quan", icon: "grid" },
   { href: "/projects", label: "Dự án", icon: "layers" },
-  { href: "/sprints", label: "Sprint", icon: "bolt" },
-  { href: "/tasks", label: "Công việc", icon: "kanban" },
-  { href: "/logwork", label: "Logwork", icon: "clock" },
+  { href: "/tasks", label: "Nhiệm vụ", icon: "kanban" },
   { href: "/team", label: "Nhân sự", icon: "users" },
 ];
 
@@ -306,17 +304,6 @@ export function WorkspaceShell({
               </div>
             ) : null}
           </div>
-
-          {/* <div className="sidebar-mini-grid">
-            <div className="mini-metric sidebar-mini-metric">
-              <span>Dự án đang chạy</span>
-              <strong>{activeShellData.activeProjects}</strong>
-            </div>
-            <div className="mini-metric sidebar-mini-metric">
-              <span>Thiếu logwork</span>
-              <strong>{activeShellData.missingLogwork}</strong>
-            </div>
-          </div> */}
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">
@@ -331,12 +318,6 @@ export function WorkspaceShell({
             </Link>
           ))}
         </nav>
-
-        {/* <div className="sidebar-summary">
-          <p>Tổng quan vận hành</p>
-          <strong>{activeShellData.alertCount} cảnh báo cần xử lý</strong>
-          <span>{activeShellData.openTasks} công việc đang mở trong hệ thống</span>
-        </div> */}
       </aside>
 
       <main className="workspace-main">
@@ -353,13 +334,6 @@ export function WorkspaceShell({
             </div>
           </div>
         </header>
-
-        <section className="toolbar-row">
-          <div className="search-shell">
-            <span>Tìm kiếm dự án, công việc hoặc thành viên</span>
-          </div>
-        </section>
-
         <div className="page-stack">{children}</div>
       </main>
 

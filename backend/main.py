@@ -4,8 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from database.connection import Base, engine
 from routers import auth, users
 
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
 
 app.add_middleware(

@@ -28,4 +28,8 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy user"
         )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Tài khoản của bạn đã bị vô hiệu hóa"
+        )
     return user

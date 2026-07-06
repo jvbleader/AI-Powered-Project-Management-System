@@ -3,7 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, hasAuthCookies } from "@/lib/auth/cookies";
+import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, hasAuthCookies } from "@/services/auth/cookies";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
 const DEFAULT_INTERNAL_API_BASE_URL = "http://backend:8000";
