@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import (Column, Date, DateTime, ForeignKey, Integer, Numeric,
+                        String, Text)
 
 from database.connection import Base
 

@@ -1,8 +1,7 @@
-from fastapi import Cookie, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-
 from database.connection import get_db
+from fastapi import Cookie, Depends, HTTPException, status
 from models.user_model import User
+from sqlalchemy.orm import Session
 from utils.jwt_handler import decode_token
 
 
