@@ -1,5 +1,5 @@
 import { Surface } from "@/components/ui";
-import { CustomSelect } from "@/components/custom-select";
+
 import { roleLabel, userStatusLabel } from "@/lib/utils/format";
 import type { UserDirectoryFilters, UserRole, UserStatus } from "@/types";
 import styles from "../styles/team.module.css";
@@ -38,32 +38,32 @@ export function TeamFilter({
 
         <label className={styles.filterField}>
           <span>Trạng thái</span>
-          <CustomSelect
+          <select
             value={statusFilter ?? "ALL"}
-            onChange={(value) => onStatusFilterChange(value as UserDirectoryFilters["status"])}
-            options={[
-              { label: "Tất cả trạng thái", value: "ALL" },
-              ...STATUS_OPTIONS.map((status) => ({
-                label: userStatusLabel(status),
-                value: status,
-              })),
-            ]}
-          />
+            onChange={(event) => onStatusFilterChange(event.target.value as UserDirectoryFilters["status"])}
+          >
+            <option value="ALL">Tất cả trạng thái</option>
+            {STATUS_OPTIONS.map((status) => (
+              <option key={status} value={status}>
+                {userStatusLabel(status)}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className={styles.filterField}>
           <span>Vai trò</span>
-          <CustomSelect
+          <select
             value={roleFilter ?? "ALL"}
-            onChange={(value) => onRoleFilterChange(value as UserDirectoryFilters["role"])}
-            options={[
-              { label: "Tất cả vai trò", value: "ALL" },
-              ...ROLE_OPTIONS.map((role) => ({
-                label: roleLabel(role),
-                value: role,
-              })),
-            ]}
-          />
+            onChange={(event) => onRoleFilterChange(event.target.value as UserDirectoryFilters["role"])}
+          >
+            <option value="ALL">Tất cả vai trò</option>
+            {ROLE_OPTIONS.map((role) => (
+              <option key={role} value={role}>
+                {roleLabel(role)}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
     </Surface>

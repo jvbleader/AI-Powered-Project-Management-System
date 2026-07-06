@@ -59,6 +59,14 @@ export default function TeamPage() {
   const [roleDraft, setRoleDraft] = useState<UserRole[]>(["MEMBER"]);
   const [reloadKey, setReloadKey] = useState(0);
 
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [addRole, setAddRole] = useState<UserRole>("MEMBER");
+  const [addPassword, setAddPassword] = useState("default1234");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAddingUser, setIsAddingUser] = useState(false);
   const canManageUsers = currentActor.role === "ADMIN";
 
   useEffect(() => {

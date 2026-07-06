@@ -103,6 +103,7 @@ export function presenceLabel(status: "online" | "focus" | "offline") {
 export function userStatusLabel(status: UserStatus) {
   return {
     ACTIVE: "Đang hoạt động",
+    INACTIVE: "Không hoạt động",
     SUSPENDED: "Tạm dừng",
     LOCKED: "Đã khóa",
   }[status];

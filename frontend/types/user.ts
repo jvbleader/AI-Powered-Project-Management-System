@@ -1,7 +1,7 @@
 import type { PresenceStatus } from "./common";
 
 export type UserRole = "ADMIN" | "MANAGER" | "LEADER" | "MEMBER";
-export type UserStatus = "ACTIVE" | "INACTIVE";
+export type UserStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED" | "LOCKED";
 
 export type JobRole =
   | "FULLSTACK"

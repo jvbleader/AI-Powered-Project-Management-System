@@ -1,4 +1,4 @@
-import { CustomSelect } from "@/components/custom-select";
+
 import { roleLabel } from "@/lib/utils/format";
 import type { UserRole } from "@/types";
 import styles from "../styles/team.module.css";
@@ -95,10 +95,10 @@ export function AddUserModal({
 
           <label className={styles.filterField}>
             <span>Chức danh (Vai trò)</span>
-            <CustomSelect
+            <select
               value={addRole}
-              onChange={(val) => {
-                const role = val as UserRole;
+              onChange={(e) => {
+                const role = e.target.value as UserRole;
                 onAddRoleChange(role);
                 if (role === "ADMIN") {
                   onIsAdminChange(true);
@@ -106,8 +106,13 @@ export function AddUserModal({
                   onIsAdminChange(false);
                 }
               }}
-              options={ROLE_OPTIONS.map((r) => ({ label: roleLabel(r), value: r }))}
-            />
+            >
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {roleLabel(r)}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.filterField}>
