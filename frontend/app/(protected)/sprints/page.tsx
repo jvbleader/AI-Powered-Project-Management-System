@@ -274,6 +274,7 @@ export default function SprintsPage() {
       key: buildTaskKey(selectedProject.code, taskList.length),
       projectId: selectedProject.id,
       sprintId: selectedSprint.id,
+      parentTaskId: null,
       title: taskTitle.trim(),
       description: taskDescription.trim(),
       status: "TODO",

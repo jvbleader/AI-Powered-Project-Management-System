@@ -10,6 +10,7 @@ export interface Task {
   key: string;
   projectId: string;
   sprintId: string | null;
+  parentTaskId: string | null;
   title: string;
   description: string;
   status: TaskStatus;

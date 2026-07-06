@@ -1,7 +1,12 @@
 import type { PresenceStatus } from "./common";
 
 export type UserRole = "ADMIN" | "MANAGER" | "LEADER" | "MEMBER";
-export type UserStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED" | "LOCKED";
+export type UserStatus = "ACTIVE" | "INACTIVE";
+
+export interface Department {
+  id: number;
+  name: string;
+}
 
 export type JobRole =
   | "FULLSTACK"
@@ -49,6 +54,7 @@ export interface UserDirectoryFilters {
   search?: string;
   status?: UserStatus | "ALL";
   role?: UserRole | "ALL";
+  department?: string | "ALL";
   page?: number;
   pageSize?: number;
 }
@@ -69,6 +75,7 @@ export interface UserStatusUpdatePayload {
 export interface UserRolesUpdatePayload {
   userId: string;
   roles: UserRole[];
+  department?: string;
 }
 
 export interface CreateUserPayload {
@@ -77,6 +84,7 @@ export interface CreateUserPayload {
   password: string;
   role: UserRole;
   isAdmin: boolean;
+  department?: string;
 }
 
 export interface AdminResetPasswordPayload {

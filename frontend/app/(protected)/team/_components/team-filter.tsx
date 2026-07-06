@@ -14,6 +14,9 @@ interface TeamFilterProps {
   onStatusFilterChange: (value: UserDirectoryFilters["status"]) => void;
   roleFilter: UserDirectoryFilters["role"];
   onRoleFilterChange: (value: UserDirectoryFilters["role"]) => void;
+  departmentFilter: UserDirectoryFilters["department"];
+  onDepartmentFilterChange: (value: UserDirectoryFilters["department"]) => void;
+  departments: { id: number; name: string }[];
 }
 
 export function TeamFilter({
@@ -23,6 +26,9 @@ export function TeamFilter({
   onStatusFilterChange,
   roleFilter,
   onRoleFilterChange,
+  departmentFilter,
+  onDepartmentFilterChange,
+  departments,
 }: TeamFilterProps) {
   return (
     <Surface title="Bộ lọc danh sách" kicker="Search & Pagination" className={styles.filterSurface}>
@@ -61,6 +67,22 @@ export function TeamFilter({
             {ROLE_OPTIONS.map((role) => (
               <option key={role} value={role}>
                 {roleLabel(role)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={styles.filterField}>
+          <span>Phòng ban</span>
+          <select
+            value={departmentFilter ?? "ALL"}
+            onChange={(event) => onDepartmentFilterChange(event.target.value as UserDirectoryFilters["department"])}
+          >
+            <option value="ALL">Tất cả phòng ban</option>
+            <option value="UNASSIGNED">Chưa cập nhật phòng ban</option>
+            {departments.map((dept) => (
+              <option key={dept.id} value={dept.name}>
+                {dept.name}
               </option>
             ))}
           </select>

@@ -1,186 +1,495 @@
-.pageStack {
+.profilePage {
   display: grid;
-  gap: 1.2rem;
-}
-
-.previewBanner {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1.35rem 1.45rem;
-  border: 1px solid rgba(14, 116, 144, 0.16);
-  border-radius: 32px;
-  background:
-    radial-gradient(circle at top right, rgba(8, 145, 178, 0.14), transparent 34%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(240, 249, 255, 0.92));
+  grid-template-columns: 340px 1fr;
+  width: 100%;
+  max-width: none;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 28px;
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
-.previewBanner h2 {
-  margin: 0.3rem 0 0.45rem;
-  font-size: 1.4rem;
-}
-
-.layout {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
-  gap: 1.2rem;
-}
-
-.identitySurface,
-.formSurface {
-  padding: 1.35rem;
-  border-radius: 34px;
-}
-
-.identityPanel {
-  display: grid;
-  gap: 1.15rem;
-}
-
-.avatarSection {
+/* ── Left Column (Hero) ── */
+.heroColumn {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  text-align: center;
+  gap: 1.5rem;
+  padding: 3rem 2rem;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(37, 99, 235, 0.08), transparent 60%),
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.94));
+  border-right: 1px solid rgba(148, 163, 184, 0.15);
 }
 
-.avatarLarge {
-  display: inline-flex;
+.heroColumn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.heroAvatarWrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.heroAvatar {
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 5.75rem;
-  height: 5.75rem;
-  overflow: hidden;
+  width: 7.5rem;
+  height: 7.5rem;
   border-radius: 999px;
-  font-size: 1.55rem;
+  font-size: 2.2rem;
   font-weight: 800;
   color: #eff6ff;
   background: linear-gradient(135deg, var(--accent) 0%, var(--support) 100%);
-  box-shadow: 0 16px 32px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.25);
+  overflow: hidden;
 }
 
-.avatarActions {
+.heroAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarEditOverlay {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 3px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.avatarEditOverlay:hover {
+  transform: scale(1.1);
+  background: var(--accent-strong);
+}
+
+.avatarEditOverlay svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: white;
+  stroke: none;
+}
+
+.heroInfo {
+  position: relative;
   display: grid;
-  gap: 0.45rem;
+  gap: 0.5rem;
+  z-index: 1;
 }
 
-.avatarActions strong {
-  font-size: 1.2rem;
+.heroName {
+  font-size: 1.65rem;
+  font-weight: 750;
   color: var(--ink);
+  margin: 0;
+  line-height: 1.2;
 }
 
-.avatarButtons {
+.heroEmail {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.heroBadges {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.7rem;
+  justify-content: center;
+  gap: 0.5rem;
   margin-top: 0.35rem;
-}
-
-.badgeRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
 }
 
 .hiddenFileInput {
   display: none;
 }
 
-.infoGrid {
+.avatarNotice {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* ── Right Column (Details) ── */
+.detailsColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  padding: 2.5rem 3rem;
+}
+
+.detailSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  padding-bottom: 0.8rem;
+}
+
+.sectionTitle {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.85rem;
+  gap: 0.15rem;
 }
 
-.infoCard {
-  min-height: 112px;
-  padding: 1rem 1.05rem;
-  border: 1px solid rgba(191, 219, 254, 0.7);
-  border-radius: 24px;
-  background: rgba(248, 250, 252, 0.88);
-}
-
-.infoCard span {
-  display: block;
-  margin-bottom: 0.45rem;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.infoCard strong {
-  display: block;
+.sectionTitle h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
   color: var(--ink);
-  line-height: 1.35;
+  margin: 0;
 }
 
-.profileForm {
-  display: grid;
-  gap: 1rem;
+.sectionTitle span {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.formGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.profileForm label {
-  display: grid;
-  gap: 0.45rem;
-  color: #334155;
-  font-weight: 650;
-}
-
-.profileForm input,
-.profileForm textarea {
-  width: 100%;
-  border: 1px solid rgba(148, 163, 184, 0.28);
+/* ── Info List ── */
+.infoList {
+  display: flex;
+  flex-direction: column;
   border-radius: 18px;
-  padding: 0.92rem 1rem;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(191, 219, 254, 0.5);
+  overflow: hidden;
+}
+
+.infoItem {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  transition: background 0.2s;
+}
+
+.infoItem + .infoItem {
+  border-top: 1px solid rgba(191, 219, 254, 0.4);
+}
+
+.infoItem:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.infoIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: var(--accent-soft);
+}
+
+.infoIcon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  stroke: var(--accent);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.infoIcon.greenTone {
+  background: rgba(22, 163, 74, 0.1);
+}
+
+.infoIcon.greenTone svg {
+  stroke: #16a34a;
+}
+
+.infoIcon.amberTone {
+  background: var(--watch-soft);
+}
+
+.infoIcon.amberTone svg {
+  stroke: var(--watch);
+}
+
+.infoIcon.tealTone {
+  background: var(--support-soft);
+}
+
+.infoIcon.tealTone svg {
+  stroke: var(--support);
+}
+
+.infoContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.infoContent dt {
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.infoContent dd {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Phone Inline Section ── */
+.phoneDisplayInline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.8rem;
+}
+
+.phoneValue {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.phoneEmpty {
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.phoneEditInline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.phoneEditInline input {
+  width: 150px;
+  padding: 0.4rem 0.6rem;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: rgba(248, 250, 252, 0.98);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  text-align: center;
+}
+
+.phoneEditInline input:focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.phoneEditActions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.editIconOnlyButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: white;
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editIconOnlyButton:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.editIconOnlyButton svg {
+  width: 1rem;
+  height: 1rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.saveButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.saveButton:hover {
+  background: var(--accent-strong);
+}
+
+.saveButton:active {
+  transform: scale(0.97);
+}
+
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancelButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: white;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancelButton:hover {
+  background: rgba(241, 245, 249, 0.95);
+  color: var(--ink);
+}
+
+.phoneError {
+  margin-top: 0.4rem;
+  text-align: right;
+  font-size: 0.8rem;
+}
+
+/* ── Change Password ── */
+.passwordForm {
+  display: grid;
+  gap: 1rem;
+}
+
+.passwordFields {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.passwordFields label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.passwordFields input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  font-size: 0.95rem;
   color: var(--ink);
   background: rgba(248, 250, 252, 0.98);
 }
 
-.profileForm input:disabled,
-.profileForm textarea:disabled {
-  color: #64748b;
-  background: rgba(241, 245, 249, 0.95);
+.passwordFields input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.profileForm small {
-  color: var(--muted);
-  font-weight: 450;
-}
-
-.fullWidth {
-  grid-column: 1 / -1;
-}
-
-.formFooter {
+.passwordFooter {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding-top: 0.2rem;
 }
 
-@media (max-width: 1080px) {
-  .layout {
+.passwordFooter p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .profilePage {
     grid-template-columns: 1fr;
+  }
+  
+  .heroColumn {
+    border-right: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+    padding: 2.5rem 2rem;
+  }
+  
+  .detailsColumn {
+    padding: 2rem;
   }
 }
 
-@media (max-width: 780px) {
-  .previewBanner,
-  .avatarSection,
-  .formFooter {
+@media (max-width: 600px) {
+  .detailsColumn {
+    padding: 1.5rem;
+  }
+  
+  .phoneEditForm {
     flex-direction: column;
     align-items: stretch;
   }
-
-  .infoGrid,
-  .formGrid {
-    grid-template-columns: 1fr;
+  
+  .phoneEditForm input {
+    width: 100%;
+  }
+  
+  .infoContent {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .infoContent dd {
+    text-align: left;
   }
 }

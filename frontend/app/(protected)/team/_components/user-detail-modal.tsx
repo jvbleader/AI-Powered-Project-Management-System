@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { StatusPill } from "@/components/ui";
 import { formatDateTime, roleLabel, userStatusLabel } from "@/lib/utils/format";
-import type { UserProfile, UserRole, UserStatus } from "@/types";
+import type { UserProfile, UserRole, UserStatus, Department } from "@/types";
 import styles from "../styles/team.module.css";
 
 const ROLE_OPTIONS: UserRole[] = ["ADMIN", "MANAGER", "LEADER", "MEMBER"];
@@ -16,6 +16,7 @@ function getStatusTone(status: UserStatus) {
 
 interface UserDetailModalProps {
   user: UserProfile;
+  departments: Department[];
   taskSummary: { total: number; open: number; blocked: number };
   canManageUsers: boolean;
   onClose: () => void;
@@ -23,6 +24,8 @@ interface UserDetailModalProps {
   onStatusDraftChange: (status: UserStatus) => void;
   roleDraft: UserRole[];
   onRoleDraftChange: (roles: UserRole[]) => void;
+  departmentDraft: string;
+  onDepartmentDraftChange: (dept: string) => void;
   isSavingStatus: boolean;
   onSaveStatus: () => void;
   isSavingRoles: boolean;
@@ -35,6 +38,7 @@ interface UserDetailModalProps {
 
 export function UserDetailModal({
   user,
+  departments,
   taskSummary,
   canManageUsers,
   onClose,
@@ -42,6 +46,8 @@ export function UserDetailModal({
   onStatusDraftChange,
   roleDraft,
   onRoleDraftChange,
+  departmentDraft,
+  onDepartmentDraftChange,
   isSavingStatus,
   onSaveStatus,
   isSavingRoles,
@@ -107,13 +113,6 @@ export function UserDetailModal({
                 <strong>{user.phoneNumber || "Chưa cập nhật"}</strong>
               </article>
               <article>
-                <span>Địa chỉ</span>
-                <strong>{user.address || "Chưa cập nhật"}</strong>
-              </article>
-            </div>
-
-            <div className={styles.detailFacts}>
-              <article>
                 <span>Tổng task</span>
                 <strong>{taskSummary.total}</strong>
               </article>
@@ -124,10 +123,6 @@ export function UserDetailModal({
               <article>
                 <span>Task blocked</span>
                 <strong>{taskSummary.blocked}</strong>
-              </article>
-              <article>
-                <span>Cập nhật gần nhất</span>
-                <strong>{user.lastUpdatedAt ? formatDateTime(user.lastUpdatedAt) : "Chưa có"}</strong>
               </article>
             </div>
           </section>
@@ -171,10 +166,26 @@ export function UserDetailModal({
 
             <div className={styles.panelHeader}>
               <div>
-                <span className="kicker">Vai trò hệ thống</span>
-                <h3>Gán hoặc thu hồi quyền</h3>
+                <span className="kicker">Vai trò hệ thống & Phòng ban</span>
+                <h3>Gán hoặc thu hồi quyền và cập nhật phòng ban</h3>
               </div>
             </div>
+
+            <label className={styles.filterField} style={{ marginBottom: "1rem" }}>
+              <span>Phòng ban</span>
+              <select
+                value={departmentDraft}
+                onChange={(e) => onDepartmentDraftChange(e.target.value)}
+                disabled={!canManageUsers}
+              >
+                <option value="">-- Chọn phòng ban --</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.name}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <div className={styles.roleChecklist}>
               {ROLE_OPTIONS.map((role) => {
@@ -213,7 +224,9 @@ export function UserDetailModal({
               disabled={
                 !canManageUsers ||
                 isSavingRoles ||
-                JSON.stringify(roleDraft.slice().sort()) === JSON.stringify((user.roles?.length ? user.roles : [user.role]).slice().sort())
+                (roleDraft.length === (user.roles?.length || 1) &&
+                  roleDraft.every((r) => (user.roles || [user.role]).includes(r)) &&
+                  departmentDraft === (user.department || ""))
               }
             >
               {isSavingRoles ? "Đang lưu..." : "Lưu vai trò"}

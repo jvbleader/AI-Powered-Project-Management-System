@@ -47,6 +47,7 @@ import type {
   ChangePasswordPayload,
   CreateUserPayload,
   DashboardOverview,
+  Department,
   EnrichedTask,
   LogworkEntry,
   LogworkFilters,
@@ -260,6 +261,7 @@ export const apiEndpoints = {
     updateRole: (userId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/users/${userId.replace("usr-", "")}/role` }),
     updateStatus: (userId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/users/${userId.replace("usr-", "")}/status` }),
     updatePhone: { method: "PUT" as EndpointMethod, path: "/me/phone" },
+    updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
   },
   ai: {
     quickQuery: { method: "POST" as EndpointMethod, path: "/api/ai/query" },
@@ -869,6 +871,15 @@ export const logworkApi = {
 };
 
 export const userApi = {
+  async getDepartments(): Promise<ApiResponse<Department[]>> {
+    try {
+      const result = await requestApi<Department[]>({ method: "GET", path: "/api/departments" });
+      return wrapBackendResponse(result.data);
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Không thể tải danh sách phòng ban.");
+    }
+  },
+
   async resetPassword(payload: AdminResetPasswordPayload, viewer?: UserProfile | null): Promise<ApiResponse<null>> {
     try {
       await requestApi(apiEndpoints.users.resetPassword, {
@@ -909,8 +920,9 @@ export const userApi = {
   async listDirectory(filters?: UserDirectoryFilters, viewer?: UserProfile | null): Promise<ApiResponse<PaginatedUsers>> {
     const searchParams = new URLSearchParams();
     if (filters?.search) searchParams.append("search", filters.search);
-    if (filters?.status) searchParams.append("status", filters.status);
-    if (filters?.role) searchParams.append("role", filters.role);
+    if (filters?.status && filters.status !== "ALL") searchParams.append("status", filters.status);
+    if (filters?.role && filters.role !== "ALL") searchParams.append("role", filters.role);
+    if (filters?.department && filters.department !== "ALL") searchParams.append("department", filters.department);
     if (filters?.page) searchParams.append("page", filters.page.toString());
     if (filters?.pageSize) searchParams.append("page_size", filters.pageSize.toString());
 
@@ -933,7 +945,7 @@ export const userApi = {
     }
   },
 
-  async getCurrentProfile(viewer: UserProfile): Promise<ApiResponse<UserProfile>> {
+  async getCurrentProfile(viewer?: UserProfile | null): Promise<ApiResponse<UserProfile>> {
     try {
       const result = await requestApi<BackendUserResponse>(apiEndpoints.auth.me);
       return wrapBackendResponse(toFrontendUserProfile(result.data));
@@ -948,8 +960,13 @@ export const userApi = {
   },
 
   async updateCurrentAvatar(viewer: UserProfile, avatarUrl?: string) {
-    const updated = updateDirectoryAvatar(normalizeViewer(viewer), avatarUrl);
-    return respond(updated, 120);
+    if (!avatarUrl) {
+      return respond(normalizeViewer(viewer), 120);
+    }
+    const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updateAvatar, {
+      body: JSON.stringify({ avatar_url: avatarUrl }),
+    });
+    return wrapBackendResponse(toFrontendUserProfile(result.data));
   },
 
   async updatePhone(phoneNumber: string) {
@@ -975,7 +992,7 @@ export const userApi = {
     try {
       const role = payload.roles.length > 0 ? payload.roles[0] : "MEMBER";
       const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updateRole(payload.userId), {
-        body: JSON.stringify({ role: role, is_admin: role === "ADMIN" }),
+        body: JSON.stringify({ role: role, is_admin: role === "ADMIN", department: payload.department || null }),
       });
       return wrapBackendResponse(toFrontendUserProfile(result.data));
     } catch (error) {
@@ -992,6 +1009,7 @@ export const userApi = {
           role: payload.role || "MEMBER",
           is_admin: payload.isAdmin || false,
           password: payload.password || "default1234",
+          department: payload.department || null,
         }),
       });
       return wrapBackendResponse(toFrontendUserProfile(result.data));

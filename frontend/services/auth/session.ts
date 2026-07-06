@@ -13,6 +13,7 @@ function emitSessionChange() {
 function clearClientSession() {
   window.localStorage.removeItem(STORAGE_KEY);
   window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  window.localStorage.removeItem("flowpilot-user-directory-v1");
 }
 
 function enrichSession(session: AuthSession) {
@@ -42,12 +43,26 @@ function readStoredSessionSnapshot() {
 function writeStoredSessionSnapshot(session: AuthSession, remember: boolean) {
   const snapshot = toClientSessionSnapshot(session);
 
-  if (remember) {
-    window.localStorage.setItem(STORAGE_KEY, snapshot);
-    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-  } else {
-    window.sessionStorage.setItem(SESSION_STORAGE_KEY, snapshot);
-    window.localStorage.removeItem(STORAGE_KEY);
+  try {
+    if (remember) {
+      window.localStorage.setItem(STORAGE_KEY, snapshot);
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    } else {
+      window.sessionStorage.setItem(SESSION_STORAGE_KEY, snapshot);
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === "QuotaExceededError") {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      if (remember) {
+        window.localStorage.setItem(STORAGE_KEY, snapshot);
+      } else {
+        window.sessionStorage.setItem(SESSION_STORAGE_KEY, snapshot);
+      }
+    } else {
+      throw error;
+    }
   }
 }
 

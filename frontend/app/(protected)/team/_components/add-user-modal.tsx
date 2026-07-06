@@ -1,17 +1,20 @@
 
 import { roleLabel } from "@/lib/utils/format";
-import type { UserRole } from "@/types";
+import type { UserRole, Department } from "@/types";
 import styles from "../styles/team.module.css";
 
 const ROLE_OPTIONS: UserRole[] = ["ADMIN", "MANAGER", "LEADER", "MEMBER"];
 
 interface AddUserModalProps {
   isOpen: boolean;
+  departments: Department[];
   onClose: () => void;
   addName: string;
   onAddNameChange: (value: string) => void;
   addEmail: string;
   onAddEmailChange: (value: string) => void;
+  addDepartment: string;
+  onAddDepartmentChange: (value: string) => void;
   addRole: UserRole;
   onAddRoleChange: (value: UserRole) => void;
   addPassword: string;
@@ -25,11 +28,14 @@ interface AddUserModalProps {
 
 export function AddUserModal({
   isOpen,
+  departments,
   onClose,
   addName,
   onAddNameChange,
   addEmail,
   onAddEmailChange,
+  addDepartment,
+  onAddDepartmentChange,
   addRole,
   onAddRoleChange,
   addPassword,
@@ -91,6 +97,21 @@ export function AddUserModal({
               placeholder="Nhập địa chỉ email"
               required
             />
+          </label>
+
+          <label className={styles.filterField}>
+            <span>Phòng ban</span>
+            <select
+              value={addDepartment}
+              onChange={(e) => onAddDepartmentChange(e.target.value)}
+            >
+              <option value="">-- Chọn phòng ban --</option>
+              {departments.map((dept) => (
+                <option key={dept.id} value={dept.name}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.filterField}>

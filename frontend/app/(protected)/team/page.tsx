@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { taskApi, userApi, workspaceApi } from "@/services/api";
 import { updateSessionCurrentUser } from "@/services/auth/session";
 import { useAuthSession } from "@/hooks/use-session";
-import { normalizeViewer } from "@/lib/mock/permissions";
 import type {
   EnrichedTask,
   PaginatedUsers,
@@ -14,6 +14,7 @@ import type {
   UserRole,
   UserStatus,
   WorkspaceShellData,
+  Department,
 } from "@/types";
 
 import styles from "./styles/team.module.css";
@@ -32,10 +33,9 @@ const EMPTY_DIRECTORY: PaginatedUsers = {
 
 export default function TeamPage() {
   const session = useAuthSession();
-  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
-  const currentActor = useMemo(() => session?.currentUser ?? viewer, [session?.currentUser, viewer]);
+  const currentActor = useMemo(() => session?.currentUser as UserProfile, [session?.currentUser]);
   const [shellData, setShellData] = useState<WorkspaceShellData>({
-    currentUser: viewer,
+    currentUser: currentActor,
     activeProjects: 0,
     openTasks: 0,
     missingLogwork: 0,
@@ -48,6 +48,7 @@ export default function TeamPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<UserDirectoryFilters["status"]>("ALL");
   const [roleFilter, setRoleFilter] = useState<UserDirectoryFilters["role"]>("ALL");
+  const [departmentFilter, setDepartmentFilter] = useState<UserDirectoryFilters["department"]>("ALL");
   const [pageSize, setPageSize] = useState(8);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,31 +58,44 @@ export default function TeamPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusDraft, setStatusDraft] = useState<UserStatus>("ACTIVE");
   const [roleDraft, setRoleDraft] = useState<UserRole[]>(["MEMBER"]);
+  const [departmentDraft, setDepartmentDraft] = useState<string>("");
   const [reloadKey, setReloadKey] = useState(0);
 
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addEmail, setAddEmail] = useState("");
+  const [addDepartment, setAddDepartment] = useState("");
   const [addRole, setAddRole] = useState<UserRole>("MEMBER");
   const [addPassword, setAddPassword] = useState("default1234");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const canManageUsers = currentActor.role === "ADMIN";
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!canManageUsers) {
+      router.push("/dashboard");
+    }
+  }, [canManageUsers, router]);
 
   useEffect(() => {
     let isCancelled = false;
     async function loadStaticData() {
       try {
-        const [{ data: nextShellData }, { data: nextUsers }, { data: nextTasks }] = await Promise.all([
+        const [{ data: nextShellData }, { data: nextUsers }, { data: nextTasks }, { data: nextDepartments }] = await Promise.all([
           workspaceApi.getShellData(currentActor),
           userApi.list(currentActor),
           taskApi.getEnrichedBoard(undefined, currentActor),
+          userApi.getDepartments(),
         ]);
+
         if (isCancelled) return;
         setShellData(nextShellData);
         setAllUsers(nextUsers);
         setTaskBoard(nextTasks);
+        setDepartments(nextDepartments);
       } catch (loadError) {
         if (!isCancelled) setError(loadError instanceof Error ? loadError.message : "Không thể tải danh sách người dùng.");
       } finally {
@@ -97,7 +111,7 @@ export default function TeamPage() {
     async function loadDirectory() {
       try {
         const { data } = await userApi.listDirectory(
-          { search, status: statusFilter, role: roleFilter, page, pageSize },
+          { search, status: statusFilter, role: roleFilter, department: departmentFilter, page, pageSize },
           currentActor,
         );
         if (isCancelled) return;
@@ -109,7 +123,7 @@ export default function TeamPage() {
     }
     void loadDirectory();
     return () => { isCancelled = true; };
-  }, [currentActor, page, pageSize, reloadKey, roleFilter, search, statusFilter]);
+  }, [currentActor, page, pageSize, reloadKey, roleFilter, departmentFilter, search, statusFilter]);
 
   const taskSummaryByUserId = useMemo(() => {
     return taskBoard.reduce<Record<string, { total: number; open: number; blocked: number }>>((summary, task) => {
@@ -146,7 +160,7 @@ export default function TeamPage() {
     if (!selectedUser) return;
     setError(null); setNotice(null); setIsSavingStatus(true);
     try {
-      const { data: updatedUser } = await userApi.updateStatus({ userId: selectedUser.id, status: statusDraft }, session?.currentUser ?? viewer);
+      const { data: updatedUser } = await userApi.updateStatus({ userId: selectedUser.id, status: statusDraft }, currentActor);
       patchUser(updatedUser);
       setReloadKey((c) => c + 1);
       setNotice(`Đã cập nhật trạng thái của ${updatedUser.name} thành công.`);
@@ -160,7 +174,7 @@ export default function TeamPage() {
     if (!selectedUser) return;
     setError(null); setNotice(null); setIsSavingRoles(true);
     try {
-      const { data: updatedUser } = await userApi.updateRoles({ userId: selectedUser.id, roles: roleDraft }, session?.currentUser ?? viewer);
+      const { data: updatedUser } = await userApi.updateRoles({ userId: selectedUser.id, roles: roleDraft, department: departmentDraft }, currentActor);
       patchUser(updatedUser);
       setReloadKey((c) => c + 1);
       setNotice(`Đã cập nhật chức danh của ${updatedUser.name} thành công.`);
@@ -185,12 +199,12 @@ export default function TeamPage() {
     if (!addName.trim() || !addEmail.trim()) { setError("Vui lòng nhập đầy đủ Họ tên và Email."); return; }
     setError(null); setNotice(null); setIsAddingUser(true);
     try {
-      const response = await userApi.create({ name: addName.trim(), email: addEmail.trim(), role: addRole, isAdmin, password: addPassword || "default1234" });
+      const response = await userApi.create({ name: addName.trim(), email: addEmail.trim(), role: addRole, isAdmin, password: addPassword || "default1234", department: addDepartment });
       const newUser = response.data;
       setAllUsers((current) => [newUser, ...current]);
       setReloadKey((c) => c + 1);
       setNotice(`Đã thêm tài khoản cho ${newUser.name} thành công.`);
-      setIsAddModalOpen(false); setAddName(""); setAddEmail(""); setAddRole("MEMBER"); setAddPassword("default1234"); setIsAdmin(false);
+      setIsAddModalOpen(false); setAddName(""); setAddEmail(""); setAddDepartment(""); setAddRole("MEMBER"); setAddPassword("default1234"); setIsAdmin(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể thêm nhân sự.");
     } finally { setIsAddingUser(false); }
@@ -212,6 +226,9 @@ export default function TeamPage() {
           onStatusFilterChange={(v) => { setStatusFilter(v); setPage(1); }}
           roleFilter={roleFilter}
           onRoleFilterChange={(v) => { setRoleFilter(v); setPage(1); }}
+          departmentFilter={departmentFilter}
+          onDepartmentFilterChange={(v) => { setDepartmentFilter(v); setPage(1); }}
+          departments={departments}
         />
 
         <UserTable
@@ -226,6 +243,7 @@ export default function TeamPage() {
             setSelectedUserId(user.id);
             setStatusDraft(user.status ?? "ACTIVE");
             setRoleDraft(user.roles?.length ? user.roles : [user.role]);
+            setDepartmentDraft(user.department ?? "");
             setNotice(null);
             setError(null);
           }}
@@ -235,6 +253,7 @@ export default function TeamPage() {
       {selectedUser && (
         <UserDetailModal
           user={selectedUser}
+          departments={departments}
           taskSummary={selectedUserTaskSummary}
           canManageUsers={canManageUsers}
           onClose={() => setSelectedUserId(null)}
@@ -242,6 +261,8 @@ export default function TeamPage() {
           onStatusDraftChange={setStatusDraft}
           roleDraft={roleDraft}
           onRoleDraftChange={setRoleDraft}
+          departmentDraft={departmentDraft}
+          onDepartmentDraftChange={setDepartmentDraft}
           isSavingStatus={isSavingStatus}
           onSaveStatus={handleSaveStatus}
           isSavingRoles={isSavingRoles}
@@ -255,11 +276,14 @@ export default function TeamPage() {
 
       <AddUserModal
         isOpen={isAddModalOpen}
+        departments={departments}
         onClose={() => setIsAddModalOpen(false)}
         addName={addName}
         onAddNameChange={setAddName}
         addEmail={addEmail}
         onAddEmailChange={setAddEmail}
+        addDepartment={addDepartment}
+        onAddDepartmentChange={setAddDepartment}
         addRole={addRole}
         onAddRoleChange={setAddRole}
         addPassword={addPassword}

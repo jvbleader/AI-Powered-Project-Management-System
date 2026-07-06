@@ -143,7 +143,15 @@ function writeStoredDirectory(users: UserProfile[]) {
     return;
   }
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+  } catch (error) {
+    if (error instanceof Error && error.name === "QuotaExceededError") {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      // Ignore saving if we still can't save
+    }
+  }
 }
 
 function matchUser(left: Pick<UserProfile, "id" | "email">, right: Pick<UserProfile, "id" | "email">) {
