@@ -14,7 +14,7 @@ import {
   StatusPill,
   Surface,
 } from "@/components/ui";
-import { dashboardApi, projectApi, sprintApi, taskApi, workspaceApi } from "@/lib/api";
+import { dashboardApi, projectApi, sprintApi, taskApi, workspaceApi } from "@/services/api";
 import {
   calculateSprintCompletion,
   categorizeTask,
@@ -23,8 +23,8 @@ import {
   normalizeViewer,
 } from "@/lib/mock/permissions";
 import { formatDate, formatRange, healthToneLabel, roleLabel, taskStatusLabel } from "@/lib/utils/format";
-import { useAuthSession } from "@/lib/auth/use-session";
-import type { DashboardOverview, EnrichedTask, Project, Sprint, WorkspaceShellData } from "@/types/dto";
+import { useAuthSession } from "@/hooks/use-session";
+import type { DashboardOverview, EnrichedTask, Project, Sprint, WorkspaceShellData } from "@/types";
 
 type DashboardState = {
   shellData: WorkspaceShellData;

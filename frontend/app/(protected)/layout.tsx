@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ProtectedRoute } from "@/components/protected-route";
-import { requireServerSession } from "@/lib/auth/server";
+import { requireServerSession } from "@/services/auth/server";
 
 export default async function ProtectedLayout({
   children,

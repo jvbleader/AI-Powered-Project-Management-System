@@ -6,7 +6,7 @@ import type {
   TaskStatus,
   UserRole,
   UserStatus,
-} from "@/types/dto";
+} from "@/types";
 
 const dateFormatter = new Intl.DateTimeFormat("vi-VN", {
   month: "short",

@@ -5,12 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
-import { signOut } from "@/lib/auth/session";
-import { authApi } from "@/lib/api";
+import { signOut } from "@/services/auth/session";
+import { authApi } from "@/services/api";
 import { AssistantBubble } from "@/components/assistant-bubble";
 import { PasswordField } from "@/components/password-field";
-import { useAuthSession } from "@/lib/auth/use-session";
-import type { WorkspaceShellData } from "@/types/dto";
+import { useAuthSession } from "@/hooks/use-session";
+import type { WorkspaceShellData } from "@/types";
 
 const navigation = [
   { href: "/dashboard", label: "Tổng quan", icon: "grid" },

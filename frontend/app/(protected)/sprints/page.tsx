@@ -10,7 +10,7 @@ import {
   StatusPill,
   Surface,
 } from "@/components/ui";
-import { logworkApi, projectApi, sprintApi, taskApi, userApi, workspaceApi } from "@/lib/api";
+import { logworkApi, projectApi, sprintApi, taskApi, userApi, workspaceApi } from "@/services/api";
 import {
   categorizeTask,
   DEMO_TODAY,
@@ -30,7 +30,7 @@ import {
   taskPriorityLabel,
   taskStatusLabel,
 } from "@/lib/utils/format";
-import { useAuthSession } from "@/lib/auth/use-session";
+import { useAuthSession } from "@/hooks/use-session";
 import type {
   EnrichedTask,
   LogworkEntry,
@@ -41,7 +41,7 @@ import type {
   TaskStatus,
   UserProfile,
   WorkspaceShellData,
-} from "@/types/dto";
+} from "@/types";
 
 type SprintPageState = {
   shellData: WorkspaceShellData;

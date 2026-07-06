@@ -10,7 +10,7 @@ import {
   StatusPill,
   Surface,
 } from "@/components/ui";
-import { logworkApi, projectApi, taskApi, userApi, workspaceApi } from "@/lib/api";
+import { logworkApi, projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
 import {
   calculateMemberHours,
   canManageProject,
@@ -19,8 +19,8 @@ import {
   normalizeViewer,
 } from "@/lib/mock/permissions";
 import { formatHours, formatRange, projectStatusLabel, roleLabel } from "@/lib/utils/format";
-import { useAuthSession } from "@/lib/auth/use-session";
-import type { LogworkEntry, Project, Task, UserProfile, WorkspaceShellData } from "@/types/dto";
+import { useAuthSession } from "@/hooks/use-session";
+import type { LogworkEntry, Project, Task, UserProfile, WorkspaceShellData } from "@/types";
 
 type ProjectsState = {
   shellData: WorkspaceShellData;

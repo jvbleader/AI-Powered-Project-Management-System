@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, ProgressBar, StatCard, StatusPill, Surface } from "@/components/ui";
-import { logworkApi, projectApi, taskApi, userApi, workspaceApi } from "@/lib/api";
+import { logworkApi, projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
 import { DEMO_TODAY, isPrivilegedUser, normalizeViewer } from "@/lib/mock/permissions";
 import { formatDate, formatHours } from "@/lib/utils/format";
-import { useAuthSession } from "@/lib/auth/use-session";
-import type { EnrichedTask, LogworkEntry, Project, UserProfile, WorkspaceShellData } from "@/types/dto";
+import { useAuthSession } from "@/hooks/use-session";
+import type { EnrichedTask, LogworkEntry, Project, UserProfile, WorkspaceShellData } from "@/types";
 
 type LogworkPageState = {
   shellData: WorkspaceShellData;

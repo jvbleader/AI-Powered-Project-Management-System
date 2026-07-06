@@ -1,6 +1,6 @@
-import { authApi } from "@/lib/api";
+import { authApi } from "@/services/api";
 import { readStoredAvatar } from "@/lib/utils/avatar";
-import type { AuthSession, LoginPayload } from "@/types/dto";
+import type { AuthSession, LoginPayload } from "@/types";
 
 export const STORAGE_KEY = "flowpilot-session";
 export const SESSION_STORAGE_KEY = "flowpilot-session-runtime";

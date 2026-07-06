@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 
 import { PasswordField } from "@/components/password-field";
-import { signIn, STORAGE_KEY } from "@/lib/auth/session";
+import { signIn, STORAGE_KEY } from "@/services/auth/session";
 import {
   clearRememberedLogin,
   readRememberedLogin,
@@ -12,7 +12,7 @@ import {
   removeLegacyRememberedPassword,
   storeRememberedLogin,
   subscribeToRememberedLogin,
-} from "@/lib/auth/remember-login";
+} from "@/services/auth/remember-login";
 
 import styles from "./styles/login-form.module.css";
 

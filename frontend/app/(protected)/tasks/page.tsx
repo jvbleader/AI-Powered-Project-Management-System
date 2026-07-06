@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, StatusPill, Surface } from "@/components/ui";
-import { projectApi, taskApi, workspaceApi } from "@/lib/api";
+import { projectApi, taskApi, workspaceApi } from "@/services/api";
 import { normalizeViewer } from "@/lib/mock/permissions";
 import { formatDate, formatHours, taskPriorityLabel, taskStatusLabel } from "@/lib/utils/format";
-import { useAuthSession } from "@/lib/auth/use-session";
-import type { EnrichedTask, Project, WorkspaceShellData } from "@/types/dto";
+import { useAuthSession } from "@/hooks/use-session";
+import type { EnrichedTask, Project, WorkspaceShellData } from "@/types";
 
 const columns = ["TODO", "IN_PROGRESS", "REVIEW", "BLOCKED", "DONE"] as const;
 

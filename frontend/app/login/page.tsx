@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import LoginForm from "@/app/login/form";
 import { SoftwareLogo } from "@/components/software-logo";
-import { hasValidServerSession } from "@/lib/auth/server";
+import { hasValidServerSession } from "@/services/auth/server";
 
 import styles from "../../components/styles/auth-shell.module.css";
 

@@ -5,13 +5,14 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent 
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { Surface, StatusPill } from "@/components/ui";
-import { updateSessionCurrentUser } from "@/lib/auth/session";
-import { workspaceApi, userApi } from "@/lib/api";
+import { updateSessionCurrentUser } from "@/services/auth/session";
+import { workspaceApi, userApi, authApi } from "@/services/api";
 import { normalizeViewer } from "@/lib/mock/permissions";
 import { removeUserAvatar, storeUserAvatar } from "@/lib/utils/avatar";
 import { presenceLabel, roleLabel, userStatusLabel } from "@/lib/utils/format";
-import { useAuthSession } from "@/lib/auth/use-session";
-import type { UpdateProfilePayload, UserProfile, WorkspaceShellData } from "@/types/dto";
+import { useAuthSession } from "@/hooks/use-session";
+import { PasswordField } from "@/components/password-field";
+import type { UpdateProfilePayload, UserProfile, WorkspaceShellData } from "@/types";
 
 import styles from "./styles/profile.module.css";
 

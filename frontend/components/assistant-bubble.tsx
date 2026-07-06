@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { aiApi } from "@/lib/api";
-import type { AiMessage, AiWorkspaceBrief } from "@/types/dto";
+import { aiApi } from "@/services/api";
+import type { AiMessage, AiWorkspaceBrief } from "@/types";
 
 type WidgetTab = "chat" | "reports";
 

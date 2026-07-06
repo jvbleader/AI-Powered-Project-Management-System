@@ -35,7 +35,7 @@ import {
   updateDirectoryProfile,
   updateDirectoryUserRoles,
   updateDirectoryUserStatus,
-} from "@/lib/users/directory";
+} from "@/services/users/directory";
 import type {
   AiMessage,
   AiReport,
@@ -66,7 +66,7 @@ import type {
   UserRolesUpdatePayload,
   UserStatusUpdatePayload,
   WorkspaceShellData,
-} from "@/types/dto";
+} from "@/types";
 
 type EndpointMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -74,8 +74,22 @@ type BackendUserResponse = {
   id: number;
   email: string;
   full_name: string | null;
+  phone_number: string | null;
+  avatar_url: string | null;
+  department: string | null;
+  role: string;
   is_active: boolean;
   is_admin: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type BackendPaginatedUsers = {
+  items: BackendUserResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };
 
 const DEFAULT_API_PORT = "8000";
@@ -135,20 +149,25 @@ function toRoleTitle(role: UserRole) {
 
 function toFrontendUserProfile(backendUser: BackendUserResponse): UserProfile {
   const resolvedName = backendUser.full_name?.trim() || backendUser.email.split("@")[0] || "Người dùng";
-  const role = toFrontendRole(backendUser);
+  const role = backendUser.is_admin ? "ADMIN" : (backendUser.role as UserRole || "MEMBER");
 
   return {
     id: `usr-${backendUser.id}`,
     name: resolvedName,
     email: backendUser.email,
     role,
-    title: toRoleTitle(role),
+    roles: [role],
+    title: backendUser.department ? `${toRoleTitle(role)} - ${backendUser.department}` : toRoleTitle(role),
     initials: toInitials(resolvedName),
     presence: backendUser.is_active ? "online" : "offline",
     capacityHours: 40,
     workloadHours: 0,
     focusScore: 75,
     isActive: backendUser.is_active,
+    status: backendUser.is_active ? "ACTIVE" : "INACTIVE",
+    phoneNumber: backendUser.phone_number ?? undefined,
+    department: backendUser.department ?? undefined,
+    avatarUrl: backendUser.avatar_url ?? undefined,
   };
 }
 
@@ -235,10 +254,12 @@ export const apiEndpoints = {
   },
   users: {
     list: { method: "GET" as EndpointMethod, path: "/api/users" },
-    create: { method: "POST" as EndpointMethod, path: "/api/auth/register" },
+    create: { method: "POST" as EndpointMethod, path: "/api/users" },
     deactivate: { method: "POST" as EndpointMethod, path: "/api/users/deactivate" },
     resetPassword: { method: "POST" as EndpointMethod, path: "/api/users/reset-password" },
-    updateRole: (userId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/users/${userId}/role` }),
+    updateRole: (userId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/users/${userId.replace("usr-", "")}/role` }),
+    updateStatus: (userId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/users/${userId.replace("usr-", "")}/status` }),
+    updatePhone: { method: "PUT" as EndpointMethod, path: "/me/phone" },
   },
   ai: {
     quickQuery: { method: "POST" as EndpointMethod, path: "/api/ai/query" },
@@ -358,7 +379,7 @@ async function fetchCurrentUserProfile() {
     jobTitle: storedProfile.jobTitle ?? storedProfile.title ?? backendProfile.title,
     address: storedProfile.address ?? "",
     employeeCode: storedProfile.employeeCode,
-    status: storedProfile.status ?? (backendProfile.isActive ? "ACTIVE" : "SUSPENDED"),
+    status: storedProfile.status ?? (backendProfile.isActive ? "ACTIVE" : "INACTIVE"),
     lastLoginAt: storedProfile.lastLoginAt,
     lastUpdatedAt: storedProfile.lastUpdatedAt,
   };
@@ -848,13 +869,36 @@ export const logworkApi = {
 };
 
 export const userApi = {
-  async list(viewer?: UserProfile | null) {
-    const currentViewer = normalizeViewer(viewer);
-    const visibleUsers = isPrivilegedUser(currentViewer)
-      ? getDirectoryUsers(currentViewer)
-      : getDirectoryUsers(currentViewer).filter((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase());
+  async resetPassword(payload: AdminResetPasswordPayload, viewer?: UserProfile | null): Promise<ApiResponse<null>> {
+    try {
+      await requestApi(apiEndpoints.users.resetPassword, {
+        body: JSON.stringify({ email: payload.email, new_password: payload.newPassword }),
+      });
+      return wrapBackendResponse(null);
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
+    }
+  },
 
-    return respond(visibleUsers, 100);
+  async list(viewer?: UserProfile | null): Promise<ApiResponse<UserProfile[]>> {
+    try {
+      const searchParams = new URLSearchParams();
+      searchParams.append("page_size", "100");
+      const endpoint = { ...apiEndpoints.users.list };
+      endpoint.path += `?${searchParams.toString()}`;
+
+      const result = await requestApi<BackendPaginatedUsers>(endpoint);
+      const frontendItems = result.data.items.map(toFrontendUserProfile);
+      
+      const currentViewer = normalizeViewer(viewer);
+      const visibleUsers = isPrivilegedUser(currentViewer)
+        ? frontendItems
+        : frontendItems.filter((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase());
+
+      return wrapBackendResponse(visibleUsers);
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
+    }
   },
 
   async updateRole(userId: string, role: (typeof users)[number]["role"]) {
@@ -862,35 +906,40 @@ export const userApi = {
     return respond(updated, 150);
   },
 
-  async listDirectory(filters?: UserDirectoryFilters, viewer?: UserProfile | null) {
-    const currentViewer = normalizeViewer(viewer);
-    const data = isPrivilegedUser(currentViewer)
-      ? listDirectoryUsers(filters, currentViewer)
-      : listDirectoryUsers({ ...filters, page: 1 }, currentViewer);
+  async listDirectory(filters?: UserDirectoryFilters, viewer?: UserProfile | null): Promise<ApiResponse<PaginatedUsers>> {
+    const searchParams = new URLSearchParams();
+    if (filters?.search) searchParams.append("search", filters.search);
+    if (filters?.status) searchParams.append("status", filters.status);
+    if (filters?.role) searchParams.append("role", filters.role);
+    if (filters?.page) searchParams.append("page", filters.page.toString());
+    if (filters?.pageSize) searchParams.append("page_size", filters.pageSize.toString());
 
-    if (isPrivilegedUser(currentViewer)) {
-      return respond<PaginatedUsers>(data, 110);
+    const endpoint = { ...apiEndpoints.users.list };
+    endpoint.path += `?${searchParams.toString()}`;
+
+    try {
+      const result = await requestApi<BackendPaginatedUsers>(endpoint);
+      const frontendItems = result.data.items.map(toFrontendUserProfile);
+      
+      return wrapBackendResponse({
+        items: frontendItems,
+        total: result.data.total,
+        page: result.data.page,
+        pageSize: result.data.pageSize,
+        totalPages: result.data.totalPages,
+      });
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
     }
-
-    return respond<PaginatedUsers>(
-      {
-        ...data,
-        items: data.items.filter((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase()),
-        total: 1,
-        page: 1,
-        totalPages: 1,
-      },
-      110,
-    );
   },
 
-  async getCurrentProfile(viewer: UserProfile) {
-    const currentViewer = normalizeViewer(viewer);
-    const matchedUser =
-      getDirectoryUsers(currentViewer).find((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase()) ??
-      currentViewer;
-
-    return respond(matchedUser, 100);
+  async getCurrentProfile(viewer: UserProfile): Promise<ApiResponse<UserProfile>> {
+    try {
+      const result = await requestApi<BackendUserResponse>(apiEndpoints.auth.me);
+      return wrapBackendResponse(toFrontendUserProfile(result.data));
+    } catch {
+      return respond(normalizeViewer(viewer), 100);
+    }
   },
 
   async updateCurrentProfile(viewer: UserProfile, payload: UpdateProfilePayload) {
@@ -903,32 +952,49 @@ export const userApi = {
     return respond(updated, 120);
   },
 
-  async updateStatus(payload: UserStatusUpdatePayload, viewer?: UserProfile | null) {
-    const currentViewer = normalizeViewer(viewer);
-
-    if (currentViewer.role !== "ADMIN") {
-      throw new Error("Chỉ quản trị viên mới có thể thay đổi trạng thái tài khoản.");
-    }
-
-    const updated = updateDirectoryUserStatus(payload, currentViewer);
-    return respond(updated, 140);
+  async updatePhone(phoneNumber: string) {
+    const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updatePhone, {
+      body: JSON.stringify({ phone_number: phoneNumber }),
+    });
+    const updatedUser = toFrontendUserProfile(result.data);
+    return wrapBackendResponse(updatedUser);
   },
 
-  async updateRoles(payload: UserRolesUpdatePayload, viewer?: UserProfile | null) {
-    const currentViewer = normalizeViewer(viewer);
-
-    if (currentViewer.role !== "ADMIN") {
-      throw new Error("Chỉ quản trị viên mới có thể gán hoặc thu hồi vai trò.");
+  async updateStatus(payload: UserStatusUpdatePayload, viewer?: UserProfile | null): Promise<ApiResponse<UserProfile>> {
+    try {
+      const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updateStatus(payload.userId), {
+        body: JSON.stringify({ is_active: payload.status === "ACTIVE" }),
+      });
+      return wrapBackendResponse(toFrontendUserProfile(result.data));
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
     }
+  },
 
-    const updated = updateDirectoryUserRoles(payload, currentViewer);
-    return respond(updated, 140);
+  async updateRoles(payload: UserRolesUpdatePayload, viewer?: UserProfile | null): Promise<ApiResponse<UserProfile>> {
+    try {
+      const role = payload.roles.length > 0 ? payload.roles[0] : "MEMBER";
+      const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updateRole(payload.userId), {
+        body: JSON.stringify({ role: role, is_admin: role === "ADMIN" }),
+      });
+      return wrapBackendResponse(toFrontendUserProfile(result.data));
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
+    }
   },
 
   async create(payload: CreateUserPayload): Promise<ApiResponse<UserProfile>> {
     try {
-      const created = createDirectoryUser(payload);
-      return respond(created, 180);
+      const result = await requestApi<BackendUserResponse>(apiEndpoints.users.create, {
+        body: JSON.stringify({
+          name: payload.name,
+          email: payload.email,
+          role: payload.role || "MEMBER",
+          is_admin: payload.isAdmin || false,
+          password: payload.password || "default1234",
+        }),
+      });
+      return wrapBackendResponse(toFrontendUserProfile(result.data));
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
     }
@@ -951,7 +1017,7 @@ export const userApi = {
 
     const updated = updateDirectoryUserStatus({
       userId: targetUser.id,
-      status: "LOCKED",
+      status: "INACTIVE",
     });
 
     return respond(
@@ -966,17 +1032,7 @@ export const userApi = {
     );
   },
 
-  async resetPassword(payload: AdminResetPasswordPayload): Promise<
-    ApiResponse<{
-      email: string;
-      message: string;
-      revokedRefreshTokens: number;
-      revokedAt: string;
-    }>
-  > {
-    void payload;
-    throw new Error(USER_ADMIN_UNAVAILABLE_MESSAGE);
-  },
+
 };
 
 export const backendCapabilities = {

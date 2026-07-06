@@ -1,5 +1,5 @@
 import { logworkEntries, projects, sprints, tasks, users } from "@/lib/mock/data";
-import { getDirectoryUserByEmail, getDirectoryUserById } from "@/lib/users/directory";
+import { getDirectoryUserByEmail, getDirectoryUserById } from "@/services/users/directory";
 import type {
   LogworkEntry,
   Project,
@@ -8,7 +8,7 @@ import type {
   TaskStatus,
   UserProfile,
   UserRole,
-} from "@/types/dto";
+} from "@/types";
 
 export const DEMO_TODAY = "2026-06-29";
 

@@ -9,7 +9,7 @@ import type {
   TaskComment,
   Task,
   UserProfile,
-} from "@/types/dto";
+} from "@/types";
 
 export const users: UserProfile[] = [
   {
