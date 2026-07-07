@@ -117,12 +117,16 @@ export function getAccessibleSprints(viewer?: UserProfile | null) {
       .map((task) => task.sprintId),
   );
 
-  return sprints.filter((sprint) => accessibleProjectIds.has(sprint.projectId) && ownSprintIds.has(sprint.id));
+  return sprints.filter(
+    (sprint) => accessibleProjectIds.has(sprint.projectId) && ownSprintIds.has(sprint.id),
+  );
 }
 
 export function getAccessibleTasks(viewer?: UserProfile | null) {
   const currentViewer = normalizeViewer(viewer);
-  const accessibleProjectIds = new Set(getAccessibleProjects(currentViewer).map((project) => project.id));
+  const accessibleProjectIds = new Set(
+    getAccessibleProjects(currentViewer).map((project) => project.id),
+  );
   const scopedTasks = tasks.filter((task) => accessibleProjectIds.has(task.projectId));
 
   if (isPrivilegedUser(currentViewer)) {
@@ -140,7 +144,9 @@ export function getAccessibleLogwork(viewer?: UserProfile | null) {
     return logworkEntries.filter((entry) => accessibleTaskIds.has(entry.taskId));
   }
 
-  return logworkEntries.filter((entry) => entry.userId === currentViewer.id && accessibleTaskIds.has(entry.taskId));
+  return logworkEntries.filter(
+    (entry) => entry.userId === currentViewer.id && accessibleTaskIds.has(entry.taskId),
+  );
 }
 
 export function getProjectMembers(project: Project) {
@@ -224,7 +230,9 @@ export function calculateSprintCompletion(sprint: Sprint) {
 }
 
 export function calculateMemberHours(taskList: Task[], entries: LogworkEntry[], userId: string) {
-  const ownedTaskIds = new Set(taskList.filter((task) => task.assigneeId === userId).map((task) => task.id));
+  const ownedTaskIds = new Set(
+    taskList.filter((task) => task.assigneeId === userId).map((task) => task.id),
+  );
 
   return entries
     .filter((entry) => entry.userId === userId && ownedTaskIds.has(entry.taskId))
@@ -243,5 +251,7 @@ export function getSuggestedActiveSprint(viewer?: UserProfile | null, projectId?
     ? getAccessibleSprints(viewer).filter((sprint) => sprint.projectId === projectId)
     : getAccessibleSprints(viewer);
 
-  return scopedSprints.find((sprint) => sprint.status === "ACTIVE") ?? scopedSprints[0] ?? sprints[0];
+  return (
+    scopedSprints.find((sprint) => sprint.status === "ACTIVE") ?? scopedSprints[0] ?? sprints[0]
+  );
 }

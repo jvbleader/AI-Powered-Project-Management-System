@@ -130,7 +130,12 @@ export function ChangePasswordModal({ session, onClose }: ChangePasswordModalPro
           {passwordError ? <p className="form-error">{passwordError}</p> : null}
 
           <div className="password-modal-actions">
-            <button type="button" className="secondary-button" onClick={handleClose} disabled={isChangingPassword}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleClose}
+              disabled={isChangingPassword}
+            >
               Hủy
             </button>
             <button type="submit" className="primary-button" disabled={isChangingPassword}>

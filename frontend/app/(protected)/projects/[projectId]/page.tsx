@@ -20,10 +20,10 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams();
   const projectId = typeof params?.projectId === "string" ? params.projectId : "";
-  
+
   const session = useAuthSession();
   const viewer = normalizeViewer(session?.currentUser);
-  
+
   const [state, setState] = useState<ProjectDetailState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,17 +34,16 @@ export default function ProjectDetailPage() {
       if (!projectId) return;
 
       try {
-        const [{ data: shellData }, { data: projects }, { data: allTasks }] =
-          await Promise.all([
-            workspaceApi.getShellData(viewer),
-            projectApi.list(undefined, viewer),
-            taskApi.getEnrichedBoard(undefined, viewer),
-          ]);
+        const [{ data: shellData }, { data: projects }, { data: allTasks }] = await Promise.all([
+          workspaceApi.getShellData(viewer),
+          projectApi.list(undefined, viewer),
+          taskApi.getEnrichedBoard(undefined, viewer),
+        ]);
 
         if (isCancelled) return;
 
         const currentProject = projects.find((p) => p.id === projectId);
-        
+
         if (!currentProject) {
           setError("Không tìm thấy dự án hoặc bạn không có quyền truy cập.");
           return;
@@ -85,11 +84,7 @@ export default function ProjectDetailPage() {
       highlightValue={`${state?.tasks.length ?? 0}`}
     >
       <div style={{ marginBottom: "1.5rem" }}>
-        <button 
-          type="button" 
-          className="secondary-button" 
-          onClick={() => router.push("/projects")}
-        >
+        <button type="button" className="secondary-button" onClick={() => router.push("/projects")}>
           &larr; Quay lại danh sách Dự án
         </button>
       </div>

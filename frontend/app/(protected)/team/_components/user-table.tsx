@@ -73,15 +73,30 @@ export function UserTable({
               </thead>
               <tbody>
                 {directory.items.map((user) => {
-                  const summaryByUser = taskSummaryByUserId[user.id] ?? { total: 0, open: 0, blocked: 0 };
+                  const summaryByUser = taskSummaryByUserId[user.id] ?? {
+                    total: 0,
+                    open: 0,
+                    blocked: 0,
+                  };
 
                   return (
                     <tr key={user.id}>
                       <td>
-                        <button type="button" className={styles.userCellButton} onClick={() => onUserSelect(user)}>
+                        <button
+                          type="button"
+                          className={styles.userCellButton}
+                          onClick={() => onUserSelect(user)}
+                        >
                           <span className={styles.avatarToken}>
                             {user.avatarUrl ? (
-                              <Image src={user.avatarUrl} alt={user.name} width={40} height={40} className="avatar-image" unoptimized />
+                              <Image
+                                src={user.avatarUrl}
+                                alt={user.name}
+                                width={40}
+                                height={40}
+                                className="avatar-image"
+                                unoptimized
+                              />
                             ) : (
                               user.initials
                             )}
@@ -101,12 +116,19 @@ export function UserTable({
                       <td>
                         <div className={styles.roleStack}>
                           {(user.roles?.length ? user.roles : [user.role]).map((role) => (
-                            <StatusPill key={role} label={roleLabel(role)} tone={getRoleTone(role)} />
+                            <StatusPill
+                              key={role}
+                              label={roleLabel(role)}
+                              tone={getRoleTone(role)}
+                            />
                           ))}
                         </div>
                       </td>
                       <td>
-                        <StatusPill label={userStatusLabel(user.status ?? "ACTIVE")} tone={getStatusTone(user.status ?? "ACTIVE")} />
+                        <StatusPill
+                          label={userStatusLabel(user.status ?? "ACTIVE")}
+                          tone={getStatusTone(user.status ?? "ACTIVE")}
+                        />
                       </td>
                       <td>
                         <div className={styles.contactCell}>
@@ -133,10 +155,17 @@ export function UserTable({
 
           <div className={styles.paginationBar}>
             <p>
-              Hiển thị {(directory.page - 1) * directory.pageSize + 1} - {Math.min(directory.page * directory.pageSize, directory.total)} trên tổng {directory.total} người dùng.
+              Hiển thị {(directory.page - 1) * directory.pageSize + 1} -{" "}
+              {Math.min(directory.page * directory.pageSize, directory.total)} trên tổng{" "}
+              {directory.total} người dùng.
             </p>
             <div className={styles.paginationActions}>
-              <button type="button" className="secondary-button" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={directory.page <= 1}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => onPageChange(Math.max(1, page - 1))}
+                disabled={directory.page <= 1}
+              >
                 Trang trước
               </button>
               <button

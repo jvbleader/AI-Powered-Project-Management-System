@@ -80,4 +80,3 @@ export const users: UserProfile[] = [
     isActive: true,
   },
 ];
-

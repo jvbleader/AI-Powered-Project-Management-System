@@ -1,4 +1,3 @@
-
 import { roleLabel } from "@/lib/utils/format";
 import type { UserRole, Department } from "@/types";
 import styles from "../styles/team.module.css";
@@ -101,10 +100,7 @@ export function AddUserModal({
 
           <label className={styles.filterField}>
             <span>Phòng ban</span>
-            <select
-              value={addDepartment}
-              onChange={(e) => onAddDepartmentChange(e.target.value)}
-            >
+            <select value={addDepartment} onChange={(e) => onAddDepartmentChange(e.target.value)}>
               <option value="">-- Chọn phòng ban --</option>
               {departments.map((dept) => (
                 <option key={dept.id} value={dept.name}>

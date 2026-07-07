@@ -34,14 +34,19 @@ export default function LogworkPage() {
     let isCancelled = false;
 
     async function loadLogwork() {
-      const [{ data: shellData }, { data: entries }, { data: tasks }, { data: users }, { data: projects }] =
-        await Promise.all([
-          workspaceApi.getShellData(viewer),
-          logworkApi.list(undefined, viewer),
-          taskApi.getEnrichedBoard(undefined, viewer),
-          userApi.list(viewer),
-          projectApi.list(undefined, viewer),
-        ]);
+      const [
+        { data: shellData },
+        { data: entries },
+        { data: tasks },
+        { data: users },
+        { data: projects },
+      ] = await Promise.all([
+        workspaceApi.getShellData(viewer),
+        logworkApi.list(undefined, viewer),
+        taskApi.getEnrichedBoard(undefined, viewer),
+        userApi.list(viewer),
+        projectApi.list(undefined, viewer),
+      ]);
 
       if (isCancelled) {
         return;
@@ -97,20 +102,29 @@ export default function LogworkPage() {
 
   const todayEntries = filteredEntries.filter((entry) => entry.date === DEMO_TODAY);
   const totalHours = filteredEntries.reduce((sum, entry) => sum + entry.hours, 0);
-  const trackedUsers = privileged ? pageState?.users.filter((user) => user.role !== "ADMIN") ?? [] : [viewer];
+  const trackedUsers = privileged
+    ? (pageState?.users.filter((user) => user.role !== "ADMIN") ?? [])
+    : [viewer];
   const todayUserIds = new Set(todayEntries.map((entry) => entry.userId));
   const missingUsers = trackedUsers.filter((user) => !todayUserIds.has(user.id));
-  const coverage = trackedUsers.length ? Math.round((todayUserIds.size / trackedUsers.length) * 100) : 0;
+  const coverage = trackedUsers.length
+    ? Math.round((todayUserIds.size / trackedUsers.length) * 100)
+    : 0;
 
   async function refreshLogwork(nextTaskId?: string) {
-    const [{ data: shellData }, { data: entries }, { data: tasks }, { data: users }, { data: projects }] =
-      await Promise.all([
-        workspaceApi.getShellData(viewer),
-        logworkApi.list(undefined, viewer),
-        taskApi.getEnrichedBoard(undefined, viewer),
-        userApi.list(viewer),
-        projectApi.list(undefined, viewer),
-      ]);
+    const [
+      { data: shellData },
+      { data: entries },
+      { data: tasks },
+      { data: users },
+      { data: projects },
+    ] = await Promise.all([
+      workspaceApi.getShellData(viewer),
+      logworkApi.list(undefined, viewer),
+      taskApi.getEnrichedBoard(undefined, viewer),
+      userApi.list(viewer),
+      projectApi.list(undefined, viewer),
+    ]);
 
     setPageState({ shellData, entries, tasks, users, projects });
     setSelectedTaskId(nextTaskId ?? selectedTaskId);
@@ -161,15 +175,33 @@ export default function LogworkPage() {
       highlightValue={`${coverage}%`}
     >
       <section className="stat-grid">
-        <StatCard label="Tổng giờ ghi nhận" value={formatHours(totalHours)} note="Trong bộ lọc hiện tại" tone="accent" />
-        <StatCard label="Bản ghi hôm nay" value={`${todayEntries.length}`} note="Nhịp cập nhật trong ngày" tone="on-track" />
-        <StatCard label="Chưa cập nhật" value={`${missingUsers.length}`} note="Số người chưa ghi logwork" tone="watch" />
+        <StatCard
+          label="Tổng giờ ghi nhận"
+          value={formatHours(totalHours)}
+          note="Trong bộ lọc hiện tại"
+          tone="accent"
+        />
+        <StatCard
+          label="Bản ghi hôm nay"
+          value={`${todayEntries.length}`}
+          note="Nhịp cập nhật trong ngày"
+          tone="on-track"
+        />
+        <StatCard
+          label="Chưa cập nhật"
+          value={`${missingUsers.length}`}
+          note="Số người chưa ghi logwork"
+          tone="watch"
+        />
       </section>
 
       <section className="filter-row">
         <label>
           <span>Dự án</span>
-          <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
+          <select
+            value={selectedProjectId}
+            onChange={(event) => setSelectedProjectId(event.target.value)}
+          >
             <option value="ALL">Tất cả dự án</option>
             {(pageState?.projects ?? []).map((project) => (
               <option key={project.id} value={project.id}>
@@ -180,7 +212,10 @@ export default function LogworkPage() {
         </label>
         <label>
           <span>Task</span>
-          <select value={selectedTaskId} onChange={(event) => setSelectedTaskId(event.target.value)}>
+          <select
+            value={selectedTaskId}
+            onChange={(event) => setSelectedTaskId(event.target.value)}
+          >
             <option value="ALL">Tất cả task</option>
             {filteredTasks.map((task) => (
               <option key={task.id} value={task.id}>
@@ -206,7 +241,10 @@ export default function LogworkPage() {
                 </div>
               ))
             ) : (
-              <EmptyState title="Đã cập nhật đầy đủ" description="Không còn thành viên nào thiếu logwork trong ngày hôm nay." />
+              <EmptyState
+                title="Đã cập nhật đầy đủ"
+                description="Không còn thành viên nào thiếu logwork trong ngày hôm nay."
+              />
             )}
           </div>
         </Surface>
@@ -216,15 +254,32 @@ export default function LogworkPage() {
             <div className="form-grid">
               <label>
                 <span>Ngày</span>
-                <input type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} required />
+                <input
+                  type="date"
+                  value={entryDate}
+                  onChange={(event) => setEntryDate(event.target.value)}
+                  required
+                />
               </label>
               <label>
                 <span>Số giờ</span>
-                <input type="number" min="0.5" step="0.5" value={entryHours} onChange={(event) => setEntryHours(event.target.value)} required />
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  value={entryHours}
+                  onChange={(event) => setEntryHours(event.target.value)}
+                  required
+                />
               </label>
               <label className="form-grid-span">
                 <span>Ghi chú</span>
-                <textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} rows={4} required />
+                <textarea
+                  value={entryNote}
+                  onChange={(event) => setEntryNote(event.target.value)}
+                  rows={4}
+                  required
+                />
               </label>
             </div>
             <div className="form-actions">
@@ -240,8 +295,12 @@ export default function LogworkPage() {
         {filteredEntries.length ? (
           <div className="table-like">
             {filteredEntries.map((entry) => {
-              const user = (pageState?.users ?? []).find((candidate) => candidate.id === entry.userId);
-              const task = (pageState?.tasks ?? []).find((candidate) => candidate.id === entry.taskId);
+              const user = (pageState?.users ?? []).find(
+                (candidate) => candidate.id === entry.userId,
+              );
+              const task = (pageState?.tasks ?? []).find(
+                (candidate) => candidate.id === entry.taskId,
+              );
               const canEdit = privileged || entry.userId === viewer.id;
 
               return (
@@ -265,7 +324,11 @@ export default function LogworkPage() {
                       >
                         Sửa
                       </button>
-                      <button type="button" className="text-button text-button-danger" onClick={() => void handleRemove(entry.id)}>
+                      <button
+                        type="button"
+                        className="text-button text-button-danger"
+                        onClick={() => void handleRemove(entry.id)}
+                      >
                         Xóa
                       </button>
                     </div>
@@ -275,7 +338,10 @@ export default function LogworkPage() {
             })}
           </div>
         ) : (
-          <EmptyState title="Chưa có logwork trong bộ lọc" description="Chọn task cụ thể rồi tạo logwork để bắt đầu theo dõi giờ làm việc." />
+          <EmptyState
+            title="Chưa có logwork trong bộ lọc"
+            description="Chọn task cụ thể rồi tạo logwork để bắt đầu theo dõi giờ làm việc."
+          />
         )}
       </Surface>
     </WorkspaceShell>

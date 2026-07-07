@@ -8,7 +8,9 @@ export const sprintApi = {
   },
 
   async get(sprintId: string, viewer?: UserProfile | null) {
-    const accessibleSprint = filterSprints(undefined, viewer).find((sprint) => sprint.id === sprintId) ?? getSprint(sprintId);
+    const accessibleSprint =
+      filterSprints(undefined, viewer).find((sprint) => sprint.id === sprintId) ??
+      getSprint(sprintId);
     return respond(accessibleSprint, 80);
   },
 

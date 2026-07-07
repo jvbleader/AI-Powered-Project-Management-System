@@ -10,7 +10,9 @@ const DEFAULT_INTERNAL_API_BASE_URL = "http://backend:8000";
 
 async function requestServerAuth(path: string, method: "GET" | "POST", cookieHeader: string) {
   const apiBaseUrl =
-    process.env.API_BASE_URL_INTERNAL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+    process.env.API_BASE_URL_INTERNAL ??
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    DEFAULT_API_BASE_URL;
 
   return fetch(`${apiBaseUrl}${path}`, {
     method,

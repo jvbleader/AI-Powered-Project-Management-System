@@ -58,4 +58,3 @@ export const sprints: Sprint[] = [
     focusAreas: ["Cards", "Notifications", "Quick summaries"],
   },
 ];
-

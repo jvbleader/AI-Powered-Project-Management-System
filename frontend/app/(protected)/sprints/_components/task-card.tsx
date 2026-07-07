@@ -11,17 +11,18 @@ type TaskCardProps = {
 
 export function TaskCard({ task, onClick, onDragStart }: TaskCardProps) {
   return (
-    <article
-      className="task-card"
-      draggable
-      onDragStart={onDragStart}
-      onClick={onClick}
-    >
+    <article className="task-card" draggable onDragStart={onDragStart} onClick={onClick}>
       <div className="task-topline">
         <strong>{task.key}</strong>
         <StatusPill
           label={taskPriorityLabel(task.priority)}
-          tone={task.priority === "CRITICAL" ? "critical" : task.priority === "HIGH" ? "watch" : "neutral"}
+          tone={
+            task.priority === "CRITICAL"
+              ? "critical"
+              : task.priority === "HIGH"
+                ? "watch"
+                : "neutral"
+          }
         />
       </div>
       <h3>{task.title}</h3>

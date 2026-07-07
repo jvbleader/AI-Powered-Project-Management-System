@@ -106,14 +106,20 @@ export function AssistantBubble({ alertCount }: { alertCount: number }) {
           <div className="assistant-tabbar">
             <button
               type="button"
-              className={classNames("assistant-tab", activeTab === "chat" && "assistant-tab-active")}
+              className={classNames(
+                "assistant-tab",
+                activeTab === "chat" && "assistant-tab-active",
+              )}
               onClick={() => setActiveTab("chat")}
             >
               Hội thoại
             </button>
             <button
               type="button"
-              className={classNames("assistant-tab", activeTab === "reports" && "assistant-tab-active")}
+              className={classNames(
+                "assistant-tab",
+                activeTab === "reports" && "assistant-tab-active",
+              )}
               onClick={() => setActiveTab("reports")}
             >
               Báo cáo nhanh

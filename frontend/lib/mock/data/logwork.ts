@@ -74,4 +74,3 @@ export const logworkEntries: LogworkEntry[] = [
     mood: "risky",
   },
 ];
-

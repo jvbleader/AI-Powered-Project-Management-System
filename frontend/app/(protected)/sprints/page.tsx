@@ -3,13 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
-import {
-  EmptyState,
-  ProgressBar,
-  SegmentBar,
-  StatusPill,
-  Surface,
-} from "@/components/ui";
+import { EmptyState, ProgressBar, SegmentBar, StatusPill, Surface } from "@/components/ui";
 import { CreateSprintForm } from "./_components/create-sprint-form";
 import { CreateTaskForm } from "./_components/create-task-form";
 import { SprintBoard } from "./_components/sprint-board";
@@ -103,15 +97,21 @@ export default function SprintsPage() {
     let isCancelled = false;
 
     async function loadBaseData() {
-      const [{ data: shellData }, { data: projects }, { data: sprints }, { data: tasks }, { data: users }, { data: entries }] =
-        await Promise.all([
-          workspaceApi.getShellData(viewer),
-          projectApi.list(undefined, viewer),
-          sprintApi.list(undefined, viewer),
-          taskApi.getEnrichedBoard(undefined, viewer),
-          userApi.list(viewer),
-          logworkApi.list(undefined, viewer),
-        ]);
+      const [
+        { data: shellData },
+        { data: projects },
+        { data: sprints },
+        { data: tasks },
+        { data: users },
+        { data: entries },
+      ] = await Promise.all([
+        workspaceApi.getShellData(viewer),
+        projectApi.list(undefined, viewer),
+        sprintApi.list(undefined, viewer),
+        taskApi.getEnrichedBoard(undefined, viewer),
+        userApi.list(viewer),
+        logworkApi.list(undefined, viewer),
+      ]);
 
       if (isCancelled) {
         return;
@@ -144,10 +144,14 @@ export default function SprintsPage() {
   const users = pageState?.users ?? [];
   const entries = pageState?.entries ?? [];
 
-  const selectedSprint = sprintList.find((sprint) => sprint.id === selectedSprintId) ?? sprintList[0] ?? null;
-  const selectedProject = projectList.find((project) => project.id === selectedSprint?.projectId) ?? null;
+  const selectedSprint =
+    sprintList.find((sprint) => sprint.id === selectedSprintId) ?? sprintList[0] ?? null;
+  const selectedProject =
+    projectList.find((project) => project.id === selectedSprint?.projectId) ?? null;
 
-  const sprintTasks = selectedSprint ? taskList.filter((task) => task.sprintId === selectedSprint.id) : [];
+  const sprintTasks = selectedSprint
+    ? taskList.filter((task) => task.sprintId === selectedSprint.id)
+    : [];
   const filteredTasks = sprintTasks.filter((task) => {
     if (statusFilter !== "ALL" && task.status !== statusFilter) {
       return false;
@@ -159,8 +163,15 @@ export default function SprintsPage() {
 
     return true;
   });
-  const selectedTask = filteredTasks.find((task) => task.id === selectedTaskId) ?? sprintTasks.find((task) => task.id === selectedTaskId) ?? filteredTasks[0] ?? sprintTasks[0] ?? null;
-  const selectedTaskLogwork = selectedTask ? entries.filter((entry) => entry.taskId === selectedTask.id) : [];
+  const selectedTask =
+    filteredTasks.find((task) => task.id === selectedTaskId) ??
+    sprintTasks.find((task) => task.id === selectedTaskId) ??
+    filteredTasks[0] ??
+    sprintTasks[0] ??
+    null;
+  const selectedTaskLogwork = selectedTask
+    ? entries.filter((entry) => entry.taskId === selectedTask.id)
+    : [];
   const activeTaskId = selectedTask?.id ?? null;
 
   useEffect(() => {
@@ -192,22 +203,34 @@ export default function SprintsPage() {
   }, [activeTaskId, viewer]);
 
   async function refreshPage(nextSprintId?: string | null, nextTaskId?: string | null) {
-    const [{ data: shellData }, { data: projects }, { data: sprints }, { data: tasks }, { data: users }, { data: entries }] =
-      await Promise.all([
-        workspaceApi.getShellData(viewer),
-        projectApi.list(undefined, viewer),
-        sprintApi.list(undefined, viewer),
-        taskApi.getEnrichedBoard(undefined, viewer),
-        userApi.list(viewer),
-        logworkApi.list(undefined, viewer),
-      ]);
+    const [
+      { data: shellData },
+      { data: projects },
+      { data: sprints },
+      { data: tasks },
+      { data: users },
+      { data: entries },
+    ] = await Promise.all([
+      workspaceApi.getShellData(viewer),
+      projectApi.list(undefined, viewer),
+      sprintApi.list(undefined, viewer),
+      taskApi.getEnrichedBoard(undefined, viewer),
+      userApi.list(viewer),
+      logworkApi.list(undefined, viewer),
+    ]);
 
     setPageState({ shellData, projects, sprints, tasks, users, entries });
     setSelectedSprintId(nextSprintId ?? selectedSprintId ?? sprints[0]?.id ?? null);
     setSelectedTaskId(nextTaskId ?? selectedTaskId ?? null);
   }
 
-  async function handleCreateSprint(data: { name: string; projectId: string; goal: string; start: string; end: string }) {
+  async function handleCreateSprint(data: {
+    name: string;
+    projectId: string;
+    goal: string;
+    start: string;
+    end: string;
+  }) {
     if (!data.name.trim() || !data.goal.trim() || !data.projectId || !data.start || !data.end) {
       setSprintFormError("Tên sprint, mục tiêu, dự án, ngày bắt đầu và ngày kết thúc là bắt buộc.");
       return;
@@ -236,13 +259,26 @@ export default function SprintsPage() {
     setNotice(`Đã tạo sprint ${created.data.name}.`);
   }
 
-  async function handleCreateTask(data: { title: string; description: string; dueDate: string; estimateHours: string; assigneeId: string; priority: EnrichedTask["priority"] }) {
+  async function handleCreateTask(data: {
+    title: string;
+    description: string;
+    dueDate: string;
+    estimateHours: string;
+    assigneeId: string;
+    priority: EnrichedTask["priority"];
+  }) {
     if (!selectedSprint || !selectedProject) {
       setTaskFormError("Cần chọn một sprint trước khi tạo task.");
       return;
     }
 
-    if (!data.title.trim() || !data.description.trim() || !data.dueDate || !data.assigneeId || !data.estimateHours) {
+    if (
+      !data.title.trim() ||
+      !data.description.trim() ||
+      !data.dueDate ||
+      !data.assigneeId ||
+      !data.estimateHours
+    ) {
       setTaskFormError("Mã sprint, tiêu đề, mô tả, hạn chót và thời gian ước tính là bắt buộc.");
       return;
     }
@@ -393,10 +429,16 @@ export default function SprintsPage() {
   ];
 
   const sprintCompletion = sprintTasks.length
-    ? Math.round((sprintTasks.filter((task) => task.status === "DONE").length / sprintTasks.length) * 100)
-    : selectedSprint?.progress ?? 0;
+    ? Math.round(
+        (sprintTasks.filter((task) => task.status === "DONE").length / sprintTasks.length) * 100,
+      )
+    : (selectedSprint?.progress ?? 0);
 
-  const boardColumns: Array<{ label: string; key: "TODO" | "IN_PROGRESS" | "DONE"; status: TaskStatus }> = [
+  const boardColumns: Array<{
+    label: string;
+    key: "TODO" | "IN_PROGRESS" | "DONE";
+    status: TaskStatus;
+  }> = [
     { label: "Cần làm", key: "TODO", status: "TODO" },
     { label: "Đang tiến hành", key: "IN_PROGRESS", status: "IN_PROGRESS" },
     { label: "Đã hoàn thành", key: "DONE", status: "DONE" },
@@ -447,12 +489,18 @@ export default function SprintsPage() {
                     </div>
                     <StatusPill label={healthToneLabel(sprint.health)} tone={sprint.health} />
                   </div>
-                  <ProgressBar value={sprint.progress} label={formatRange(sprint.plannedStart, sprint.plannedEnd)} />
+                  <ProgressBar
+                    value={sprint.progress}
+                    label={formatRange(sprint.plannedStart, sprint.plannedEnd)}
+                  />
                 </button>
               ))}
             </div>
           ) : (
-            <EmptyState title="Chưa có sprint" description="Hãy tạo sprint mới để bắt đầu phân rã task và logwork." />
+            <EmptyState
+              title="Chưa có sprint"
+              description="Hãy tạo sprint mới để bắt đầu phân rã task và logwork."
+            />
           )}
         </Surface>
 
@@ -467,7 +515,10 @@ export default function SprintsPage() {
           <Surface title="Phạm vi thành viên" kicker="Member scope">
             <div className="privacy-panel">
               <strong>Bạn chỉ thấy sprint mình tham gia.</strong>
-              <p>Danh sách thành viên, cấu hình sprint và task của người khác đang được ẩn để đúng phạm vi vai trò.</p>
+              <p>
+                Danh sách thành viên, cấu hình sprint và task của người khác đang được ẩn để đúng
+                phạm vi vai trò.
+              </p>
             </div>
           </Surface>
         )}
@@ -479,7 +530,12 @@ export default function SprintsPage() {
             <Surface
               title={`Chi tiết ${selectedSprint.name}`}
               kicker={selectedProject?.code ?? "Sprint detail"}
-              aside={<StatusPill label={healthToneLabel(selectedSprint.health)} tone={selectedSprint.health} />}
+              aside={
+                <StatusPill
+                  label={healthToneLabel(selectedSprint.health)}
+                  tone={selectedSprint.health}
+                />
+              }
             >
               <p>{selectedSprint.goal}</p>
               <ProgressBar value={selectedSprint.progress} label="Tiến độ sprint" />
@@ -493,11 +549,15 @@ export default function SprintsPage() {
               <div className="summary-grid">
                 <div className="summary-card">
                   <span>Thời gian</span>
-                  <strong>{formatRange(selectedSprint.plannedStart, selectedSprint.plannedEnd)}</strong>
+                  <strong>
+                    {formatRange(selectedSprint.plannedStart, selectedSprint.plannedEnd)}
+                  </strong>
                 </div>
                 <div className="summary-card">
                   <span>Điểm công việc</span>
-                  <strong>{selectedSprint.completedPoints}/{selectedSprint.committedPoints}</strong>
+                  <strong>
+                    {selectedSprint.completedPoints}/{selectedSprint.committedPoints}
+                  </strong>
                 </div>
                 <div className="summary-card">
                   <span>Quản lý dự án</span>
@@ -520,7 +580,11 @@ export default function SprintsPage() {
                 </div>
                 <div className="line-item compact-line">
                   <span>Cảnh báo hạn chót</span>
-                  <strong>{sprintTasks.some((task) => isTaskOverdue(task)) ? "Cần xử lý ngay" : "Đang ổn định"}</strong>
+                  <strong>
+                    {sprintTasks.some((task) => isTaskOverdue(task))
+                      ? "Cần xử lý ngay"
+                      : "Đang ổn định"}
+                  </strong>
                 </div>
               </div>
             </Surface>
@@ -540,7 +604,10 @@ export default function SprintsPage() {
             <div className="filter-row">
               <label>
                 <span>Trạng thái</span>
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "ALL")}>
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "ALL")}
+                >
                   <option value="ALL">Tất cả</option>
                   <option value="TODO">Cần thực hiện</option>
                   <option value="IN_PROGRESS">Đang xử lý</option>
@@ -551,7 +618,10 @@ export default function SprintsPage() {
               </label>
               <label>
                 <span>Người phụ trách</span>
-                <select value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}>
+                <select
+                  value={assigneeFilter}
+                  onChange={(event) => setAssigneeFilter(event.target.value)}
+                >
                   <option value="ALL">Tất cả</option>
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
@@ -593,7 +663,10 @@ export default function SprintsPage() {
                 ))}
               </div>
             ) : (
-              <EmptyState title="Không có task phù hợp bộ lọc" description="Thử đổi sprint, trạng thái hoặc người phụ trách để xem danh sách khác." />
+              <EmptyState
+                title="Không có task phù hợp bộ lọc"
+                description="Thử đổi sprint, trạng thái hoặc người phụ trách để xem danh sách khác."
+              />
             )}
           </Surface>
 
@@ -662,7 +735,11 @@ export default function SprintsPage() {
                 <form className="surface-form" onSubmit={handleAddComment}>
                   <label>
                     <span>Nội dung bình luận</span>
-                    <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} rows={3} />
+                    <textarea
+                      value={commentDraft}
+                      onChange={(event) => setCommentDraft(event.target.value)}
+                      rows={3}
+                    />
                   </label>
                   <div className="form-actions">
                     <button type="submit" className="secondary-button">
@@ -697,12 +774,24 @@ export default function SprintsPage() {
 
                         {editingCommentId === comment.id ? (
                           <div className="inline-editor">
-                            <textarea value={editingCommentText} onChange={(event) => setEditingCommentText(event.target.value)} rows={3} />
+                            <textarea
+                              value={editingCommentText}
+                              onChange={(event) => setEditingCommentText(event.target.value)}
+                              rows={3}
+                            />
                             <div className="form-actions">
-                              <button type="button" className="secondary-button" onClick={() => void handleSaveComment(comment.id)}>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => void handleSaveComment(comment.id)}
+                              >
                                 Lưu
                               </button>
-                              <button type="button" className="text-button" onClick={() => setEditingCommentId(null)}>
+                              <button
+                                type="button"
+                                className="text-button"
+                                onClick={() => setEditingCommentId(null)}
+                              >
                                 Hủy
                               </button>
                             </div>
@@ -725,15 +814,32 @@ export default function SprintsPage() {
                   <div className="form-grid">
                     <label>
                       <span>Ngày làm việc</span>
-                      <input type="date" value={logworkDate} onChange={(event) => setLogworkDate(event.target.value)} required />
+                      <input
+                        type="date"
+                        value={logworkDate}
+                        onChange={(event) => setLogworkDate(event.target.value)}
+                        required
+                      />
                     </label>
                     <label>
                       <span>Số giờ thực tế</span>
-                      <input type="number" min="0.5" step="0.5" value={logworkHours} onChange={(event) => setLogworkHours(event.target.value)} required />
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        value={logworkHours}
+                        onChange={(event) => setLogworkHours(event.target.value)}
+                        required
+                      />
                     </label>
                     <label className="form-grid-span">
                       <span>Ghi chú ngắn</span>
-                      <textarea value={logworkNote} onChange={(event) => setLogworkNote(event.target.value)} rows={3} required />
+                      <textarea
+                        value={logworkNote}
+                        onChange={(event) => setLogworkNote(event.target.value)}
+                        rows={3}
+                        required
+                      />
                     </label>
                   </div>
                   <div className="form-actions">
@@ -766,7 +872,11 @@ export default function SprintsPage() {
                               >
                                 Sửa
                               </button>
-                              <button type="button" className="text-button text-button-danger" onClick={() => void handleDeleteLogwork(entry.id)}>
+                              <button
+                                type="button"
+                                className="text-button text-button-danger"
+                                onClick={() => void handleDeleteLogwork(entry.id)}
+                              >
                                 Xóa
                               </button>
                             </div>
@@ -775,7 +885,10 @@ export default function SprintsPage() {
                       ))}
                     </div>
                   ) : (
-                    <EmptyState title="Chưa có logwork" description="Người dùng có thể ghi nhận giờ làm và cập nhật lại ngay trong cửa sổ này." />
+                    <EmptyState
+                      title="Chưa có logwork"
+                      description="Người dùng có thể ghi nhận giờ làm và cập nhật lại ngay trong cửa sổ này."
+                    />
                   )}
                 </div>
               </section>

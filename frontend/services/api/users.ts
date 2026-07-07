@@ -35,7 +35,9 @@ export const userApi = {
       const result = await requestApi<Department[]>({ method: "GET", path: "/api/departments" });
       return wrapBackendResponse(result.data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : "Không thể tải danh sách phòng ban.");
+      throw new Error(
+        error instanceof Error ? error.message : "Không thể tải danh sách phòng ban.",
+      );
     }
   },
 
@@ -59,11 +61,13 @@ export const userApi = {
 
       const result = await requestApi<BackendPaginatedUsers>(endpoint);
       const frontendItems = result.data.items.map(toFrontendUserProfile);
-      
+
       const currentViewer = normalizeViewer(viewer);
       const visibleUsers = isPrivilegedUser(currentViewer)
         ? frontendItems
-        : frontendItems.filter((user) => user.email.toLowerCase() === currentViewer.email.toLowerCase());
+        : frontendItems.filter(
+            (user) => user.email.toLowerCase() === currentViewer.email.toLowerCase(),
+          );
 
       return wrapBackendResponse(visibleUsers);
     } catch (error) {
@@ -76,12 +80,16 @@ export const userApi = {
     return respond(updated, 150);
   },
 
-  async listDirectory(filters?: UserDirectoryFilters, viewer?: UserProfile | null): Promise<ApiResponse<PaginatedUsers>> {
+  async listDirectory(
+    filters?: UserDirectoryFilters,
+    viewer?: UserProfile | null,
+  ): Promise<ApiResponse<PaginatedUsers>> {
     const searchParams = new URLSearchParams();
     if (filters?.search) searchParams.append("search", filters.search);
     if (filters?.status && filters.status !== "ALL") searchParams.append("status", filters.status);
     if (filters?.role && filters.role !== "ALL") searchParams.append("role", filters.role);
-    if (filters?.department && filters.department !== "ALL") searchParams.append("department", filters.department);
+    if (filters?.department && filters.department !== "ALL")
+      searchParams.append("department", filters.department);
     if (filters?.page) searchParams.append("page", filters.page.toString());
     if (filters?.pageSize) searchParams.append("page_size", filters.pageSize.toString());
 
@@ -91,7 +99,7 @@ export const userApi = {
     try {
       const result = await requestApi<BackendPaginatedUsers>(endpoint);
       const frontendItems = result.data.items.map(toFrontendUserProfile);
-      
+
       return wrapBackendResponse({
         items: frontendItems,
         total: result.data.total,
@@ -136,23 +144,39 @@ export const userApi = {
     return wrapBackendResponse(updatedUser);
   },
 
-  async updateStatus(payload: UserStatusUpdatePayload, viewer?: UserProfile | null): Promise<ApiResponse<UserProfile>> {
+  async updateStatus(
+    payload: UserStatusUpdatePayload,
+    viewer?: UserProfile | null,
+  ): Promise<ApiResponse<UserProfile>> {
     try {
-      const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updateStatus(payload.userId), {
-        body: JSON.stringify({ is_active: payload.status === "ACTIVE" }),
-      });
+      const result = await requestApi<BackendUserResponse>(
+        apiEndpoints.users.updateStatus(payload.userId),
+        {
+          body: JSON.stringify({ is_active: payload.status === "ACTIVE" }),
+        },
+      );
       return wrapBackendResponse(toFrontendUserProfile(result.data));
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
     }
   },
 
-  async updateRoles(payload: UserRolesUpdatePayload, viewer?: UserProfile | null): Promise<ApiResponse<UserProfile>> {
+  async updateRoles(
+    payload: UserRolesUpdatePayload,
+    viewer?: UserProfile | null,
+  ): Promise<ApiResponse<UserProfile>> {
     try {
       const role = payload.roles.length > 0 ? payload.roles[0] : "MEMBER";
-      const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updateRole(payload.userId), {
-        body: JSON.stringify({ role: role, is_admin: role === "ADMIN", department: payload.department || null }),
-      });
+      const result = await requestApi<BackendUserResponse>(
+        apiEndpoints.users.updateRole(payload.userId),
+        {
+          body: JSON.stringify({
+            role: role,
+            is_admin: role === "ADMIN",
+            department: payload.department || null,
+          }),
+        },
+      );
       return wrapBackendResponse(toFrontendUserProfile(result.data));
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
@@ -186,7 +210,9 @@ export const userApi = {
       revokedAt: string | null;
     }>
   > {
-    const targetUser = getDirectoryUsers().find((user) => user.email.toLowerCase() === payload.email.toLowerCase());
+    const targetUser = getDirectoryUsers().find(
+      (user) => user.email.toLowerCase() === payload.email.toLowerCase(),
+    );
 
     if (!targetUser) {
       throw new Error("Không tìm thấy người dùng trong danh sách preview.");
@@ -209,4 +235,3 @@ export const userApi = {
     );
   },
 };
-

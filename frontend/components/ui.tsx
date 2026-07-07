@@ -33,28 +33,24 @@ export function Surface({
   );
 }
 
-export function StatusPill({
-  label,
-  tone = "neutral",
-}: {
-  label: string;
-  tone?: Tone;
-}) {
+export function StatusPill({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
   return <span className={classNames("pill", `pill-${tone}`)}>{label}</span>;
 }
 
-export function ProgressBar({
-  value,
-  label,
-}: {
-  value: number;
-  label?: string;
-}) {
+export function ProgressBar({ value, label }: { value: number; label?: string }) {
   return (
     <div className="progress-block">
-      {label ? <div className="progress-meta"><span>{label}</span><strong>{value}%</strong></div> : null}
+      {label ? (
+        <div className="progress-meta">
+          <span>{label}</span>
+          <strong>{value}%</strong>
+        </div>
+      ) : null}
       <div className="progress-track">
-        <span className="progress-fill" style={{ width: `${Math.max(6, Math.min(100, value))}%` }} />
+        <span
+          className="progress-fill"
+          style={{ width: `${Math.max(6, Math.min(100, value))}%` }}
+        />
       </div>
     </div>
   );
@@ -96,11 +92,7 @@ export function AvatarRail({
   );
 }
 
-export function KeyValueList({
-  items,
-}: {
-  items: Array<{ label: string; value: ReactNode }>;
-}) {
+export function KeyValueList({ items }: { items: Array<{ label: string; value: ReactNode }> }) {
   return (
     <dl className="key-value-list">
       {items.map((item) => (
@@ -113,13 +105,7 @@ export function KeyValueList({
   );
 }
 
-export function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+export function EmptyState({ title, description }: { title: string; description: string }) {
   return (
     <div className="empty-state">
       <strong>{title}</strong>
@@ -197,7 +183,10 @@ export function DonutChart({
 
   return (
     <div className="donut-chart-shell">
-      <div className="donut-chart" style={{ backgroundImage: `conic-gradient(${gradient || "#e2e8f0 0 100%"})` }}>
+      <div
+        className="donut-chart"
+        style={{ backgroundImage: `conic-gradient(${gradient || "#e2e8f0 0 100%"})` }}
+      >
         <div className="donut-chart-center">
           <span>{centerLabel}</span>
           <strong>{centerValue}</strong>
@@ -223,7 +212,10 @@ export function MiniBars({
             <strong>{item.value}%</strong>
           </div>
           <div className="mini-bar-track">
-            <span className="mini-bar-fill" style={{ width: `${Math.max(8, (item.value / max) * 100)}%` }} />
+            <span
+              className="mini-bar-fill"
+              style={{ width: `${Math.max(8, (item.value / max) * 100)}%` }}
+            />
           </div>
           {item.note ? <small>{item.note}</small> : null}
         </div>

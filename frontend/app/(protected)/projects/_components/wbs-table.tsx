@@ -67,7 +67,7 @@ export function WbsTable({ tasks }: WbsTableProps) {
 
       return (
         <React.Fragment key={node.task.id}>
-          <tr 
+          <tr
             onClick={() => handleRowClick(node.task.id)}
             style={{ cursor: "pointer" }}
             className={styles.rowHover}
@@ -130,9 +130,19 @@ export function WbsTable({ tasks }: WbsTableProps) {
             <td>{node.task.dueDate}</td>
             <td>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span className={styles.avatarToken} style={{ width: 24, height: 24, fontSize: 10 }}>
+                <span
+                  className={styles.avatarToken}
+                  style={{ width: 24, height: 24, fontSize: 10 }}
+                >
                   {node.task.assignee.avatarUrl ? (
-                    <Image src={node.task.assignee.avatarUrl} alt={node.task.assignee.name} width={24} height={24} className="avatar-image" unoptimized />
+                    <Image
+                      src={node.task.assignee.avatarUrl}
+                      alt={node.task.assignee.name}
+                      width={24}
+                      height={24}
+                      className="avatar-image"
+                      unoptimized
+                    />
                   ) : (
                     node.task.assignee.initials
                   )}

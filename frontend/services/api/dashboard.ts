@@ -19,11 +19,15 @@ export const dashboardApi = {
     const currentViewer = normalizeViewer(viewer);
     const activeProject = getSuggestedActiveProject(currentViewer);
     const selectedProject = projectId ? getProject(projectId) : activeProject;
-    const scopedProject = getAccessibleProjects(currentViewer).find((project) => project.id === selectedProject.id) ?? activeProject;
+    const scopedProject =
+      getAccessibleProjects(currentViewer).find((project) => project.id === selectedProject.id) ??
+      activeProject;
     const activeSprint = getSuggestedActiveSprint(currentViewer, scopedProject.id);
     const visibleProjects = getAccessibleProjects(currentViewer);
     const visibleTasks = getAccessibleTasks(currentViewer);
-    const overdueTasks = visibleTasks.filter((task) => task.projectId === scopedProject.id && isTaskOverdue(task));
+    const overdueTasks = visibleTasks.filter(
+      (task) => task.projectId === scopedProject.id && isTaskOverdue(task),
+    );
     const workloadBoard = users
       .filter((user) => activeProject.memberIds.includes(user.id))
       .map((user) => ({
@@ -34,7 +38,10 @@ export const dashboardApi = {
     const scopedProjectTasks = visibleTasks.filter((task) => task.projectId === scopedProject.id);
     const taskCategories = summarizeTaskCategories(scopedProjectTasks);
     const portfolioProgress = visibleProjects.length
-      ? Math.round(visibleProjects.reduce((sum, project) => sum + project.progress, 0) / visibleProjects.length)
+      ? Math.round(
+          visibleProjects.reduce((sum, project) => sum + project.progress, 0) /
+            visibleProjects.length,
+        )
       : 0;
     const logworkOwners = isPrivilegedUser(currentViewer)
       ? users.filter((user) => user.role !== "ADMIN")
@@ -42,7 +49,9 @@ export const dashboardApi = {
     const logworkCoverage = logworkOwners.length
       ? Math.round(
           (logworkOwners.filter((user) => {
-            return getAccessibleLogwork(currentViewer).some((entry) => entry.userId === user.id && entry.date === DEMO_TODAY);
+            return getAccessibleLogwork(currentViewer).some(
+              (entry) => entry.userId === user.id && entry.date === DEMO_TODAY,
+            );
           }).length /
             logworkOwners.length) *
             100,

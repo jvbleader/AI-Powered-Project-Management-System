@@ -94,7 +94,8 @@ export type BackendPaginatedUsers = {
 };
 
 export const DEFAULT_API_PORT = "8000";
-export const NETWORK_ERROR_MESSAGE = "Không kết nối được API backend. Vui lòng kiểm tra backend đang chạy ở http://127.0.0.1:8000.";
+export const NETWORK_ERROR_MESSAGE =
+  "Không kết nối được API backend. Vui lòng kiểm tra backend đang chạy ở http://127.0.0.1:8000.";
 export const BACKEND_WORKSPACE_ID = "flowpilot";
 export const BACKEND_SESSION_EXPIRES_IN = 60;
 export const USER_ADMIN_UNAVAILABLE_MESSAGE =
@@ -149,8 +150,9 @@ export function toRoleTitle(role: UserRole) {
 }
 
 export function toFrontendUserProfile(backendUser: BackendUserResponse): UserProfile {
-  const resolvedName = backendUser.full_name?.trim() || backendUser.email.split("@")[0] || "Người dùng";
-  const role = backendUser.is_admin ? "ADMIN" : (backendUser.role as UserRole || "MEMBER");
+  const resolvedName =
+    backendUser.full_name?.trim() || backendUser.email.split("@")[0] || "Người dùng";
+  const role = backendUser.is_admin ? "ADMIN" : (backendUser.role as UserRole) || "MEMBER";
 
   return {
     id: `usr-${backendUser.id}`,
@@ -158,7 +160,9 @@ export function toFrontendUserProfile(backendUser: BackendUserResponse): UserPro
     email: backendUser.email,
     role,
     roles: [role],
-    title: backendUser.department ? `${toRoleTitle(role)} - ${backendUser.department}` : toRoleTitle(role),
+    title: backendUser.department
+      ? `${toRoleTitle(role)} - ${backendUser.department}`
+      : toRoleTitle(role),
     initials: toInitials(resolvedName),
     presence: backendUser.is_active ? "online" : "offline",
     capacityHours: 40,
@@ -227,21 +231,36 @@ export const apiEndpoints = {
   },
   projects: {
     list: { method: "GET" as EndpointMethod, path: "/api/projects" },
-    detail: (projectId: string) => ({ method: "GET" as EndpointMethod, path: `/api/projects/${projectId}` }),
+    detail: (projectId: string) => ({
+      method: "GET" as EndpointMethod,
+      path: `/api/projects/${projectId}`,
+    }),
     create: { method: "POST" as EndpointMethod, path: "/api/projects" },
-    update: (projectId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/projects/${projectId}` }),
+    update: (projectId: string) => ({
+      method: "PATCH" as EndpointMethod,
+      path: `/api/projects/${projectId}`,
+    }),
   },
   sprints: {
     list: { method: "GET" as EndpointMethod, path: "/api/sprints" },
-    detail: (sprintId: string) => ({ method: "GET" as EndpointMethod, path: `/api/sprints/${sprintId}` }),
+    detail: (sprintId: string) => ({
+      method: "GET" as EndpointMethod,
+      path: `/api/sprints/${sprintId}`,
+    }),
     create: { method: "POST" as EndpointMethod, path: "/api/sprints" },
-    update: (sprintId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/sprints/${sprintId}` }),
+    update: (sprintId: string) => ({
+      method: "PATCH" as EndpointMethod,
+      path: `/api/sprints/${sprintId}`,
+    }),
   },
   tasks: {
     list: { method: "GET" as EndpointMethod, path: "/api/tasks" },
     detail: (taskId: string) => ({ method: "GET" as EndpointMethod, path: `/api/tasks/${taskId}` }),
     create: { method: "POST" as EndpointMethod, path: "/api/tasks" },
-    update: (taskId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/tasks/${taskId}` }),
+    update: (taskId: string) => ({
+      method: "PATCH" as EndpointMethod,
+      path: `/api/tasks/${taskId}`,
+    }),
     updateStatus: (taskId: string) => ({
       method: "PATCH" as EndpointMethod,
       path: `/api/tasks/${taskId}/status`,
@@ -250,16 +269,28 @@ export const apiEndpoints = {
   logwork: {
     list: { method: "GET" as EndpointMethod, path: "/api/logwork" },
     create: { method: "POST" as EndpointMethod, path: "/api/logwork" },
-    update: (entryId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/logwork/${entryId}` }),
-    remove: (entryId: string) => ({ method: "DELETE" as EndpointMethod, path: `/api/logwork/${entryId}` }),
+    update: (entryId: string) => ({
+      method: "PATCH" as EndpointMethod,
+      path: `/api/logwork/${entryId}`,
+    }),
+    remove: (entryId: string) => ({
+      method: "DELETE" as EndpointMethod,
+      path: `/api/logwork/${entryId}`,
+    }),
   },
   users: {
     list: { method: "GET" as EndpointMethod, path: "/api/users" },
     create: { method: "POST" as EndpointMethod, path: "/api/users" },
     deactivate: { method: "POST" as EndpointMethod, path: "/api/users/deactivate" },
     resetPassword: { method: "POST" as EndpointMethod, path: "/api/users/reset-password" },
-    updateRole: (userId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/users/${userId.replace("usr-", "")}/role` }),
-    updateStatus: (userId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/users/${userId.replace("usr-", "")}/status` }),
+    updateRole: (userId: string) => ({
+      method: "PATCH" as EndpointMethod,
+      path: `/api/users/${userId.replace("usr-", "")}/role`,
+    }),
+    updateStatus: (userId: string) => ({
+      method: "PATCH" as EndpointMethod,
+      path: `/api/users/${userId.replace("usr-", "")}/status`,
+    }),
     updatePhone: { method: "PUT" as EndpointMethod, path: "/me/phone" },
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
   },
@@ -326,7 +357,12 @@ export async function requestApi<T>(
     throw new Error(NETWORK_ERROR_MESSAGE);
   }
 
-  if (response.status === 401 && endpoint.path !== "/refresh" && endpoint.path !== "/login" && endpoint.path !== "/logout") {
+  if (
+    response.status === 401 &&
+    endpoint.path !== "/refresh" &&
+    endpoint.path !== "/login" &&
+    endpoint.path !== "/logout"
+  ) {
     try {
       const refreshRes = await fetch(`${getApiBaseUrl()}/refresh`, {
         method: "GET",
@@ -343,17 +379,20 @@ export async function requestApi<T>(
           },
         });
       } else {
-        if (typeof window !== "undefined") window.dispatchEvent(new Event("flowpilot-session-expired"));
+        if (typeof window !== "undefined")
+          window.dispatchEvent(new Event("flowpilot-session-expired"));
       }
     } catch {
-      if (typeof window !== "undefined") window.dispatchEvent(new Event("flowpilot-session-expired"));
+      if (typeof window !== "undefined")
+        window.dispatchEvent(new Event("flowpilot-session-expired"));
     }
   }
 
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const detail = payload && typeof payload === "object" && "detail" in payload ? payload.detail : null;
+    const detail =
+      payload && typeof payload === "object" && "detail" in payload ? payload.detail : null;
     throw new Error(formatApiError(detail, "Không thể kết nối tới hệ thống xác thực."));
   }
 
@@ -443,7 +482,10 @@ export function filterProjects(filters?: ProjectFilters, viewer?: UserProfile | 
     }
 
     if (filters?.search) {
-      return containsSearch(`${project.name} ${project.description} ${project.code}`, filters.search);
+      return containsSearch(
+        `${project.name} ${project.description} ${project.code}`,
+        filters.search,
+      );
     }
 
     return true;

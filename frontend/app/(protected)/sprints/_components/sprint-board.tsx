@@ -8,7 +8,11 @@ type SprintBoardProps = {
   onStatusDrop: (status: TaskStatus, taskId: string) => Promise<void>;
 };
 
-const boardColumns: Array<{ label: string; key: "TODO" | "IN_PROGRESS" | "DONE"; status: TaskStatus }> = [
+const boardColumns: Array<{
+  label: string;
+  key: "TODO" | "IN_PROGRESS" | "DONE";
+  status: TaskStatus;
+}> = [
   { label: "Cần làm", key: "TODO", status: "TODO" },
   { label: "Đang tiến hành", key: "IN_PROGRESS", status: "IN_PROGRESS" },
   { label: "Đã hoàn thành", key: "DONE", status: "DONE" },
