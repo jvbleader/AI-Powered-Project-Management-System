@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (Column, Date, DateTime, ForeignKey, Integer, String,
+                        Text)
 
 from database.connection import Base
 

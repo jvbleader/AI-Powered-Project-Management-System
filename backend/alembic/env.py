@@ -1,13 +1,10 @@
-from logging.config import fileConfig
-
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
-from alembic import context
-
 import os
 import sys
+from logging.config import fileConfig
+
+from alembic import context
 from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
 
 # Add the backend directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -15,14 +12,14 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 load_dotenv()
 
 from database.connection import Base
-from models.user_model import User
+from models.ai_model import AiConversation, AiMessage
 from models.department_model import Department
-from models.refresh_token_model import RefreshToken
+from models.logworks import LogWork
 from models.project_model import Project, ProjectMember, Role
+from models.refresh_token_model import RefreshToken
 from models.sprint_model import Sprint
 from models.task_model import Task, TaskAssignees
-from models.logworks import LogWork
-from models.ai_model import AiConversation, AiMessage
+from models.user_model import User
 
 config = context.config
 

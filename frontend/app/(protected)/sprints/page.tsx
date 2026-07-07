@@ -10,6 +10,9 @@ import {
   StatusPill,
   Surface,
 } from "@/components/ui";
+import { CreateSprintForm } from "./_components/create-sprint-form";
+import { CreateTaskForm } from "./_components/create-task-form";
+import { SprintBoard } from "./_components/sprint-board";
 import { logworkApi, projectApi, sprintApi, taskApi, userApi, workspaceApi } from "@/services/api";
 import {
   categorizeTask,
@@ -92,17 +95,6 @@ export default function SprintsPage() {
   const [logworkHours, setLogworkHours] = useState("2");
   const [logworkNote, setLogworkNote] = useState("");
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
-  const [sprintName, setSprintName] = useState("");
-  const [sprintGoal, setSprintGoal] = useState("");
-  const [sprintStart, setSprintStart] = useState("2026-07-01");
-  const [sprintEnd, setSprintEnd] = useState("2026-07-14");
-  const [sprintProjectId, setSprintProjectId] = useState("");
-  const [taskTitle, setTaskTitle] = useState("");
-  const [taskDescription, setTaskDescription] = useState("");
-  const [taskDueDate, setTaskDueDate] = useState("2026-07-04");
-  const [taskEstimateHours, setTaskEstimateHours] = useState("6");
-  const [taskAssigneeId, setTaskAssigneeId] = useState("");
-  const [taskPriority, setTaskPriority] = useState<EnrichedTask["priority"]>("HIGH");
   const [pageState, setPageState] = useState<SprintPageState | null>(null);
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
   const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
@@ -127,8 +119,6 @@ export default function SprintsPage() {
 
       setPageState({ shellData, projects, sprints, tasks, users, entries });
       setSelectedSprintId((current) => current ?? sprints[0]?.id ?? null);
-      setSprintProjectId((current) => current || projects[0]?.id || "");
-      setTaskAssigneeId((current) => current || users[0]?.id || viewer.id);
     }
 
     void loadBaseData();
@@ -217,55 +207,47 @@ export default function SprintsPage() {
     setSelectedTaskId(nextTaskId ?? selectedTaskId ?? null);
   }
 
-  async function handleCreateSprint(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSprintFormError(null);
-
-    if (!sprintName.trim() || !sprintGoal.trim() || !sprintProjectId || !sprintStart || !sprintEnd) {
+  async function handleCreateSprint(data: { name: string; projectId: string; goal: string; start: string; end: string }) {
+    if (!data.name.trim() || !data.goal.trim() || !data.projectId || !data.start || !data.end) {
       setSprintFormError("Tên sprint, mục tiêu, dự án, ngày bắt đầu và ngày kết thúc là bắt buộc.");
       return;
     }
 
-    if (sprintEnd < sprintStart) {
+    if (data.end < data.start) {
       setSprintFormError("Ngày kết thúc sprint phải sau ngày bắt đầu.");
       return;
     }
 
     const created = await sprintApi.create({
-      projectId: sprintProjectId,
-      name: sprintName.trim(),
-      goal: sprintGoal.trim(),
+      projectId: data.projectId,
+      name: data.name.trim(),
+      goal: data.goal.trim(),
       status: "PLANNED",
       progress: 0,
       committedPoints: 0,
       completedPoints: 0,
-      plannedStart: sprintStart,
-      plannedEnd: sprintEnd,
+      plannedStart: data.start,
+      plannedEnd: data.end,
       health: "on-track",
       focusAreas: ["Goal alignment", "Task readiness", "Resource allocation"],
     });
 
-    setSprintName("");
-    setSprintGoal("");
     await refreshPage(created.data.id);
     setNotice(`Đã tạo sprint ${created.data.name}.`);
   }
 
-  async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setTaskFormError(null);
-
+  async function handleCreateTask(data: { title: string; description: string; dueDate: string; estimateHours: string; assigneeId: string; priority: EnrichedTask["priority"] }) {
     if (!selectedSprint || !selectedProject) {
       setTaskFormError("Cần chọn một sprint trước khi tạo task.");
       return;
     }
 
-    if (!taskTitle.trim() || !taskDescription.trim() || !taskDueDate || !taskAssigneeId || !taskEstimateHours) {
+    if (!data.title.trim() || !data.description.trim() || !data.dueDate || !data.assigneeId || !data.estimateHours) {
       setTaskFormError("Mã sprint, tiêu đề, mô tả, hạn chót và thời gian ước tính là bắt buộc.");
       return;
     }
 
-    if (taskDueDate < selectedSprint.plannedStart || taskDueDate > selectedSprint.plannedEnd) {
+    if (data.dueDate < selectedSprint.plannedStart || data.dueDate > selectedSprint.plannedEnd) {
       setTaskFormError("Hạn chót task nên nằm trong khoảng thời gian của sprint.");
       return;
     }
@@ -275,14 +257,14 @@ export default function SprintsPage() {
       projectId: selectedProject.id,
       sprintId: selectedSprint.id,
       parentTaskId: null,
-      title: taskTitle.trim(),
-      description: taskDescription.trim(),
+      title: data.title.trim(),
+      description: data.description.trim(),
       status: "TODO",
-      priority: taskPriority,
-      assigneeId: taskAssigneeId,
+      priority: data.priority,
+      assigneeId: data.assigneeId,
       reporterId: viewer.id,
-      dueDate: taskDueDate,
-      estimateHours: Number(taskEstimateHours),
+      dueDate: data.dueDate,
+      estimateHours: Number(data.estimateHours),
       spentHours: 0,
       tags: ["sprint"],
       blockers: [],
@@ -290,9 +272,6 @@ export default function SprintsPage() {
       lastActivity: `${DEMO_TODAY}T12:00:00Z`,
     });
 
-    setTaskTitle("");
-    setTaskDescription("");
-    setTaskEstimateHours("6");
     await refreshPage(selectedSprint.id, created.data.id);
     setNotice(`Đã tạo task ${created.data.key} và gán cho thành viên.`);
   }
@@ -303,14 +282,13 @@ export default function SprintsPage() {
     setNotice("Đã cập nhật người phụ trách task.");
   }
 
-  async function handleStatusDrop(nextStatus: TaskStatus) {
-    if (!dragTaskId) {
+  async function handleStatusDrop(nextStatus: TaskStatus, draggedId: string) {
+    if (!draggedId) {
       return;
     }
 
-    await taskApi.updateStatus(dragTaskId, nextStatus);
-    await refreshPage(selectedSprint?.id, dragTaskId);
-    setDragTaskId(null);
+    await taskApi.updateStatus(draggedId, nextStatus);
+    await refreshPage(selectedSprint?.id, draggedId);
   }
 
   async function handleAddComment(event: FormEvent<HTMLFormElement>) {
@@ -479,45 +457,12 @@ export default function SprintsPage() {
         </Surface>
 
         {canManage ? (
-          <Surface title="Thiết lập sprint mới" kicker="Sprint setup">
-            <form className="surface-form" onSubmit={handleCreateSprint}>
-              <div className="form-grid">
-                <label>
-                  <span>Tên sprint</span>
-                  <input value={sprintName} onChange={(event) => setSprintName(event.target.value)} required />
-                </label>
-                <label>
-                  <span>Dự án</span>
-                  <select value={sprintProjectId} onChange={(event) => setSprintProjectId(event.target.value)} required>
-                    <option value="">Chọn dự án</option>
-                    {projectList.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="form-grid-span">
-                  <span>Mục tiêu trọng tâm</span>
-                  <textarea value={sprintGoal} onChange={(event) => setSprintGoal(event.target.value)} rows={3} required />
-                </label>
-                <label>
-                  <span>Ngày bắt đầu</span>
-                  <input type="date" value={sprintStart} onChange={(event) => setSprintStart(event.target.value)} required />
-                </label>
-                <label>
-                  <span>Ngày kết thúc</span>
-                  <input type="date" value={sprintEnd} onChange={(event) => setSprintEnd(event.target.value)} required />
-                </label>
-              </div>
-              {sprintFormError ? <p className="form-error">{sprintFormError}</p> : null}
-              <div className="form-actions">
-                <button type="submit" className="primary-button">
-                  Tạo sprint
-                </button>
-              </div>
-            </form>
-          </Surface>
+          <CreateSprintForm
+            projectList={projectList}
+            onSubmit={handleCreateSprint}
+            error={sprintFormError}
+            onClearError={() => setSprintFormError(null)}
+          />
         ) : (
           <Surface title="Phạm vi thành viên" kicker="Member scope">
             <div className="privacy-panel">
@@ -582,52 +527,13 @@ export default function SprintsPage() {
           </section>
 
           {canManage ? (
-            <Surface title="Tạo task mới" kicker="Task setup">
-              <form className="surface-form" onSubmit={handleCreateTask}>
-                <div className="form-grid">
-                  <label>
-                    <span>Tiêu đề</span>
-                    <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} required />
-                  </label>
-                  <label>
-                    <span>Người phụ trách</span>
-                    <select value={taskAssigneeId} onChange={(event) => setTaskAssigneeId(event.target.value)} required>
-                      {users.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name} - {roleLabel(user.role)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="form-grid-span">
-                    <span>Mô tả</span>
-                    <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} rows={4} required />
-                  </label>
-                  <label>
-                    <span>Hạn chót</span>
-                    <input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} required />
-                  </label>
-                  <label>
-                    <span>Ước tính (giờ)</span>
-                    <input type="number" min="1" value={taskEstimateHours} onChange={(event) => setTaskEstimateHours(event.target.value)} required />
-                  </label>
-                  <label>
-                    <span>Mức ưu tiên</span>
-                    <select value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as EnrichedTask["priority"])}>
-                      <option value="MEDIUM">Trung bình</option>
-                      <option value="HIGH">Cao</option>
-                      <option value="CRITICAL">Khẩn cấp</option>
-                    </select>
-                  </label>
-                </div>
-                {taskFormError ? <p className="form-error">{taskFormError}</p> : null}
-                <div className="form-actions">
-                  <button type="submit" className="primary-button">
-                    Tạo task
-                  </button>
-                </div>
-              </form>
-            </Surface>
+            <CreateTaskForm
+              users={users}
+              defaultAssigneeId={users[0]?.id || viewer.id}
+              onSubmit={handleCreateTask}
+              error={taskFormError}
+              onClearError={() => setTaskFormError(null)}
+            />
           ) : null}
 
           <Surface title="Danh sách công việc & bộ lọc" kicker="Task list">
@@ -691,49 +597,11 @@ export default function SprintsPage() {
             )}
           </Surface>
 
-          <Surface title="Bảng Kanban" kicker="Drag and drop">
-            <div className="kanban-board sprint-kanban-board">
-              {boardColumns.map((column) => (
-                <div
-                  key={column.key}
-                  className="kanban-column"
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => void handleStatusDrop(column.status)}
-                >
-                  <div className="kanban-column-header">
-                    <strong>{column.label}</strong>
-                    <span>{filteredTasks.filter((task) => boardStatus(task) === column.key).length}</span>
-                  </div>
-                  {filteredTasks
-                    .filter((task) => boardStatus(task) === column.key)
-                    .map((task) => (
-                      <article
-                        key={task.id}
-                        className="task-card"
-                        draggable
-                        onDragStart={() => setDragTaskId(task.id)}
-                        onClick={() => setSelectedTaskId(task.id)}
-                      >
-                        <div className="task-topline">
-                          <strong>{task.key}</strong>
-                          <StatusPill
-                            label={taskPriorityLabel(task.priority)}
-                            tone={task.priority === "CRITICAL" ? "critical" : task.priority === "HIGH" ? "watch" : "neutral"}
-                          />
-                        </div>
-                        <h3>{task.title}</h3>
-                        <p>{task.description}</p>
-                        <div className="task-meta">
-                          <span>{task.assignee.name}</span>
-                          <span>{formatDate(task.dueDate)}</span>
-                        </div>
-                        {isTaskOverdue(task) ? <span className="deadline-flag">Quá hạn</span> : null}
-                      </article>
-                    ))}
-                </div>
-              ))}
-            </div>
-          </Surface>
+          <SprintBoard
+            tasks={filteredTasks}
+            onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+            onStatusDrop={handleStatusDrop}
+          />
 
           {selectedTask ? (
             <section className="two-up">
