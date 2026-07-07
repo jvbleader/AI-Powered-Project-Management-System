@@ -1,0 +1,501 @@
+.profilePage {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  width: 100%;
+  max-width: none;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* ── Left Column (Hero) ── */
+.heroColumn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.5rem;
+  padding: 3rem 2rem;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(37, 99, 235, 0.08), transparent 60%),
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.94));
+  border-right: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.heroColumn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.heroAvatarWrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.heroAvatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 7.5rem;
+  height: 7.5rem;
+  border-radius: 999px;
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #eff6ff;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--support) 100%);
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.25);
+  overflow: hidden;
+}
+
+.heroAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarEditOverlay {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 3px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 0.2s,
+    background 0.2s;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.avatarEditOverlay:hover {
+  transform: scale(1.1);
+  background: var(--accent-strong);
+}
+
+.avatarEditOverlay svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: white;
+  stroke: none;
+}
+
+.heroInfo {
+  position: relative;
+  display: grid;
+  gap: 0.5rem;
+  z-index: 1;
+}
+
+.heroName {
+  font-size: 1.65rem;
+  font-weight: 750;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.heroEmail {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.heroBadges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.avatarNotice {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* ── Right Column (Details) ── */
+.detailsColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  padding: 2.5rem 3rem;
+}
+
+.detailSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  padding-bottom: 0.8rem;
+}
+
+.sectionTitle {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.sectionTitle h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.sectionTitle span {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Info List ── */
+.infoList {
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(191, 219, 254, 0.5);
+  overflow: hidden;
+}
+
+.infoItem {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  transition: background 0.2s;
+}
+
+.infoItem + .infoItem {
+  border-top: 1px solid rgba(191, 219, 254, 0.4);
+}
+
+.infoItem:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.infoIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: var(--accent-soft);
+}
+
+.infoIcon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  stroke: var(--accent);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.infoIcon.greenTone {
+  background: rgba(22, 163, 74, 0.1);
+}
+
+.infoIcon.greenTone svg {
+  stroke: #16a34a;
+}
+
+.infoIcon.amberTone {
+  background: var(--watch-soft);
+}
+
+.infoIcon.amberTone svg {
+  stroke: var(--watch);
+}
+
+.infoIcon.tealTone {
+  background: var(--support-soft);
+}
+
+.infoIcon.tealTone svg {
+  stroke: var(--support);
+}
+
+.infoContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.infoContent dt {
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.infoContent dd {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Phone Inline Section ── */
+.phoneDisplayInline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.8rem;
+}
+
+.phoneValue {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.phoneEmpty {
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.phoneEditInline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.phoneEditInline input {
+  width: 150px;
+  padding: 0.4rem 0.6rem;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: rgba(248, 250, 252, 0.98);
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+  text-align: center;
+}
+
+.phoneEditInline input:focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.phoneEditActions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.editIconOnlyButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: white;
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editIconOnlyButton:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.editIconOnlyButton svg {
+  width: 1rem;
+  height: 1rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.saveButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    transform 0.15s;
+}
+
+.saveButton:hover {
+  background: var(--accent-strong);
+}
+
+.saveButton:active {
+  transform: scale(0.97);
+}
+
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancelButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: white;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancelButton:hover {
+  background: rgba(241, 245, 249, 0.95);
+  color: var(--ink);
+}
+
+.phoneError {
+  margin-top: 0.4rem;
+  text-align: right;
+  font-size: 0.8rem;
+}
+
+/* ── Change Password ── */
+.passwordForm {
+  display: grid;
+  gap: 1rem;
+}
+
+.passwordFields {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.passwordFields label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.passwordFields input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: rgba(248, 250, 252, 0.98);
+}
+
+.passwordFields input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.passwordFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.passwordFooter p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .profilePage {
+    grid-template-columns: 1fr;
+  }
+
+  .heroColumn {
+    border-right: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+    padding: 2.5rem 2rem;
+  }
+
+  .detailsColumn {
+    padding: 2rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .detailsColumn {
+    padding: 1.5rem;
+  }
+
+  .phoneEditForm {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .phoneEditForm input {
+    width: 100%;
+  }
+
+  .infoContent {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .infoContent dd {
+    text-align: left;
+  }
+}

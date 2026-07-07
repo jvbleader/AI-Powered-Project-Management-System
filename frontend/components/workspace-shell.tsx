@@ -1,0 +1,235 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+
+import { signOut } from "@/services/auth/session";
+import { AssistantBubble } from "@/components/assistant-bubble";
+import { useAuthSession } from "@/hooks/use-session";
+import { NavIcon } from "@/components/nav-icon";
+import { ChangePasswordModal } from "@/components/change-password-modal";
+import type { WorkspaceShellData } from "@/types";
+
+const navigation = [
+  { href: "/dashboard", label: "Tổng quan", icon: "grid" },
+  { href: "/projects", label: "Dự án", icon: "layers" },
+  { href: "/tasks", label: "Nhiệm vụ", icon: "kanban" },
+  { href: "/team", label: "Nhân sự", icon: "users" },
+];
+
+function classNames(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+
+export function WorkspaceShell({
+  shellData,
+  heading,
+  subheading,
+  highlightLabel,
+  highlightValue,
+  children,
+}: {
+  shellData: WorkspaceShellData;
+  heading: string;
+  subheading: string;
+  highlightLabel: string;
+  highlightValue: string;
+  children: ReactNode;
+}) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const session = useAuthSession();
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const activeShellData = session
+    ? {
+        ...shellData,
+        currentUser: session.currentUser,
+      }
+    : shellData;
+
+  const filteredNavigation = navigation.filter((item) => {
+    if (item.href !== "/team") {
+      return true;
+    }
+
+    return activeShellData.currentUser.role !== "MEMBER";
+  });
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsProfileMenuOpen(false);
+        setIsPasswordModalOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  const handleSignOut = async () => {
+    setIsProfileMenuOpen(false);
+    await signOut();
+    router.push("/login");
+  };
+
+  const handleOpenPasswordModal = () => {
+    setIsProfileMenuOpen(false);
+    setIsPasswordModalOpen(true);
+  };
+
+  const handleOpenProfile = () => {
+    setIsProfileMenuOpen(false);
+    router.push("/profile");
+  };
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="sidebar-profile-panel">
+          <div className="profile-dropdown" ref={profileMenuRef}>
+            <button
+              type="button"
+              className="user-chip sidebar-user-chip sidebar-profile-trigger"
+              aria-haspopup="menu"
+              aria-expanded={isProfileMenuOpen}
+              onClick={() => setIsProfileMenuOpen((current) => !current)}
+            >
+              <span className="avatar-token">
+                {activeShellData.currentUser.avatarUrl ? (
+                  <Image
+                    src={activeShellData.currentUser.avatarUrl}
+                    alt={activeShellData.currentUser.name}
+                    className="avatar-image"
+                    width={46}
+                    height={46}
+                    unoptimized
+                  />
+                ) : (
+                  activeShellData.currentUser.initials
+                )}
+              </span>
+              <div className="sidebar-profile-copy">
+                <strong>{activeShellData.currentUser.name}</strong>
+                <p>{activeShellData.currentUser.title}</p>
+              </div>
+              <span className="profile-chevron" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </span>
+            </button>
+
+            {isProfileMenuOpen ? (
+              <div className="profile-menu" role="menu" aria-label="Profile actions">
+                <button
+                  type="button"
+                  className="profile-menu-item profile-menu-button"
+                  role="menuitem"
+                  onClick={handleOpenProfile}
+                >
+                  <span className="profile-menu-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.8-6 4v1h12v-1c0-2.2-2.7-4-6-4Z" />
+                    </svg>
+                  </span>
+                  <span className="profile-menu-copy">
+                    <strong>Profile</strong>
+                    <small>Xem thông tin cá nhân</small>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="profile-menu-item profile-menu-button"
+                  role="menuitem"
+                  onClick={handleOpenPasswordModal}
+                >
+                  <span className="profile-menu-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M17 9V7a5 5 0 0 0-10 0v2H5v11h14V9Zm-8 0V7a3 3 0 0 1 6 0v2Zm2 4h2v4h-2Z" />
+                    </svg>
+                  </span>
+                  <span className="profile-menu-copy">
+                    <strong>Đổi mật khẩu</strong>
+                    <small>Cập nhật thông tin bảo mật</small>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="profile-menu-item profile-menu-button"
+                  role="menuitem"
+                  onClick={handleSignOut}
+                >
+                  <span className="profile-menu-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M10 17v-2h4V9h-4V7h7v10Zm-1-3-3-3 3-3v2h5v2H9Z" />
+                      <path d="M4 5h7v2H6v10h5v2H4Z" />
+                    </svg>
+                  </span>
+                  <span className="profile-menu-copy">
+                    <strong>Đăng xuất</strong>
+                    <small>Thoát khỏi phiên hiện tại</small>
+                  </span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <nav className="sidebar-nav" aria-label="Primary">
+          {filteredNavigation.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={classNames("nav-link", pathname === item.href && "nav-link-active")}
+            >
+              <NavIcon icon={item.icon} />
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+      </aside>
+
+      <main className="workspace-main">
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">Trung tâm điều hành</span>
+            <h1>{heading}</h1>
+            <p>{subheading}</p>
+          </div>
+          <div className="topbar-actions">
+            <div className="quick-chip">
+              <span>{highlightLabel}</span>
+              <strong>{highlightValue}</strong>
+            </div>
+          </div>
+        </header>
+        <div className="page-stack">{children}</div>
+      </main>
+
+      <AssistantBubble alertCount={activeShellData.alertCount} />
+
+      {isPasswordModalOpen ? (
+        <ChangePasswordModal session={session} onClose={() => setIsPasswordModalOpen(false)} />
+      ) : null}
+    </div>
+  );
+}
