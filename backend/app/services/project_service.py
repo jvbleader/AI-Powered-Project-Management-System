@@ -5,15 +5,15 @@ from fastapi import HTTPException
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
-from models.project_model import Project, ProjectMember, Role
-from models.user_model import User
-from schemas.project_schema import (
+from app.models.project_model import Project, ProjectMember, Role
+from app.models.user_model import User
+from app.schemas.project_schema import (
     ProjectCreate,
     ProjectMemberCreate,
     ProjectMemberUpdate,
     ProjectUpdate,
 )
-from utils.project_helpers import (
+from app.utils.project_helpers import (
     ensure_default_roles,
     get_pm_role,
     to_db_status,

@@ -1,7 +1,7 @@
-from database.connection import Base, engine
+from app.core.connection import Base, engine
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, projects, users
+from app.api import auth, projects, users
 
 app = FastAPI()
 

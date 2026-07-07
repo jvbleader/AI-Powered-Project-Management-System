@@ -3,8 +3,8 @@ import math
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 
-from models.department_model import Department
-from models.user_model import User
+from app.models.department_model import Department
+from app.models.user_model import User
 
 
 def get_by_id(db: Session, user_id: int) -> User | None:
@@ -65,3 +65,7 @@ def commit_and_refresh(db: Session, user: User) -> User:
     db.commit()
     db.refresh(user)
     return user
+
+def update_password(db: Session, user_id: int, hashed_new_password: str) -> None:
+    db.query(User).filter(User.id == user_id).update({User.password_hash: hashed_new_password})
+    db.commit()

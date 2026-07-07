@@ -3,10 +3,10 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from models.project_model import Project, ProjectMember, Role
-from models.task_model import Task
-from models.user_model import User
-from schemas.project_schema import (
+from app.models.project_model import Project, ProjectMember, Role
+from app.models.task_model import Task
+from app.models.user_model import User
+from app.schemas.project_schema import (
     ProjectDetailResponse,
     ProjectMemberResponse,
     ProjectMetricsResponse,

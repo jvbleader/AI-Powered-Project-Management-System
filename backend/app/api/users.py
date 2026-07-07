@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from database.connection import get_db
-from dependencies import get_current_user
-from models.user_model import User
-from schemas.user_schema import (
+from app.core.connection import get_db
+from app.core.dependencies import get_current_user
+from app.models.user_model import User
+from app.schemas.user_schema import (
     AdminResetPassword,
     DepartmentResponse,
     PaginatedUsersResponse,
@@ -15,7 +15,7 @@ from schemas.user_schema import (
     UserRoleUpdate,
     UserStatusUpdate,
 )
-from services import department_service, user_service
+from app.services import department_service, user_service
 
 router = APIRouter()
 

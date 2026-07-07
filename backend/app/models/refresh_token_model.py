@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 
-from database.connection import Base
+from app.core.connection import Base
 
 EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS"))
 
