@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { logworkApi, projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
@@ -26,7 +26,7 @@ type ProjectsState = {
 
 export default function ProjectsPage() {
   const session = useAuthSession();
-  const viewer = normalizeViewer(session?.currentUser);
+  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
   const canManage = isPrivilegedUser(viewer);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -102,7 +102,7 @@ export default function ProjectsPage() {
           selectedProjectId={selectedProject?.id ?? null}
           onSelectProject={setSelectedProjectId}
           canManage={canManage}
-          onAddProjectClick={() => setIsCreateModalOpen(true)}
+          onAddProjectClick={viewer.role === "ADMIN" ? () => setIsCreateModalOpen(true) : undefined}
         />
       </section>
 

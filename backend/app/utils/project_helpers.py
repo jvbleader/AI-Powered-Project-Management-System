@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.project_model import Project, ProjectMember, Role
+from app.repositories import project_repository
 from app.models.task_model import Task
 from app.models.user_model import User
 from app.schemas.project_schema import (
@@ -58,11 +59,9 @@ def ensure_default_roles(db: Session) -> dict[str, int]:
     role_map: dict[str, int] = {}
 
     for role_name in role_names:
-        role = db.query(Role).filter(Role.name == role_name).first()
+        role = project_repository.get_role_by_name(db, role_name)
         if not role:
-            role = Role(name=role_name)
-            db.add(role)
-            db.flush()
+            role = project_repository.create_role(db, role_name)
         role_map[role_name] = role.id
 
     db.commit()
@@ -70,17 +69,17 @@ def ensure_default_roles(db: Session) -> dict[str, int]:
 
 
 def get_pm_role(db: Session) -> Role:
-    role = db.query(Role).filter(Role.name == PM_ROLE_NAME).first()
+    role = project_repository.get_role_by_name(db, PM_ROLE_NAME)
     if not role:
         ensure_default_roles(db)
-        role = db.query(Role).filter(Role.name == PM_ROLE_NAME).first()
+        role = project_repository.get_role_by_name(db, PM_ROLE_NAME)
     if not role:
         raise RuntimeError("Không tìm thấy vai trò PROJECT_MANAGER.")
     return role
 
 
 def compute_project_metrics(db: Session, project_id: int) -> ProjectMetricsResponse:
-    tasks = db.query(Task).filter(Task.project_id == project_id).all()
+    tasks = project_repository.get_project_tasks(db, project_id)
     if not tasks:
         return ProjectMetricsResponse()
 
@@ -120,13 +119,7 @@ def build_project_response(
     project: Project,
     include_members: bool = False,
 ) -> ProjectDetailResponse | ProjectResponse:
-    members = (
-        db.query(ProjectMember, User, Role)
-        .join(User, ProjectMember.user_id == User.id)
-        .join(Role, ProjectMember.role_id == Role.id)
-        .filter(ProjectMember.project_id == project.id)
-        .all()
-    )
+    members = project_repository.list_project_members(db, project.id)
 
     pm_role = get_pm_role(db)
     manager_member = next(
@@ -170,28 +163,12 @@ def build_project_response(
 
 def user_is_project_manager(db: Session, project_id: int, user_id: int) -> bool:
     pm_role = get_pm_role(db)
-    membership = (
-        db.query(ProjectMember)
-        .filter(
-            ProjectMember.project_id == project_id,
-            ProjectMember.user_id == user_id,
-            ProjectMember.role_id == pm_role.id,
-        )
-        .first()
-    )
+    membership = project_repository.get_project_member_with_role(db, project_id, user_id, pm_role.id)
     return membership is not None
 
 
 def user_is_project_member(db: Session, project_id: int, user_id: int) -> bool:
-    return (
-        db.query(ProjectMember)
-        .filter(
-            ProjectMember.project_id == project_id,
-            ProjectMember.user_id == user_id,
-        )
-        .first()
-        is not None
-    )
+    return project_repository.get_project_member(db, project_id, user_id) is not None
 
 
 def paginate(total: int, page: int, page_size: int) -> int:

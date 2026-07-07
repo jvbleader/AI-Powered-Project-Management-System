@@ -1,10 +1,6 @@
 import {
-  aiInsights,
-  aiMessages,
-  aiReports,
   logworkEntries,
   projects,
-  suggestedPrompts,
   sprints,
   taskAttachments,
   taskComments,
@@ -14,27 +10,15 @@ import {
 import {
   DEMO_TODAY,
   getAccessibleLogwork,
-  getAccessibleProjects,
   getAccessibleSprints,
   getAccessibleTasks,
-  getSuggestedActiveProject,
-  getSuggestedActiveSprint,
   getTaskAssignee,
   getTaskReporter,
   isPrivilegedUser,
-  isTaskOverdue,
   normalizeViewer,
-  summarizeTaskCategories,
 } from "@/lib/mock/permissions";
 import {
-  createDirectoryUser,
   getDirectoryUserByEmail,
-  getDirectoryUsers,
-  listDirectoryUsers,
-  updateDirectoryAvatar,
-  updateDirectoryProfile,
-  updateDirectoryUserRoles,
-  updateDirectoryUserStatus,
 } from "@/services/users/directory";
 import type {
   AiMessage,
@@ -54,7 +38,6 @@ import type {
   LoginPayload,
   PaginatedUsers,
   Project,
-  ProjectFilters,
   Sprint,
   SprintFilters,
   Task,
@@ -471,26 +454,6 @@ export function enrichTask(task: Task): EnrichedTask {
   };
 }
 
-export function filterProjects(filters?: ProjectFilters, viewer?: UserProfile | null) {
-  return getAccessibleProjects(viewer).filter((project) => {
-    if (filters?.status && project.status !== filters.status) {
-      return false;
-    }
-
-    if (filters?.managerId && project.managerId !== filters.managerId) {
-      return false;
-    }
-
-    if (filters?.search) {
-      return containsSearch(
-        `${project.name} ${project.description} ${project.code}`,
-        filters.search,
-      );
-    }
-
-    return true;
-  });
-}
 
 export function filterSprints(filters?: SprintFilters, viewer?: UserProfile | null) {
   return getAccessibleSprints(viewer).filter((sprint) => {

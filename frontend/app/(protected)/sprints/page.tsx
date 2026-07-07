@@ -299,6 +299,7 @@ export default function SprintsPage() {
       priority: data.priority,
       assigneeId: data.assigneeId,
       reporterId: viewer.id,
+      startDate: new Date().toISOString().split("T")[0],
       dueDate: data.dueDate,
       estimateHours: Number(data.estimateHours),
       spentHours: 0,

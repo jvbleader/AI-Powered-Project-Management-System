@@ -72,7 +72,7 @@ export function ProjectList({
                       <button
                         type="button"
                         className={styles.userCellButton}
-                        onClick={() => onSelectProject(project.id)}
+                        onClick={() => router.push(`/projects/${project.id}`)}
                       >
                         <span className={styles.avatarToken}>
                           {project.name.charAt(0).toUpperCase()}

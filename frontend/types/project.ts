@@ -15,6 +15,7 @@ export interface Project {
   status: ProjectStatus;
   progress: number;
   managerId: string;
+  managerName?: string;
   memberIds: string[];
   startDate: string;
   endDate: string;

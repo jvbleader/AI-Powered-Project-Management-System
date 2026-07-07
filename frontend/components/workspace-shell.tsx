@@ -211,9 +211,8 @@ export function WorkspaceShell({
       <main className="workspace-main">
         <header className="topbar">
           <div>
-            <span className="eyebrow">Trung tâm điều hành</span>
             <h1>{heading}</h1>
-            <p>{subheading}</p>
+            {/* <p>{subheading}</p> */}
           </div>
           <div className="topbar-actions">
             <div className="quick-chip">

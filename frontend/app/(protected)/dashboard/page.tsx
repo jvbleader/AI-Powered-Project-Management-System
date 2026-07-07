@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import {
@@ -42,7 +42,7 @@ type DashboardState = {
 
 export default function DashboardPage() {
   const session = useAuthSession();
-  const viewer = normalizeViewer(session?.currentUser);
+  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [dashboardState, setDashboardState] = useState<DashboardState | null>(null);
 

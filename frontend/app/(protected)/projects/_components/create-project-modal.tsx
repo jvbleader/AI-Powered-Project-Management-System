@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { roleLabel } from "@/lib/utils/format";
 import type { UserProfile } from "@/types";
 import { projectApi } from "@/services/api";
-import styles from "../../team/styles/team.module.css";
+import styles from "./create-project-modal.module.css";
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -28,18 +28,6 @@ export function CreateProjectModal({
 
   if (!isOpen) return null;
 
-  function buildProjectCode(name: string) {
-    const words = name
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 3)
-      .map((word) => word.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())
-      .filter(Boolean);
-
-    return `FP-${words.join("").slice(0, 8) || "NEW"}`;
-  }
-
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
@@ -59,24 +47,13 @@ export function CreateProjectModal({
       return;
     }
 
+    const parsedManagerId = parseInt(newProjectManagerId.replace("usr-", ""), 10);
     const created = await projectApi.create({
-      code: buildProjectCode(newProjectName),
       name: newProjectName.trim(),
       description: newProjectDescription.trim(),
-      status: "PLANNING",
-      progress: 0,
-      managerId: newProjectManagerId,
-      memberIds: Array.from(new Set([newProjectManagerId])),
-      startDate: newProjectStart,
-      endDate: newProjectEnd,
-      currentSprintId: null,
-      objectives: ["Xác định phạm vi", "Thiết lập sprint đầu tiên", "Phân bổ thành viên"],
-      metrics: {
-        completedTasks: 0,
-        overdueTasks: 0,
-        logworkCoverage: 0,
-        velocity: 0,
-      },
+      start_date: newProjectStart,
+      end_date: newProjectEnd,
+      manager_id: isNaN(parsedManagerId) ? 1 : parsedManagerId,
     });
 
     setNewProjectName("");
@@ -89,94 +66,95 @@ export function CreateProjectModal({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        className={`password-modal ${styles.addModal}`}
+    <div className={styles.modalBackdrop} role="presentation" onMouseDown={onClose}>
+      <div
+        className={styles.modalSurface}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-project-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="password-modal-header">
+        <div className={styles.modalHeader}>
           <h2 id="add-project-title">Tạo dự án mới</h2>
-          <button type="button" className="close-button" onClick={onClose} aria-label="Đóng popup">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
+          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Đóng popup">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <form className="surface-form" onSubmit={handleCreateProject}>
-          <div className="form-grid">
-            <label>
-              <span>Tên dự án</span>
-              <input
-                value={newProjectName}
-                onChange={(event) => setNewProjectName(event.target.value)}
-                required
-              />
-            </label>
-            <label>
-              <span>Người quản lý</span>
-              <select
-                value={newProjectManagerId}
-                onChange={(event) => setNewProjectManagerId(event.target.value)}
-              >
-                {accessibleUsers.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name} - {roleLabel(user.role)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-grid-span">
-              <span>Mô tả chi tiết</span>
-              <textarea
-                value={newProjectDescription}
-                onChange={(event) => setNewProjectDescription(event.target.value)}
-                required
-                rows={4}
-              />
-            </label>
-            <label>
-              <span>Ngày bắt đầu</span>
-              <input
-                type="date"
-                value={newProjectStart}
-                onChange={(event) => setNewProjectStart(event.target.value)}
-                required
-              />
-            </label>
-            <label>
-              <span>Ngày kết thúc dự kiến</span>
-              <input
-                type="date"
-                value={newProjectEnd}
-                onChange={(event) => setNewProjectEnd(event.target.value)}
-                required
-              />
-            </label>
+        <form onSubmit={handleCreateProject} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+          <div className={styles.modalBody}>
+            <div className={styles.formGrid}>
+              <div className={styles.inputGroup}>
+                <label>Tên dự án</label>
+                <input
+                  className={styles.inputControl}
+                  value={newProjectName}
+                  onChange={(event) => setNewProjectName(event.target.value)}
+                  placeholder="Nhập tên dự án..."
+                  required
+                />
+              </div>
+              <div className={styles.inputGroup}>
+                <label>Người quản lý</label>
+                <select
+                  className={styles.inputControl}
+                  value={newProjectManagerId}
+                  onChange={(event) => setNewProjectManagerId(event.target.value)}
+                >
+                  {accessibleUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} - {roleLabel(user.role)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={`${styles.inputGroup} ${styles.fullWidth}`}>
+                <label>Mô tả chi tiết</label>
+                <textarea
+                  className={styles.inputControl}
+                  value={newProjectDescription}
+                  onChange={(event) => setNewProjectDescription(event.target.value)}
+                  placeholder="Mô tả mục tiêu và phạm vi của dự án..."
+                  required
+                  rows={4}
+                />
+              </div>
+              <div className={styles.inputGroup}>
+                <label>Ngày bắt đầu</label>
+                <input
+                  className={styles.inputControl}
+                  type="date"
+                  value={newProjectStart}
+                  onChange={(event) => setNewProjectStart(event.target.value)}
+                  required
+                />
+              </div>
+              <div className={styles.inputGroup}>
+                <label>Ngày kết thúc dự kiến</label>
+                <input
+                  className={styles.inputControl}
+                  type="date"
+                  value={newProjectEnd}
+                  onChange={(event) => setNewProjectEnd(event.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            {formError ? <p className={styles.errorMessage}>{formError}</p> : null}
           </div>
 
-          {formError ? <p className="form-error">{formError}</p> : null}
-
-          <div className="form-actions">
-            <button type="button" className="secondary-button" onClick={onClose}>
+          <div className={styles.modalFooter}>
+            <button type="button" className={styles.btnSecondary} onClick={onClose}>
               Hủy
             </button>
-            <button type="submit" className="primary-button">
+            <button type="submit" className={styles.btnPrimary}>
               Tạo dự án
             </button>
           </div>
         </form>
-      </section>
+      </div>
     </div>
   );
 }

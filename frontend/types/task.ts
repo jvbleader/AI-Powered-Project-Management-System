@@ -17,6 +17,7 @@ export interface Task {
   priority: TaskPriority;
   assigneeId: string;
   reporterId: string;
+  startDate: string;
   dueDate: string;
   estimateHours: number;
   spentHours: number;
