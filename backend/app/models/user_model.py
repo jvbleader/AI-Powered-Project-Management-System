@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
-from database.connection import Base
-from models.department_model import Department
+from app.core.connection import Base
+from app.models.department_model import Department
 
 
 class User(Base):

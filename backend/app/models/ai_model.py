@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 
-from database.connection import Base
+from app.core.connection import Base
 
 
 class AiConversation(Base):

@@ -11,15 +11,15 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 load_dotenv()
 
-from database.connection import Base
-from models.ai_model import AiConversation, AiMessage
-from models.department_model import Department
-from models.logworks import LogWork
-from models.project_model import Project, ProjectMember, Role
-from models.refresh_token_model import RefreshToken
-from models.sprint_model import Sprint
-from models.task_model import Task, TaskAssignees
-from models.user_model import User
+from app.core.connection import Base
+from app.models.ai_model import AiConversation, AiMessage
+from app.models.department_model import Department
+from app.models.logworks import LogWork
+from app.models.project_model import Project, ProjectMember, Role
+from app.models.refresh_token_model import RefreshToken
+from app.models.sprint_model import Sprint
+from app.models.task_model import Task, TaskAssignees
+from app.models.user_model import User
 
 config = context.config
 

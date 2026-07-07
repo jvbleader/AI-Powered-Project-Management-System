@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from models.department_model import Department
+from app.models.department_model import Department
 
 
 def get_all(db: Session) -> list[Department]:

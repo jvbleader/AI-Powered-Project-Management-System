@@ -3,13 +3,13 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from models.user_model import User
-from repositories import (
+from app.models.user_model import User
+from app.repositories import (
     department_repository,
     refresh_token_repository,
     user_repository,
 )
-from schemas.user_schema import (
+from app.schemas.user_schema import (
     AdminResetPassword,
     UpdateAvatar,
     UpdatePhone,
@@ -17,7 +17,7 @@ from schemas.user_schema import (
     UserRoleUpdate,
     UserStatusUpdate,
 )
-from utils.password_hash import hash_password
+from app.utils.password_hash import hash_password
 
 
 def update_phone(db: Session, current_user: User, data: UpdatePhone) -> User:

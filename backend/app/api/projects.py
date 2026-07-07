@@ -3,10 +3,10 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from database.connection import get_db
-from dependencies import get_current_user
-from models.user_model import User
-from schemas.project_schema import (
+from app.core.connection import get_db
+from app.core.dependencies import get_current_user
+from app.models.user_model import User
+from app.schemas.project_schema import (
     PaginatedProjectsResponse,
     ProjectCreate,
     ProjectDetailResponse,
@@ -17,8 +17,8 @@ from schemas.project_schema import (
     ProjectUpdate,
     RoleResponse,
 )
-from services import project_service
-from utils.project_helpers import build_member_response, build_project_response
+from app.services import project_service
+from app.utils.project_helpers import build_member_response, build_project_response
 
 router = APIRouter()
 

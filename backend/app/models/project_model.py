@@ -4,7 +4,7 @@ from enum import Enum
 from sqlalchemy import (Column, Date, DateTime, ForeignKey, Integer, String,
                         Text)
 
-from database.connection import Base
+from app.core.connection import Base
 
 
 class ProjectStatus(Enum):
