@@ -53,7 +53,11 @@ export function PersonalInfo({ user, onUpdate }: PersonalInfoProps) {
   }
 
   const createdAtFormatted = user.lastUpdatedAt
-    ? new Date(user.lastUpdatedAt).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })
+    ? new Date(user.lastUpdatedAt).toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
     : "Chưa có dữ liệu";
 
   const infoItems = [
@@ -171,7 +175,11 @@ export function PersonalInfo({ user, onUpdate }: PersonalInfoProps) {
                     >
                       {isSavingPhone ? "Đang lưu..." : "Lưu"}
                     </button>
-                    <button type="button" className={styles.cancelButton} onClick={handleCancelEditPhone}>
+                    <button
+                      type="button"
+                      className={styles.cancelButton}
+                      onClick={handleCancelEditPhone}
+                    >
                       Hủy
                     </button>
                   </div>
@@ -183,14 +191,21 @@ export function PersonalInfo({ user, onUpdate }: PersonalInfoProps) {
                   ) : (
                     <span className={styles.phoneEmpty}>Chưa cập nhật</span>
                   )}
-                  <button type="button" className={styles.editIconOnlyButton} onClick={handleStartEditPhone} title="Chỉnh sửa số điện thoại">
+                  <button
+                    type="button"
+                    className={styles.editIconOnlyButton}
+                    onClick={handleStartEditPhone}
+                    title="Chỉnh sửa số điện thoại"
+                  >
                     <svg viewBox="0 0 24 24">
                       <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
                     </svg>
                   </button>
                 </div>
               )}
-              {phoneError ? <p className={`form-error ${styles.phoneError}`}>{phoneError}</p> : null}
+              {phoneError ? (
+                <p className={`form-error ${styles.phoneError}`}>{phoneError}</p>
+              ) : null}
             </dd>
           </dl>
         </div>

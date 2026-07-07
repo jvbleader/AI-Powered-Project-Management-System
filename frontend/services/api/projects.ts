@@ -8,7 +8,9 @@ export const projectApi = {
   },
 
   async get(projectId: string, viewer?: UserProfile | null) {
-    const accessibleProject = filterProjects(undefined, viewer).find((project) => project.id === projectId) ?? getProject(projectId);
+    const accessibleProject =
+      filterProjects(undefined, viewer).find((project) => project.id === projectId) ??
+      getProject(projectId);
     return respond(accessibleProject, 80);
   },
 

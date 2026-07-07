@@ -22,7 +22,13 @@ import {
   isPrivilegedUser,
   normalizeViewer,
 } from "@/lib/mock/permissions";
-import { formatDate, formatRange, healthToneLabel, roleLabel, taskStatusLabel } from "@/lib/utils/format";
+import {
+  formatDate,
+  formatRange,
+  healthToneLabel,
+  roleLabel,
+  taskStatusLabel,
+} from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
 import type { DashboardOverview, EnrichedTask, Project, Sprint, WorkspaceShellData } from "@/types";
 
@@ -44,18 +50,17 @@ export default function DashboardPage() {
     let isCancelled = false;
 
     async function loadDashboard() {
-      const [{ data: projects }] = await Promise.all([
-        projectApi.list(undefined, viewer),
-      ]);
+      const [{ data: projects }] = await Promise.all([projectApi.list(undefined, viewer)]);
 
       const projectId = selectedProjectId ?? projects[0]?.id;
 
-      const [{ data: shellData }, { data: overview }, { data: sprints }, { data: tasks }] = await Promise.all([
-        workspaceApi.getShellData(viewer),
-        dashboardApi.getOverview(viewer, projectId),
-        sprintApi.list(undefined, viewer),
-        taskApi.getEnrichedBoard(undefined, viewer),
-      ]);
+      const [{ data: shellData }, { data: overview }, { data: sprints }, { data: tasks }] =
+        await Promise.all([
+          workspaceApi.getShellData(viewer),
+          dashboardApi.getOverview(viewer, projectId),
+          sprintApi.list(undefined, viewer),
+          taskApi.getEnrichedBoard(undefined, viewer),
+        ]);
 
       if (isCancelled) {
         return;
@@ -90,7 +95,9 @@ export default function DashboardPage() {
 
   const projectList = dashboardState?.projects ?? [];
   const selectedProject =
-    projectList.find((project) => project.id === selectedProjectId) ?? dashboardState?.overview.activeProject ?? null;
+    projectList.find((project) => project.id === selectedProjectId) ??
+    dashboardState?.overview.activeProject ??
+    null;
   const selectedProjectTasks = selectedProject
     ? (dashboardState?.tasks ?? []).filter((task) => task.projectId === selectedProject.id)
     : [];
@@ -133,7 +140,11 @@ export default function DashboardPage() {
           <p>{memberScopedText}</p>
         </div>
         <StatusPill
-          label={dashboardState?.overview.activeSprint ? dashboardState.overview.activeSprint.name : "Đang đồng bộ"}
+          label={
+            dashboardState?.overview.activeSprint
+              ? dashboardState.overview.activeSprint.name
+              : "Đang đồng bộ"
+          }
           tone={dashboardState?.overview.activeSprint?.health ?? "accent"}
         />
       </section>
@@ -147,7 +158,13 @@ export default function DashboardPage() {
             selectedProject ? (
               <StatusPill
                 label={`${selectedProject.progress}% hoàn thành`}
-                tone={selectedProject.progress >= 70 ? "on-track" : selectedProject.progress >= 40 ? "watch" : "critical"}
+                tone={
+                  selectedProject.progress >= 70
+                    ? "on-track"
+                    : selectedProject.progress >= 40
+                      ? "watch"
+                      : "critical"
+                }
               />
             ) : undefined
           }
@@ -194,7 +211,13 @@ export default function DashboardPage() {
 
       <section className="stat-grid">
         {(dashboardState?.overview.stats ?? []).map((stat) => (
-          <StatCard key={stat.label} label={stat.label} value={stat.value} note={stat.change} tone={stat.tone} />
+          <StatCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            note={stat.change}
+            tone={stat.tone}
+          />
         ))}
       </section>
 
@@ -221,7 +244,10 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <EmptyState title="Chưa có dữ liệu dự án" description="Danh sách này sẽ hiện khi bạn được gán vào ít nhất một dự án." />
+            <EmptyState
+              title="Chưa có dữ liệu dự án"
+              description="Danh sách này sẽ hiện khi bạn được gán vào ít nhất một dự án."
+            />
           )}
         </Surface>
 
@@ -235,7 +261,10 @@ export default function DashboardPage() {
               }))}
             />
           ) : (
-            <EmptyState title="Chưa có sprint" description="Project này chưa được lập sprint hoặc sprint chưa nằm trong phạm vi của bạn." />
+            <EmptyState
+              title="Chưa có sprint"
+              description="Project này chưa được lập sprint hoặc sprint chưa nằm trong phạm vi của bạn."
+            />
           )}
         </Surface>
       </section>
@@ -257,7 +286,10 @@ export default function DashboardPage() {
               ]}
             />
           ) : (
-            <EmptyState title="Chưa có sprint hiện tại" description="Khi sprint được khởi tạo, phần này sẽ hiển thị tiến độ và sức khỏe sprint." />
+            <EmptyState
+              title="Chưa có sprint hiện tại"
+              description="Khi sprint được khởi tạo, phần này sẽ hiển thị tiến độ và sức khỏe sprint."
+            />
           )}
         </Surface>
 
@@ -278,7 +310,10 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <EmptyState title="Không có task quá hạn" description="Phần này sẽ tự động chuyển đỏ khi có công việc trễ deadline." />
+            <EmptyState
+              title="Không có task quá hạn"
+              description="Phần này sẽ tự động chuyển đỏ khi có công việc trễ deadline."
+            />
           )}
         </Surface>
       </section>
@@ -300,7 +335,10 @@ export default function DashboardPage() {
               })}
             </div>
           ) : (
-            <EmptyState title="Chưa có logwork" description="Khi có bản ghi thời gian làm việc, phần này sẽ hiện ngay trên dashboard." />
+            <EmptyState
+              title="Chưa có logwork"
+              description="Khi có bản ghi thời gian làm việc, phần này sẽ hiện ngay trên dashboard."
+            />
           )}
         </Surface>
 
@@ -321,7 +359,10 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <EmptyState title="Chưa có task" description="Project này chưa có task nào trong phạm vi hiển thị hiện tại." />
+            <EmptyState
+              title="Chưa có task"
+              description="Project này chưa có task nào trong phạm vi hiển thị hiện tại."
+            />
           )}
         </Surface>
       </section>

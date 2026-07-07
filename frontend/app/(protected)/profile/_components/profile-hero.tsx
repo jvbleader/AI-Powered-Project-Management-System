@@ -51,7 +51,9 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
         onUpdate(updatedProfile);
         setAvatarNotice("Đã cập nhật ảnh đại diện.");
       } catch (error) {
-        setAvatarNotice(error instanceof Error ? error.message : "Không thể cập nhật ảnh đại diện.");
+        setAvatarNotice(
+          error instanceof Error ? error.message : "Không thể cập nhật ảnh đại diện.",
+        );
       } finally {
         event.target.value = "";
       }

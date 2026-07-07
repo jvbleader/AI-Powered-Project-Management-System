@@ -48,7 +48,8 @@ export default function TeamPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<UserDirectoryFilters["status"]>("ALL");
   const [roleFilter, setRoleFilter] = useState<UserDirectoryFilters["role"]>("ALL");
-  const [departmentFilter, setDepartmentFilter] = useState<UserDirectoryFilters["department"]>("ALL");
+  const [departmentFilter, setDepartmentFilter] =
+    useState<UserDirectoryFilters["department"]>("ALL");
   const [pageSize, setPageSize] = useState(8);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -84,7 +85,12 @@ export default function TeamPage() {
     let isCancelled = false;
     async function loadStaticData() {
       try {
-        const [{ data: nextShellData }, { data: nextUsers }, { data: nextTasks }, { data: nextDepartments }] = await Promise.all([
+        const [
+          { data: nextShellData },
+          { data: nextUsers },
+          { data: nextTasks },
+          { data: nextDepartments },
+        ] = await Promise.all([
           workspaceApi.getShellData(currentActor),
           userApi.list(currentActor),
           taskApi.getEnrichedBoard(undefined, currentActor),
@@ -97,13 +103,18 @@ export default function TeamPage() {
         setTaskBoard(nextTasks);
         setDepartments(nextDepartments);
       } catch (loadError) {
-        if (!isCancelled) setError(loadError instanceof Error ? loadError.message : "Không thể tải danh sách người dùng.");
+        if (!isCancelled)
+          setError(
+            loadError instanceof Error ? loadError.message : "Không thể tải danh sách người dùng.",
+          );
       } finally {
         if (!isCancelled) setIsLoading(false);
       }
     }
     void loadStaticData();
-    return () => { isCancelled = true; };
+    return () => {
+      isCancelled = true;
+    };
   }, [currentActor, reloadKey]);
 
   useEffect(() => {
@@ -111,103 +122,169 @@ export default function TeamPage() {
     async function loadDirectory() {
       try {
         const { data } = await userApi.listDirectory(
-          { search, status: statusFilter, role: roleFilter, department: departmentFilter, page, pageSize },
+          {
+            search,
+            status: statusFilter,
+            role: roleFilter,
+            department: departmentFilter,
+            page,
+            pageSize,
+          },
           currentActor,
         );
         if (isCancelled) return;
         setDirectory(data);
         if (data.page !== page) setPage(data.page);
       } catch (loadError) {
-        if (!isCancelled) setError(loadError instanceof Error ? loadError.message : "Không thể tải bảng người dùng.");
+        if (!isCancelled)
+          setError(
+            loadError instanceof Error ? loadError.message : "Không thể tải bảng người dùng.",
+          );
       }
     }
     void loadDirectory();
-    return () => { isCancelled = true; };
+    return () => {
+      isCancelled = true;
+    };
   }, [currentActor, page, pageSize, reloadKey, roleFilter, departmentFilter, search, statusFilter]);
 
   const taskSummaryByUserId = useMemo(() => {
-    return taskBoard.reduce<Record<string, { total: number; open: number; blocked: number }>>((summary, task) => {
-      const entry = summary[task.assigneeId] ?? { total: 0, open: 0, blocked: 0 };
-      entry.total += 1;
-      if (task.status !== "DONE") entry.open += 1;
-      if (task.status === "BLOCKED") entry.blocked += 1;
-      summary[task.assigneeId] = entry;
-      return summary;
-    }, {});
+    return taskBoard.reduce<Record<string, { total: number; open: number; blocked: number }>>(
+      (summary, task) => {
+        const entry = summary[task.assigneeId] ?? { total: 0, open: 0, blocked: 0 };
+        entry.total += 1;
+        if (task.status !== "DONE") entry.open += 1;
+        if (task.status === "BLOCKED") entry.blocked += 1;
+        summary[task.assigneeId] = entry;
+        return summary;
+      },
+      {},
+    );
   }, [taskBoard]);
 
   const selectedUser = useMemo(() => {
     if (!selectedUserId) return null;
-    return allUsers.find((user) => user.id === selectedUserId) ?? directory.items.find((user) => user.id === selectedUserId) ?? null;
+    return (
+      allUsers.find((user) => user.id === selectedUserId) ??
+      directory.items.find((user) => user.id === selectedUserId) ??
+      null
+    );
   }, [allUsers, directory.items, selectedUserId]);
 
   const selectedUserTaskSummary = selectedUser
-    ? taskSummaryByUserId[selectedUser.id] ?? { total: 0, open: 0, blocked: 0 }
+    ? (taskSummaryByUserId[selectedUser.id] ?? { total: 0, open: 0, blocked: 0 })
     : { total: 0, open: 0, blocked: 0 };
 
   function patchUser(updatedUser: UserProfile) {
-    setAllUsers((current) => current.map((user) => (user.id === updatedUser.id ? updatedUser : user)));
+    setAllUsers((current) =>
+      current.map((user) => (user.id === updatedUser.id ? updatedUser : user)),
+    );
     setDirectory((current) => ({
       ...current,
       items: current.items.map((user) => (user.id === updatedUser.id ? updatedUser : user)),
     }));
-    if (session?.currentUser?.email && session.currentUser.email.toLowerCase() === updatedUser.email.toLowerCase()) {
+    if (
+      session?.currentUser?.email &&
+      session.currentUser.email.toLowerCase() === updatedUser.email.toLowerCase()
+    ) {
       updateSessionCurrentUser({ ...session.currentUser, ...updatedUser });
     }
   }
 
   async function handleSaveStatus() {
     if (!selectedUser) return;
-    setError(null); setNotice(null); setIsSavingStatus(true);
+    setError(null);
+    setNotice(null);
+    setIsSavingStatus(true);
     try {
-      const { data: updatedUser } = await userApi.updateStatus({ userId: selectedUser.id, status: statusDraft }, currentActor);
+      const { data: updatedUser } = await userApi.updateStatus(
+        { userId: selectedUser.id, status: statusDraft },
+        currentActor,
+      );
       patchUser(updatedUser);
       setReloadKey((c) => c + 1);
       setNotice(`Đã cập nhật trạng thái của ${updatedUser.name} thành công.`);
       setSelectedUserId(null);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Không thể cập nhật trạng thái.");
-    } finally { setIsSavingStatus(false); }
+    } finally {
+      setIsSavingStatus(false);
+    }
   }
 
   async function handleSaveRoles() {
     if (!selectedUser) return;
-    setError(null); setNotice(null); setIsSavingRoles(true);
+    setError(null);
+    setNotice(null);
+    setIsSavingRoles(true);
     try {
-      const { data: updatedUser } = await userApi.updateRoles({ userId: selectedUser.id, roles: roleDraft, department: departmentDraft }, currentActor);
+      const { data: updatedUser } = await userApi.updateRoles(
+        { userId: selectedUser.id, roles: roleDraft, department: departmentDraft },
+        currentActor,
+      );
       patchUser(updatedUser);
       setReloadKey((c) => c + 1);
       setNotice(`Đã cập nhật chức danh của ${updatedUser.name} thành công.`);
       setSelectedUserId(null);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Không thể cập nhật quyền truy cập.");
-    } finally { setIsSavingRoles(false); }
+      setError(
+        saveError instanceof Error ? saveError.message : "Không thể cập nhật quyền truy cập.",
+      );
+    } finally {
+      setIsSavingRoles(false);
+    }
   }
 
   async function handleResetPassword() {
     if (!selectedUser) return;
-    setError(null); setNotice(null); setIsResettingPassword(true);
+    setError(null);
+    setNotice(null);
+    setIsResettingPassword(true);
     try {
       await userApi.resetPassword({ email: selectedUser.email, newPassword: "default1234" });
-      setNotice(`Đã khôi phục mật khẩu của ${selectedUser.name || selectedUser.email} về mặc định (default1234).`);
+      setNotice(
+        `Đã khôi phục mật khẩu của ${selectedUser.name || selectedUser.email} về mặc định (default1234).`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể đặt lại mật khẩu.");
-    } finally { setIsResettingPassword(false); }
+    } finally {
+      setIsResettingPassword(false);
+    }
   }
 
   async function handleAddUser() {
-    if (!addName.trim() || !addEmail.trim()) { setError("Vui lòng nhập đầy đủ Họ tên và Email."); return; }
-    setError(null); setNotice(null); setIsAddingUser(true);
+    if (!addName.trim() || !addEmail.trim()) {
+      setError("Vui lòng nhập đầy đủ Họ tên và Email.");
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    setIsAddingUser(true);
     try {
-      const response = await userApi.create({ name: addName.trim(), email: addEmail.trim(), role: addRole, isAdmin, password: addPassword || "default1234", department: addDepartment });
+      const response = await userApi.create({
+        name: addName.trim(),
+        email: addEmail.trim(),
+        role: addRole,
+        isAdmin,
+        password: addPassword || "default1234",
+        department: addDepartment,
+      });
       const newUser = response.data;
       setAllUsers((current) => [newUser, ...current]);
       setReloadKey((c) => c + 1);
       setNotice(`Đã thêm tài khoản cho ${newUser.name} thành công.`);
-      setIsAddModalOpen(false); setAddName(""); setAddEmail(""); setAddDepartment(""); setAddRole("MEMBER"); setAddPassword("default1234"); setIsAdmin(false);
+      setIsAddModalOpen(false);
+      setAddName("");
+      setAddEmail("");
+      setAddDepartment("");
+      setAddRole("MEMBER");
+      setAddPassword("default1234");
+      setIsAdmin(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể thêm nhân sự.");
-    } finally { setIsAddingUser(false); }
+    } finally {
+      setIsAddingUser(false);
+    }
   }
 
   return (
@@ -221,13 +298,25 @@ export default function TeamPage() {
       <div className={styles.pageStack}>
         <TeamFilter
           search={search}
-          onSearchChange={(v) => { setSearch(v); setPage(1); }}
+          onSearchChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
           statusFilter={statusFilter}
-          onStatusFilterChange={(v) => { setStatusFilter(v); setPage(1); }}
+          onStatusFilterChange={(v) => {
+            setStatusFilter(v);
+            setPage(1);
+          }}
           roleFilter={roleFilter}
-          onRoleFilterChange={(v) => { setRoleFilter(v); setPage(1); }}
+          onRoleFilterChange={(v) => {
+            setRoleFilter(v);
+            setPage(1);
+          }}
           departmentFilter={departmentFilter}
-          onDepartmentFilterChange={(v) => { setDepartmentFilter(v); setPage(1); }}
+          onDepartmentFilterChange={(v) => {
+            setDepartmentFilter(v);
+            setPage(1);
+          }}
           departments={departments}
         />
 

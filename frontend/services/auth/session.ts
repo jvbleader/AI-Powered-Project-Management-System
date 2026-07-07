@@ -37,7 +37,9 @@ function toClientSessionSnapshot(session: AuthSession) {
 }
 
 function readStoredSessionSnapshot() {
-  return window.sessionStorage.getItem(SESSION_STORAGE_KEY) ?? window.localStorage.getItem(STORAGE_KEY);
+  return (
+    window.sessionStorage.getItem(SESSION_STORAGE_KEY) ?? window.localStorage.getItem(STORAGE_KEY)
+  );
 }
 
 function writeStoredSessionSnapshot(session: AuthSession, remember: boolean) {
@@ -65,7 +67,6 @@ function writeStoredSessionSnapshot(session: AuthSession, remember: boolean) {
     }
   }
 }
-
 
 function getStoredSessionTarget() {
   if (window.localStorage.getItem(STORAGE_KEY) !== null) {

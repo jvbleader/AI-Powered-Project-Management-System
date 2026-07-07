@@ -12,7 +12,13 @@ interface CreateProjectModalProps {
   onProjectCreated: (projectId: string) => void;
 }
 
-export function CreateProjectModal({ isOpen, onClose, viewerId, accessibleUsers, onProjectCreated }: CreateProjectModalProps) {
+export function CreateProjectModal({
+  isOpen,
+  onClose,
+  viewerId,
+  accessibleUsers,
+  onProjectCreated,
+}: CreateProjectModalProps) {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [newProjectStart, setNewProjectStart] = useState("2026-07-01");
@@ -30,7 +36,7 @@ export function CreateProjectModal({ isOpen, onClose, viewerId, accessibleUsers,
       .slice(0, 3)
       .map((word) => word.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())
       .filter(Boolean);
-  
+
     return `FP-${words.join("").slice(0, 8) || "NEW"}`;
   }
 
@@ -38,7 +44,12 @@ export function CreateProjectModal({ isOpen, onClose, viewerId, accessibleUsers,
     event.preventDefault();
     setFormError(null);
 
-    if (!newProjectName.trim() || !newProjectDescription.trim() || !newProjectStart || !newProjectEnd) {
+    if (
+      !newProjectName.trim() ||
+      !newProjectDescription.trim() ||
+      !newProjectStart ||
+      !newProjectEnd
+    ) {
       setFormError("Vui lòng nhập đầy đủ tên dự án, mô tả, ngày bắt đầu và ngày kết thúc.");
       return;
     }
@@ -72,7 +83,7 @@ export function CreateProjectModal({ isOpen, onClose, viewerId, accessibleUsers,
     setNewProjectDescription("");
     setNewProjectStart("2026-07-01");
     setNewProjectEnd("2026-08-15");
-    
+
     onProjectCreated(created.data.id);
     onClose();
   }
@@ -89,7 +100,14 @@ export function CreateProjectModal({ isOpen, onClose, viewerId, accessibleUsers,
         <div className="password-modal-header">
           <h2 id="add-project-title">Tạo dự án mới</h2>
           <button type="button" className="close-button" onClick={onClose} aria-label="Đóng popup">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -99,11 +117,18 @@ export function CreateProjectModal({ isOpen, onClose, viewerId, accessibleUsers,
           <div className="form-grid">
             <label>
               <span>Tên dự án</span>
-              <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} required />
+              <input
+                value={newProjectName}
+                onChange={(event) => setNewProjectName(event.target.value)}
+                required
+              />
             </label>
             <label>
               <span>Người quản lý</span>
-              <select value={newProjectManagerId} onChange={(event) => setNewProjectManagerId(event.target.value)}>
+              <select
+                value={newProjectManagerId}
+                onChange={(event) => setNewProjectManagerId(event.target.value)}
+              >
                 {accessibleUsers.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.name} - {roleLabel(user.role)}
@@ -122,11 +147,21 @@ export function CreateProjectModal({ isOpen, onClose, viewerId, accessibleUsers,
             </label>
             <label>
               <span>Ngày bắt đầu</span>
-              <input type="date" value={newProjectStart} onChange={(event) => setNewProjectStart(event.target.value)} required />
+              <input
+                type="date"
+                value={newProjectStart}
+                onChange={(event) => setNewProjectStart(event.target.value)}
+                required
+              />
             </label>
             <label>
               <span>Ngày kết thúc dự kiến</span>
-              <input type="date" value={newProjectEnd} onChange={(event) => setNewProjectEnd(event.target.value)} required />
+              <input
+                type="date"
+                value={newProjectEnd}
+                onChange={(event) => setNewProjectEnd(event.target.value)}
+                required
+              />
             </label>
           </div>
 

@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import { signOut } from "@/services/auth/session";
-import { authApi } from "@/services/api";
 import { AssistantBubble } from "@/components/assistant-bubble";
 import { useAuthSession } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
@@ -139,7 +138,12 @@ export function WorkspaceShell({
 
             {isProfileMenuOpen ? (
               <div className="profile-menu" role="menu" aria-label="Profile actions">
-                <button type="button" className="profile-menu-item profile-menu-button" role="menuitem" onClick={handleOpenProfile}>
+                <button
+                  type="button"
+                  className="profile-menu-item profile-menu-button"
+                  role="menuitem"
+                  onClick={handleOpenProfile}
+                >
                   <span className="profile-menu-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24">
                       <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.8-6 4v1h12v-1c0-2.2-2.7-4-6-4Z" />
@@ -151,7 +155,12 @@ export function WorkspaceShell({
                   </span>
                 </button>
 
-                <button type="button" className="profile-menu-item profile-menu-button" role="menuitem" onClick={handleOpenPasswordModal}>
+                <button
+                  type="button"
+                  className="profile-menu-item profile-menu-button"
+                  role="menuitem"
+                  onClick={handleOpenPasswordModal}
+                >
                   <span className="profile-menu-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24">
                       <path d="M17 9V7a5 5 0 0 0-10 0v2H5v11h14V9Zm-8 0V7a3 3 0 0 1 6 0v2Zm2 4h2v4h-2Z" />
@@ -163,7 +172,12 @@ export function WorkspaceShell({
                   </span>
                 </button>
 
-                <button type="button" className="profile-menu-item profile-menu-button" role="menuitem" onClick={handleSignOut}>
+                <button
+                  type="button"
+                  className="profile-menu-item profile-menu-button"
+                  role="menuitem"
+                  onClick={handleSignOut}
+                >
                   <span className="profile-menu-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24">
                       <path d="M10 17v-2h4V9h-4V7h7v10Zm-1-3-3-3 3-3v2h5v2H9Z" />

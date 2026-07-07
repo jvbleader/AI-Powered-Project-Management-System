@@ -1,13 +1,7 @@
 import { Task, TaskComment, TaskFilters, UserProfile } from "@/types";
 import { DEMO_TODAY } from "@/lib/mock/permissions";
 import { tasks, taskComments } from "@/lib/mock/data";
-import {
-  enrichTask,
-  filterAttachments,
-  filterComments,
-  filterTasks,
-  respond,
-} from "./core";
+import { enrichTask, filterAttachments, filterComments, filterTasks, respond } from "./core";
 
 export const taskApi = {
   async list(filters?: TaskFilters, viewer?: UserProfile | null) {

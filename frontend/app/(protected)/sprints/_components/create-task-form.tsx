@@ -18,7 +18,13 @@ type CreateTaskFormProps = {
   onClearError: () => void;
 };
 
-export function CreateTaskForm({ users, defaultAssigneeId, onSubmit, error, onClearError }: CreateTaskFormProps) {
+export function CreateTaskForm({
+  users,
+  defaultAssigneeId,
+  onSubmit,
+  error,
+  onClearError,
+}: CreateTaskFormProps) {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("2026-07-04");
@@ -55,11 +61,19 @@ export function CreateTaskForm({ users, defaultAssigneeId, onSubmit, error, onCl
         <div className="form-grid">
           <label>
             <span>Tiêu đề</span>
-            <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} required />
+            <input
+              value={taskTitle}
+              onChange={(event) => setTaskTitle(event.target.value)}
+              required
+            />
           </label>
           <label>
             <span>Người phụ trách</span>
-            <select value={taskAssigneeId} onChange={(event) => setTaskAssigneeId(event.target.value)} required>
+            <select
+              value={taskAssigneeId}
+              onChange={(event) => setTaskAssigneeId(event.target.value)}
+              required
+            >
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name} - {roleLabel(user.role)}
@@ -69,19 +83,38 @@ export function CreateTaskForm({ users, defaultAssigneeId, onSubmit, error, onCl
           </label>
           <label className="form-grid-span">
             <span>Mô tả</span>
-            <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} rows={4} required />
+            <textarea
+              value={taskDescription}
+              onChange={(event) => setTaskDescription(event.target.value)}
+              rows={4}
+              required
+            />
           </label>
           <label>
             <span>Hạn chót</span>
-            <input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} required />
+            <input
+              type="date"
+              value={taskDueDate}
+              onChange={(event) => setTaskDueDate(event.target.value)}
+              required
+            />
           </label>
           <label>
             <span>Ước tính (giờ)</span>
-            <input type="number" min="1" value={taskEstimateHours} onChange={(event) => setTaskEstimateHours(event.target.value)} required />
+            <input
+              type="number"
+              min="1"
+              value={taskEstimateHours}
+              onChange={(event) => setTaskEstimateHours(event.target.value)}
+              required
+            />
           </label>
           <label>
             <span>Mức ưu tiên</span>
-            <select value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as EnrichedTask["priority"])}>
+            <select
+              value={taskPriority}
+              onChange={(event) => setTaskPriority(event.target.value as EnrichedTask["priority"])}
+            >
               <option value="MEDIUM">Trung bình</option>
               <option value="HIGH">Cao</option>
               <option value="CRITICAL">Khẩn cấp</option>

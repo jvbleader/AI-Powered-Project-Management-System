@@ -58,7 +58,14 @@ export function LogworkModal({ isOpen, onClose, taskId, userId }: LogworkModalPr
         <div className="password-modal-header">
           <h2 id="logwork-title">Logwork</h2>
           <button type="button" className="close-button" onClick={onClose} aria-label="Đóng popup">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -68,11 +75,22 @@ export function LogworkModal({ isOpen, onClose, taskId, userId }: LogworkModalPr
           <div className="form-grid">
             <label>
               <span>Số giờ (h)</span>
-              <input type="number" step="0.5" value={hours} onChange={(event) => setHours(event.target.value)} required />
+              <input
+                type="number"
+                step="0.5"
+                value={hours}
+                onChange={(event) => setHours(event.target.value)}
+                required
+              />
             </label>
             <label>
               <span>Ngày thực hiện</span>
-              <input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+              <input
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+                required
+              />
             </label>
             <label className="form-grid-span">
               <span>Mô tả công việc đã làm</span>

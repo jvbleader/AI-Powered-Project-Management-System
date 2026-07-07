@@ -28,7 +28,9 @@ function writeAvatarMap(nextMap: AvatarMap) {
       window.localStorage.clear();
       window.sessionStorage.clear();
       // Try again after clearing
-      try { window.localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(nextMap)); } catch {}
+      try {
+        window.localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(nextMap));
+      } catch {}
     }
   }
 }

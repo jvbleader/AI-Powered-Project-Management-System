@@ -50,7 +50,7 @@ export default function LoginForm() {
             onChange={(event) => handleRememberChange(event.target.checked)}
             type="checkbox"
           />
-            <span>Ghi nhớ đăng nhập</span>
+          <span>Ghi nhớ đăng nhập</span>
         </label>
       </div>
 

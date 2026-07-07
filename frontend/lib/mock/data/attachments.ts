@@ -20,4 +20,3 @@ export const taskAttachments: TaskAttachment[] = [
     sizeLabel: "640 KB",
   },
 ];
-

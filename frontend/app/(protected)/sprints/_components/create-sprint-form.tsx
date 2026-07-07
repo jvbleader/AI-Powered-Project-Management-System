@@ -4,12 +4,23 @@ import { Project } from "@/types";
 
 type CreateSprintFormProps = {
   projectList: Project[];
-  onSubmit: (data: { name: string; projectId: string; goal: string; start: string; end: string }) => Promise<void>;
+  onSubmit: (data: {
+    name: string;
+    projectId: string;
+    goal: string;
+    start: string;
+    end: string;
+  }) => Promise<void>;
   error: string | null;
   onClearError: () => void;
 };
 
-export function CreateSprintForm({ projectList, onSubmit, error, onClearError }: CreateSprintFormProps) {
+export function CreateSprintForm({
+  projectList,
+  onSubmit,
+  error,
+  onClearError,
+}: CreateSprintFormProps) {
   const [sprintName, setSprintName] = useState("");
   const [sprintProjectId, setSprintProjectId] = useState("");
   const [sprintGoal, setSprintGoal] = useState("");
@@ -37,11 +48,19 @@ export function CreateSprintForm({ projectList, onSubmit, error, onClearError }:
         <div className="form-grid">
           <label>
             <span>Tên sprint</span>
-            <input value={sprintName} onChange={(event) => setSprintName(event.target.value)} required />
+            <input
+              value={sprintName}
+              onChange={(event) => setSprintName(event.target.value)}
+              required
+            />
           </label>
           <label>
             <span>Dự án</span>
-            <select value={sprintProjectId} onChange={(event) => setSprintProjectId(event.target.value)} required>
+            <select
+              value={sprintProjectId}
+              onChange={(event) => setSprintProjectId(event.target.value)}
+              required
+            >
               <option value="">Chọn dự án</option>
               {projectList.map((project) => (
                 <option key={project.id} value={project.id}>
@@ -52,15 +71,30 @@ export function CreateSprintForm({ projectList, onSubmit, error, onClearError }:
           </label>
           <label className="form-grid-span">
             <span>Mục tiêu trọng tâm</span>
-            <textarea value={sprintGoal} onChange={(event) => setSprintGoal(event.target.value)} rows={3} required />
+            <textarea
+              value={sprintGoal}
+              onChange={(event) => setSprintGoal(event.target.value)}
+              rows={3}
+              required
+            />
           </label>
           <label>
             <span>Ngày bắt đầu</span>
-            <input type="date" value={sprintStart} onChange={(event) => setSprintStart(event.target.value)} required />
+            <input
+              type="date"
+              value={sprintStart}
+              onChange={(event) => setSprintStart(event.target.value)}
+              required
+            />
           </label>
           <label>
             <span>Ngày kết thúc</span>
-            <input type="date" value={sprintEnd} onChange={(event) => setSprintEnd(event.target.value)} required />
+            <input
+              type="date"
+              value={sprintEnd}
+              onChange={(event) => setSprintEnd(event.target.value)}
+              required
+            />
           </label>
         </div>
         {error ? <p className="form-error">{error}</p> : null}

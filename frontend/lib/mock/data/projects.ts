@@ -55,8 +55,7 @@ export const projects: Project[] = [
     id: "prj-mobile",
     code: "FP-MOBILE",
     name: "Executive Mobile Snapshot",
-    description:
-      "A lightweight summary surface so leaders can inspect sprint health from mobile.",
+    description: "A lightweight summary surface so leaders can inspect sprint health from mobile.",
     status: "PLANNING",
     progress: 18,
     managerId: "usr-manager",
@@ -77,4 +76,3 @@ export const projects: Project[] = [
     },
   },
 ];
-

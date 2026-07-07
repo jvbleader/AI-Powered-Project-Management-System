@@ -30,7 +30,6 @@ export const aiInsights: AiInsight[] = [
   },
 ];
 
-
 export const aiMessages: AiMessage[] = [
   {
     id: "msg-001",
@@ -56,31 +55,32 @@ export const aiMessages: AiMessage[] = [
   },
 ];
 
-
 export const aiReports: AiReport[] = [
   {
     id: "rep-001",
     title: "Sức khỏe sprint theo tuần",
-    summary: "Sprint đang tiến triển tốt, nhưng nhóm analytics và quy tắc logwork vẫn cần contract backend chặt chẽ hơn.",
+    summary:
+      "Sprint đang tiến triển tốt, nhưng nhóm analytics và quy tắc logwork vẫn cần contract backend chặt chẽ hơn.",
     chartLabel: "Burn-up và chồng quá hạn",
     metric: "68% hoàn thành",
   },
   {
     id: "rep-002",
     title: "Danh sách theo dõi công suất",
-    summary: "Năng lực backend là điểm nghẽn rõ nhất trong toàn bộ danh mục dự án ở thời điểm hiện tại.",
+    summary:
+      "Năng lực backend là điểm nghẽn rõ nhất trong toàn bộ danh mục dự án ở thời điểm hiện tại.",
     chartLabel: "Biểu đồ công suất theo thành viên",
     metric: "2 thành viên vượt 90%",
   },
   {
     id: "rep-003",
     title: "Đánh giá mức sẵn sàng của AI",
-    summary: "Chế độ tra cứu nhanh sẵn sàng hơn báo cáo dài vì contract dữ liệu hiện rõ ràng và ổn định hơn.",
+    summary:
+      "Chế độ tra cứu nhanh sẵn sàng hơn báo cáo dài vì contract dữ liệu hiện rõ ràng và ổn định hơn.",
     chartLabel: "Radar trưởng thành luồng intent",
     metric: "Còn 3 contract chờ chốt",
   },
 ];
-
 
 export const suggestedPrompts = [
   "Sprint hiện tại đang bị chặn ở những điểm nào?",
@@ -88,4 +88,3 @@ export const suggestedPrompts = [
   "Tóm tắt các công việc quá hạn trên toàn bộ dự án.",
   "Tạo một báo cáo tuần ngắn gọn dành cho quản lý.",
 ];
-

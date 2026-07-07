@@ -282,4 +282,3 @@ export const tasks: Task[] = [
     lastActivity: "2026-06-28T08:25:00Z",
   },
 ];
-

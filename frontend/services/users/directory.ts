@@ -68,7 +68,9 @@ function getFallbackPresence(status: UserStatus, focusScore: number) {
   return focusScore >= 85 ? "focus" : "online";
 }
 
-function normalizeUserProfile(user: Partial<UserProfile> & Pick<UserProfile, "id" | "name" | "email">) {
+function normalizeUserProfile(
+  user: Partial<UserProfile> & Pick<UserProfile, "id" | "name" | "email">,
+) {
   const roles = sortRoles(
     (user.roles?.length ? user.roles : user.role ? [user.role] : ["MEMBER"]) as UserRole[],
   );
@@ -154,7 +156,10 @@ function writeStoredDirectory(users: UserProfile[]) {
   }
 }
 
-function matchUser(left: Pick<UserProfile, "id" | "email">, right: Pick<UserProfile, "id" | "email">) {
+function matchUser(
+  left: Pick<UserProfile, "id" | "email">,
+  right: Pick<UserProfile, "id" | "email">,
+) {
   return left.id === right.id || left.email.toLowerCase() === right.email.toLowerCase();
 }
 
@@ -224,7 +229,13 @@ function containsSearch(user: UserProfile, search?: string) {
     return true;
   }
 
-  return [user.name, user.email, user.employeeCode ?? "", user.department ?? "", user.jobTitle ?? ""]
+  return [
+    user.name,
+    user.email,
+    user.employeeCode ?? "",
+    user.department ?? "",
+    user.jobTitle ?? "",
+  ]
     .join(" ")
     .toLowerCase()
     .includes(normalizedSearch);
@@ -239,10 +250,15 @@ export function getDirectoryUserById(userId: string, viewer?: UserProfile | null
 }
 
 export function getDirectoryUserByEmail(email: string, viewer?: UserProfile | null) {
-  return ensureDirectory(viewer).find((user) => user.email.toLowerCase() === email.toLowerCase()) ?? null;
+  return (
+    ensureDirectory(viewer).find((user) => user.email.toLowerCase() === email.toLowerCase()) ?? null
+  );
 }
 
-export function listDirectoryUsers(filters?: UserDirectoryFilters, viewer?: UserProfile | null): PaginatedUsers {
+export function listDirectoryUsers(
+  filters?: UserDirectoryFilters,
+  viewer?: UserProfile | null,
+): PaginatedUsers {
   const page = Math.max(1, filters?.page ?? 1);
   const pageSize = Math.max(1, filters?.pageSize ?? DEFAULT_PAGE_SIZE);
   const filtered = ensureDirectory(viewer).filter((user) => {
@@ -271,13 +287,9 @@ export function listDirectoryUsers(filters?: UserDirectoryFilters, viewer?: User
   };
 }
 
-export function updateDirectoryProfile(
-  viewer: UserProfile,
-  payload: UpdateProfilePayload,
-) {
+export function updateDirectoryProfile(viewer: UserProfile, payload: UpdateProfilePayload) {
   const users = ensureDirectory(viewer);
-  const currentUser =
-    users.find((user) => matchUser(user, viewer)) ?? normalizeUserProfile(viewer);
+  const currentUser = users.find((user) => matchUser(user, viewer)) ?? normalizeUserProfile(viewer);
   const nextUser = normalizeUserProfile({
     ...currentUser,
     name: payload.name,
@@ -295,8 +307,7 @@ export function updateDirectoryProfile(
 
 export function updateDirectoryAvatar(viewer: UserProfile, avatarUrl?: string) {
   const users = ensureDirectory(viewer);
-  const currentUser =
-    users.find((user) => matchUser(user, viewer)) ?? normalizeUserProfile(viewer);
+  const currentUser = users.find((user) => matchUser(user, viewer)) ?? normalizeUserProfile(viewer);
   const nextUser = normalizeUserProfile({
     ...currentUser,
     avatarUrl,
@@ -386,4 +397,3 @@ export function createDirectoryUser(payload: CreateUserPayload, viewer?: UserPro
   saveDirectory([nextUser, ...users]);
   return nextUser;
 }
-

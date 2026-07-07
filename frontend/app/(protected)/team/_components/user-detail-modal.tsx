@@ -88,7 +88,14 @@ export function UserDetailModal({
             <div className={styles.detailIdentity}>
               <span className={styles.detailAvatar}>
                 {user.avatarUrl ? (
-                  <Image src={user.avatarUrl} alt={user.name} width={84} height={84} className="avatar-image" unoptimized />
+                  <Image
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    width={84}
+                    height={84}
+                    className="avatar-image"
+                    unoptimized
+                  />
                 ) : (
                   user.initials
                 )}
@@ -147,9 +154,7 @@ export function UserDetailModal({
                 >
                   <strong>{userStatusLabel(status)}</strong>
                   <small>
-                    {status === "ACTIVE"
-                      ? "Hoạt động bình thường"
-                      : "Đã ngừng hoạt động"}
+                    {status === "ACTIVE" ? "Hoạt động bình thường" : "Đã ngừng hoạt động"}
                   </small>
                 </button>
               ))}
@@ -159,7 +164,9 @@ export function UserDetailModal({
               type="button"
               className="primary-button"
               onClick={onSaveStatus}
-              disabled={!canManageUsers || isSavingStatus || statusDraft === (user.status ?? "ACTIVE")}
+              disabled={
+                !canManageUsers || isSavingStatus || statusDraft === (user.status ?? "ACTIVE")
+              }
             >
               {isSavingStatus ? "Đang lưu..." : "Lưu trạng thái"}
             </button>
@@ -233,7 +240,10 @@ export function UserDetailModal({
             </button>
 
             {!canManageUsers ? (
-              <p className={styles.helperText}>Tài khoản hiện tại chỉ có quyền xem. Chỉ `ADMIN` mới được thay đổi trạng thái và vai trò.</p>
+              <p className={styles.helperText}>
+                Tài khoản hiện tại chỉ có quyền xem. Chỉ `ADMIN` mới được thay đổi trạng thái và vai
+                trò.
+              </p>
             ) : null}
 
             <div className={styles.panelHeader} style={{ marginTop: "1.5rem" }}>

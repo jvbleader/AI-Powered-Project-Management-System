@@ -22,10 +22,11 @@
   --radius-xl: 26px;
   --radius-lg: 20px;
   --radius-md: 14px;
-  --font-display: "SF Pro Display", "Aptos Display", "Segoe UI Variable Display",
-    "Helvetica Neue", "Arial Nova", sans-serif;
-  --font-body: "SF Pro Text", "Aptos", "Segoe UI Variable Text", "IBM Plex Sans",
-    "Helvetica Neue", sans-serif;
+  --font-display:
+    "SF Pro Display", "Aptos Display", "Segoe UI Variable Display", "Helvetica Neue", "Arial Nova",
+    sans-serif;
+  --font-body:
+    "SF Pro Text", "Aptos", "Segoe UI Variable Text", "IBM Plex Sans", "Helvetica Neue", sans-serif;
 }
 
 * {
@@ -219,7 +220,7 @@ p {
 
 .sidebar-user-chip .avatar-token,
 .sidebar-user-chip .profile-chevron {
-  margin-top: 11px; 
+  margin-top: 11px;
 }
 
 .sidebar-profile-copy {
@@ -878,8 +879,7 @@ p {
   padding: 1rem;
   border-radius: 24px;
   border: 1px solid rgba(191, 219, 254, 0.28);
-  background:
-    linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 0.98));
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 0.98));
 }
 
 .team-detail-identity,
@@ -1015,8 +1015,7 @@ p {
 }
 
 .surface {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(250, 252, 255, 0.92));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(250, 252, 255, 0.92));
 }
 
 .surface h2 {

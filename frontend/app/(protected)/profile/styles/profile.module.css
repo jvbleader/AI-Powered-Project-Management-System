@@ -77,7 +77,9 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
@@ -309,7 +311,9 @@
   color: var(--ink);
   background: rgba(248, 250, 252, 0.98);
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
   text-align: center;
 }
 
@@ -363,7 +367,9 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, transform 0.15s;
+  transition:
+    background 0.2s,
+    transform 0.15s;
 }
 
 .saveButton:hover {
@@ -457,13 +463,13 @@
   .profilePage {
     grid-template-columns: 1fr;
   }
-  
+
   .heroColumn {
     border-right: none;
     border-bottom: 1px solid rgba(148, 163, 184, 0.15);
     padding: 2.5rem 2rem;
   }
-  
+
   .detailsColumn {
     padding: 2rem;
   }
@@ -473,22 +479,22 @@
   .detailsColumn {
     padding: 1.5rem;
   }
-  
+
   .phoneEditForm {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .phoneEditForm input {
     width: 100%;
   }
-  
+
   .infoContent {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.25rem;
   }
-  
+
   .infoContent dd {
     text-align: left;
   }

@@ -15,23 +15,33 @@ interface ProjectListProps {
 
 const PROJECTS_PER_PAGE = 5;
 
-export function ProjectList({ projects, selectedProjectId, onSelectProject, canManage, onAddProjectClick }: ProjectListProps) {
+export function ProjectList({
+  projects,
+  selectedProjectId,
+  onSelectProject,
+  canManage,
+  onAddProjectClick,
+}: ProjectListProps) {
   const router = useRouter();
   const [page, setPage] = useState(1);
 
   const totalPages = Math.max(1, Math.ceil(projects.length / PROJECTS_PER_PAGE));
-  
+
   // Ensure page is within valid range if projects list shrinks
   const validPage = Math.min(page, totalPages);
-  
-  const paginatedProjects = projects.slice((validPage - 1) * PROJECTS_PER_PAGE, validPage * PROJECTS_PER_PAGE);
+
+  const paginatedProjects = projects.slice(
+    (validPage - 1) * PROJECTS_PER_PAGE,
+    validPage * PROJECTS_PER_PAGE,
+  );
 
   return (
-    <Surface 
-      title={canManage ? "Danh mục điều phối" : "Các dự án đang tham gia"} 
+    <Surface
+      title={canManage ? "Danh mục điều phối" : "Các dự án đang tham gia"}
       kicker="Projects"
       aside={
-        canManage && onAddProjectClick && (
+        canManage &&
+        onAddProjectClick && (
           <button type="button" className="primary-button" onClick={onAddProjectClick}>
             + Tạo dự án
           </button>
@@ -54,15 +64,24 @@ export function ProjectList({ projects, selectedProjectId, onSelectProject, canM
               </thead>
               <tbody>
                 {paginatedProjects.map((project) => (
-                  <tr key={project.id} className={selectedProjectId === project.id ? styles.selectedRow : ""}>
+                  <tr
+                    key={project.id}
+                    className={selectedProjectId === project.id ? styles.selectedRow : ""}
+                  >
                     <td>
-                      <button type="button" className={styles.userCellButton} onClick={() => onSelectProject(project.id)}>
+                      <button
+                        type="button"
+                        className={styles.userCellButton}
+                        onClick={() => onSelectProject(project.id)}
+                      >
                         <span className={styles.avatarToken}>
                           {project.name.charAt(0).toUpperCase()}
                         </span>
                         <span className={styles.userCellCopy}>
                           <strong>{project.name}</strong>
-                          <small>Người quản lý: {project.managerId === "usr-1" ? "Admin" : "Chưa rõ"}</small>
+                          <small>
+                            Người quản lý: {project.managerId === "usr-1" ? "Admin" : "Chưa rõ"}
+                          </small>
                         </span>
                       </button>
                     </td>
@@ -105,7 +124,9 @@ export function ProjectList({ projects, selectedProjectId, onSelectProject, canM
           {totalPages > 1 && (
             <div className={styles.paginationBar}>
               <p>
-                Hiển thị {(validPage - 1) * PROJECTS_PER_PAGE + 1} - {Math.min(validPage * PROJECTS_PER_PAGE, projects.length)} / {projects.length} dự án.
+                Hiển thị {(validPage - 1) * PROJECTS_PER_PAGE + 1} -{" "}
+                {Math.min(validPage * PROJECTS_PER_PAGE, projects.length)} / {projects.length} dự
+                án.
               </p>
               <div className={styles.paginationActions}>
                 <button
@@ -129,9 +150,11 @@ export function ProjectList({ projects, selectedProjectId, onSelectProject, canM
           )}
         </>
       ) : (
-        <EmptyState title="Chưa có dự án" description="Tạo dự án mới hoặc gán bạn vào một dự án để xem dữ liệu tại đây." />
+        <EmptyState
+          title="Chưa có dự án"
+          description="Tạo dự án mới hoặc gán bạn vào một dự án để xem dữ liệu tại đây."
+        />
       )}
     </Surface>
   );
 }
-

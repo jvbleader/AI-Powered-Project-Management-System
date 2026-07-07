@@ -5,7 +5,8 @@ import "@/styles/globals.css";
 
 export const metadata: Metadata = {
   title: "AI-Powered Project Management System",
-  description: "AI-powered project management UI with mock data and backend-ready service contracts.",
+  description:
+    "AI-powered project management UI with mock data and backend-ready service contracts.",
 };
 
 export default function RootLayout({

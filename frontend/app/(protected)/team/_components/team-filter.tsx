@@ -46,7 +46,9 @@ export function TeamFilter({
           <span>Trạng thái</span>
           <select
             value={statusFilter ?? "ALL"}
-            onChange={(event) => onStatusFilterChange(event.target.value as UserDirectoryFilters["status"])}
+            onChange={(event) =>
+              onStatusFilterChange(event.target.value as UserDirectoryFilters["status"])
+            }
           >
             <option value="ALL">Tất cả trạng thái</option>
             {STATUS_OPTIONS.map((status) => (
@@ -61,7 +63,9 @@ export function TeamFilter({
           <span>Vai trò</span>
           <select
             value={roleFilter ?? "ALL"}
-            onChange={(event) => onRoleFilterChange(event.target.value as UserDirectoryFilters["role"])}
+            onChange={(event) =>
+              onRoleFilterChange(event.target.value as UserDirectoryFilters["role"])
+            }
           >
             <option value="ALL">Tất cả vai trò</option>
             {ROLE_OPTIONS.map((role) => (
@@ -76,7 +80,9 @@ export function TeamFilter({
           <span>Phòng ban</span>
           <select
             value={departmentFilter ?? "ALL"}
-            onChange={(event) => onDepartmentFilterChange(event.target.value as UserDirectoryFilters["department"])}
+            onChange={(event) =>
+              onDepartmentFilterChange(event.target.value as UserDirectoryFilters["department"])
+            }
           >
             <option value="ALL">Tất cả phòng ban</option>
             <option value="UNASSIGNED">Chưa cập nhật phòng ban</option>
