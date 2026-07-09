@@ -11,6 +11,7 @@ class ProjectStatus(Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     COMPLETED = "completed"
+    AT_RISK = "at_risk"
 
 
 class Role(Base):

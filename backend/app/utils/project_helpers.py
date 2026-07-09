@@ -40,6 +40,7 @@ def to_frontend_status(db_status: str) -> str:
         "active": "ACTIVE",
         "inactive": "PLANNING",
         "completed": "COMPLETED",
+        "at_risk": "AT_RISK",
     }
     return mapping.get(db_status, "ACTIVE")
 
@@ -49,7 +50,7 @@ def to_db_status(frontend_status: str) -> str:
         "ACTIVE": "active",
         "PLANNING": "inactive",
         "COMPLETED": "completed",
-        "AT_RISK": "active",
+        "AT_RISK": "at_risk",
     }
     return mapping.get(frontend_status.upper(), "active")
 

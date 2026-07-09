@@ -27,6 +27,10 @@ def create_role(db: Session, name: str) -> Role:
 def get_project_by_id(db: Session, project_id: int) -> Optional[Project]:
     return db.query(Project).filter(Project.id == project_id).first()
 
+
+def get_project_by_name(db: Session, name: str) -> Optional[Project]:
+    return db.query(Project).filter(Project.name == name).first()
+
 def get_member_project_ids_subquery(db: Session, user_id: int) -> Any:
     return db.query(ProjectMember.project_id).filter(ProjectMember.user_id == user_id).subquery()
     

@@ -17,6 +17,7 @@ import type {
 
 import { ProjectList } from "./_components/project-list";
 import { CreateProjectModal } from "./_components/create-project-modal";
+import { EditProjectModal } from "./_components/edit-project-modal";
 
 type ProjectsState = {
   shellData: WorkspaceShellData;
@@ -32,6 +33,7 @@ export default function ProjectsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectsState, setProjectsState] = useState<ProjectsState | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -102,7 +104,10 @@ export default function ProjectsPage() {
           selectedProjectId={selectedProject?.id ?? null}
           onSelectProject={setSelectedProjectId}
           canManage={canManage}
+          viewerId={viewer.id}
+          viewerRole={viewer.role}
           onAddProjectClick={viewer.role === "ADMIN" ? () => setIsCreateModalOpen(true) : undefined}
+          onEditProjectClick={(p) => setEditingProject(p)}
         />
       </section>
 
@@ -112,6 +117,16 @@ export default function ProjectsPage() {
         viewerId={viewer.id}
         accessibleUsers={accessibleUsers}
         onProjectCreated={refreshProjects}
+      />
+
+      <EditProjectModal
+        isOpen={!!editingProject}
+        onClose={() => setEditingProject(null)}
+        project={editingProject}
+        viewerId={viewer.id}
+        viewerRole={viewer.role}
+        accessibleUsers={accessibleUsers}
+        onProjectUpdated={() => refreshProjects(selectedProjectId)}
       />
     </WorkspaceShell>
   );

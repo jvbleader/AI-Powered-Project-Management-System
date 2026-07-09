@@ -15,8 +15,8 @@
 }
 
 .ganttLeftPane {
-  flex: 0 0 600px;
-  min-width: 600px;
+  flex: 0 0 840px;
+  min-width: 840px;
   border-right: 1px solid #dcdcdc;
   position: sticky;
   left: 0;
@@ -44,8 +44,8 @@
 
 .ganttLeftHeader {
   display: flex;
-  flex: 0 0 600px;
-  min-width: 600px;
+  flex: 0 0 840px;
+  min-width: 840px;
   border-right: 1px solid #dcdcdc;
   position: sticky;
   left: 0;
@@ -129,8 +129,8 @@
 
 .ganttLeftCell {
   display: flex;
-  flex: 0 0 600px;
-  min-width: 600px;
+  flex: 0 0 840px;
+  min-width: 840px;
   border-right: 1px solid #dcdcdc;
   position: sticky;
   left: 0;

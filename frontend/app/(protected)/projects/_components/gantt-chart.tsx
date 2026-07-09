@@ -164,12 +164,23 @@ export function GanttChart({ tasks }: GanttChartProps) {
                   {node.task.assignee?.name || "Chưa giao"}
                 </span>
               </div>
+              <div className={styles.ganttLeftCol} style={{ width: "120px" }}>
+                <span style={{ color: "#555", fontSize: "12px" }}>
+                  {new Date(node.task.startDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </span>
+              </div>
+              <div className={styles.ganttLeftCol} style={{ width: "120px" }}>
+                <span style={{ color: "#555", fontSize: "12px" }}>
+                  {new Date(node.task.dueDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </span>
+              </div>
             </div>
 
             {/* Right Cell */}
             <div
               className={styles.ganttRightCell}
-              style={{ gridTemplateColumns: `repeat(${dates.length}, 20px)` }}
+              style={{ gridTemplateColumns: `repeat(${dates.length}, 20px)`, cursor: "pointer" }}
+              onClick={() => handleRowClick(node.task.id)}
             >
               <div
                 className={hasChildren ? styles.ganttBarParent : styles.ganttBarChild}
@@ -203,9 +214,11 @@ export function GanttChart({ tasks }: GanttChartProps) {
           {/* Header */}
           <div className={styles.ganttHeaderRow}>
             <div className={styles.ganttLeftHeader}>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: "300px" }}>Name</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: "150px" }}>State</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: "150px" }}>Assignee</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: "300px" }}>Tên công việc</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: "150px" }}>Trạng thái</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: "150px" }}>Người thực hiện</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: "120px" }}>Bắt đầu</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: "120px" }}>Kết thúc</div>
             </div>
             <div className={styles.ganttRightHeader}>
               <div className={styles.ganttRightHeaderTop}>
@@ -235,7 +248,7 @@ export function GanttChart({ tasks }: GanttChartProps) {
             <div
               className={styles.ganttGridLines}
               style={{
-                left: "600px", // Offset for left pane
+                left: "840px", // Offset for left pane
                 gridTemplateColumns: `repeat(${dates.length}, 20px)`,
               }}
             >

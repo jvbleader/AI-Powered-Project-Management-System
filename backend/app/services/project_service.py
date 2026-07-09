@@ -95,6 +95,10 @@ def create_project(db: Session, current_user: User, data: ProjectCreate) -> Proj
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Chỉ có Admin mới có quyền tạo dự án.")
 
+    existing_project = project_repository.get_project_by_name(db, data.name)
+    if existing_project:
+        raise HTTPException(status_code=400, detail="Tên dự án đã tồn tại. Vui lòng chọn tên khác.")
+
     manager = project_repository.get_user_by_id(db, data.manager_id)
     if not manager:
         raise HTTPException(status_code=400, detail="Người quản lý không tồn tại.")
@@ -148,7 +152,10 @@ def update_project(
     numeric_id = parse_project_id(project_id)
     project = require_project_access(db, numeric_id, current_user, require_manager=True)
 
-    if data.name is not None:
+    if data.name:
+        existing_project = project_repository.get_project_by_name(db, data.name)
+        if existing_project and existing_project.id != project.id:
+            raise HTTPException(status_code=400, detail="Tên dự án đã tồn tại. Vui lòng chọn tên khác.")
         project.name = data.name.strip()
     if data.description is not None:
         project.description = data.description.strip()
@@ -198,6 +205,10 @@ def add_project_member(
     if not role:
         raise HTTPException(status_code=400, detail="Vai trò không hợp lệ.")
 
+    pm_role = get_pm_role(db)
+    if role.id == pm_role.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Chỉ có Admin mới có thể thêm Quản lý dự án.")
+
     existing = project_repository.get_project_member(db, numeric_id, data.user_id)
     if existing:
         raise HTTPException(status_code=400, detail="Người dùng đã là thành viên dự án.")
@@ -229,6 +240,14 @@ def update_project_member(
         raise HTTPException(status_code=400, detail="Vai trò không hợp lệ.")
 
     pm_role = get_pm_role(db)
+    
+    # PM không thể tự sửa PM (cả từ PM xuống Member, và từ Member lên PM)
+    if not current_user.is_admin:
+        if member.role_id == pm_role.id:
+            raise HTTPException(status_code=403, detail="Bạn không có quyền chỉnh sửa Quản lý dự án.")
+        if data.role_id == pm_role.id:
+            raise HTTPException(status_code=403, detail="Chỉ có Admin mới có thể cấp quyền Quản lý dự án.")
+
     if member.role_id == pm_role.id and data.role_id != pm_role.id:
         pm_count = project_repository.count_project_role(db, numeric_id, pm_role.id)
         if pm_count <= 1:
@@ -254,6 +273,10 @@ def remove_project_member(db: Session, current_user: User, project_id: str, memb
         raise HTTPException(status_code=404, detail="Không tìm thấy thành viên dự án.")
 
     pm_role = get_pm_role(db)
+    
+    if not current_user.is_admin and member.role_id == pm_role.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xóa Quản lý dự án.")
+
     if member.role_id == pm_role.id:
         pm_count = project_repository.count_project_role(db, numeric_id, pm_role.id)
         if pm_count <= 1:

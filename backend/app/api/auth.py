@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.connection import get_db
 from app.core.dependencies import get_current_user
 from app.schemas.user_schema import ChangePassword, UserLogin
-from app.services.auth_service import AuthService
+from app.services import auth_service
 from app.utils.jwt_handler import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -15,7 +15,7 @@ router = APIRouter()
 
 @router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db), response: Response = None):
-    auth_data = AuthService.authenticate_user(db, user)
+    auth_data = auth_service.authenticate_user(db, user)
 
     if user.remember_me:
         access_max_age = ACCESS_TOKEN_EXPIRE_MINUTES * 60
@@ -49,7 +49,7 @@ def logout(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    AuthService.logout_user(db, current_user.id)
+    auth_service.logout_user(db, current_user.id)
     db.commit()
 
     response.delete_cookie(key="access_token", httponly=True, samesite="lax")
@@ -68,7 +68,7 @@ def refresh_access_token(
             detail="Không tìm thấy Refresh Token",
         )
 
-    auth_data = AuthService.refresh_tokens(db, refresh_token)
+    auth_data = auth_service.refresh_tokens(db, refresh_token)
 
     response.set_cookie(
         key="access_token",
@@ -88,7 +88,7 @@ def change_password(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    AuthService.change_user_password(db, current_user, data)
+    auth_service.change_user_password(db, current_user, data)
     
     response.delete_cookie(key="access_token", httponly=True, samesite="lax")
     response.delete_cookie(key="refresh_token", httponly=True, samesite="lax")

@@ -69,21 +69,40 @@ export const projectApi = {
     return { data: mapBackendProject(response.data), meta: response.meta };
   },
 
-  async addMember(projectId: string, memberId: string): Promise<ApiResponse<Project>> {
-    const endpoint = { method: "POST" as const, path: `/api/projects/${projectId}/members` };
-    await requestApi<any>(endpoint, {
-      body: JSON.stringify({
-        user_id: parseInt(memberId.replace("usr-", ""), 10),
-        role_id: 2,
-      })
-    });
-    return this.get(projectId);
+  async listMembers(projectId: string): Promise<ApiResponse<any[]>> {
+    const endpoint = { method: "GET" as const, path: `/api/projects/${projectId}/members` };
+    const response = await requestApi<any>(endpoint);
+    return { data: response.data, meta: response.meta };
   },
 
-  async removeMember(projectId: string, memberId: string): Promise<ApiResponse<Project>> {
-    const userId = parseInt(memberId.replace("usr-", ""), 10);
-    const endpoint = { method: "DELETE" as const, path: `/api/projects/${projectId}/members/${userId}` };
-    await requestApi<any>(endpoint);
-    return this.get(projectId);
+  async listRoles(): Promise<ApiResponse<any[]>> {
+    const endpoint = { method: "GET" as const, path: `/api/project-roles` };
+    const response = await requestApi<any>(endpoint);
+    return { data: response.data, meta: response.meta };
+  },
+
+  async updateMemberRole(projectId: string, memberId: number, roleId: number): Promise<ApiResponse<any>> {
+    const endpoint = { method: "PATCH" as const, path: `/api/projects/${projectId}/members/${memberId}` };
+    const response = await requestApi<any>(endpoint, {
+      body: JSON.stringify({ role_id: roleId }),
+    });
+    return { data: response.data, meta: response.meta };
+  },
+
+  async addMember(projectId: string, userId: string, roleId: number = 2): Promise<ApiResponse<any>> {
+    const endpoint = { method: "POST" as const, path: `/api/projects/${projectId}/members` };
+    const response = await requestApi<any>(endpoint, {
+      body: JSON.stringify({
+        user_id: parseInt(userId.replace("usr-", ""), 10),
+        role_id: roleId,
+      })
+    });
+    return { data: response.data, meta: response.meta };
+  },
+
+  async removeMember(projectId: string, memberId: number): Promise<ApiResponse<any>> {
+    const endpoint = { method: "DELETE" as const, path: `/api/projects/${projectId}/members/${memberId}` };
+    const response = await requestApi<any>(endpoint);
+    return { data: response.data, meta: response.meta };
   },
 };
