@@ -21,3 +21,9 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(projects.router)
+
+from app.api import tasks, sprints
+app.include_router(tasks.router)
+app.include_router(tasks.router_root)
+app.include_router(sprints.router)
+app.include_router(sprints.router_root)

@@ -13,13 +13,18 @@ type GuardStatus = "checking" | "ready";
 export function ProtectedRoute({ children }: { children: ReactNode }) {
   const router = useRouter();
   const session = useAuthSession();
-  const [guardStatus, setGuardStatus] = useState<GuardStatus>("checking");
+  const [guardStatus, setGuardStatus] = useState<GuardStatus>(session ? "ready" : "checking");
+  const isReady = guardStatus === "ready" || Boolean(session);
 
   useEffect(() => {
     let isCancelled = false;
 
     async function verifySession() {
-      setGuardStatus("checking");
+      const hasStoredSession = Boolean(readSessionSnapshot());
+
+      if (!hasStoredSession) {
+        setGuardStatus("checking");
+      }
 
       try {
         await restoreSession();
@@ -54,12 +59,12 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   }, [router]);
 
   useEffect(() => {
-    if (guardStatus === "ready" && !session) {
+    if (isReady && !session) {
       window.location.assign("/login");
     }
-  }, [guardStatus, session]);
+  }, [isReady, session]);
 
-  if (guardStatus !== "ready" || !session) {
+  if (!isReady || !session) {
     return (
       <main className={styles.screen}>
         <section className={styles.card}>

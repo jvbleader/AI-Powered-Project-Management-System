@@ -16,6 +16,8 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   assigneeId: string;
+  assigneeName?: string;
+  assigneeEmail?: string;
   reporterId: string;
   startDate: string;
   dueDate: string;

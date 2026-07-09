@@ -65,7 +65,12 @@ def refresh_tokens(db: Session, refresh_token: str) -> dict:
     }
 
 
-def logout_user(db: Session, user_id: int) -> None:
+def logout_user(db: Session, refresh_token: str | None) -> None:
+    if refresh_token:
+        refresh_token_repository.revoke_token(db, refresh_token)
+
+
+def logout_all_devices(db: Session, user_id: int) -> None:
     refresh_token_repository.revoke_all_for_user(db, user_id)
 
 

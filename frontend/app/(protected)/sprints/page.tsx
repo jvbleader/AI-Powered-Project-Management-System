@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useMemo, type FormEvent } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, ProgressBar, SegmentBar, StatusPill, Surface } from "@/components/ui";
@@ -72,7 +72,7 @@ function canEditLogwork(viewer: UserProfile, entry: LogworkEntry) {
 
 export default function SprintsPage() {
   const session = useAuthSession();
-  const viewer = normalizeViewer(session?.currentUser);
+  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
   const canManage = isPrivilegedUser(viewer);
   const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);

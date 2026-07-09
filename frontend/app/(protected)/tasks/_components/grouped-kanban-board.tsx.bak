@@ -1,0 +1,217 @@
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { taskApi } from "@/services/api";
+import { EnrichedTask, Project } from "@/types";
+import { Surface, StatusPill } from "@/components/ui";
+import { taskPriorityLabel } from "@/lib/utils/format";
+
+interface GroupedKanbanBoardProps {
+  projects: Project[];
+  tasks: EnrichedTask[];
+  onTaskUpdated: () => void;
+  selectedProjectId: string;
+}
+
+const COLUMNS = [
+  { id: "TODO", label: "Cần làm" },
+  { id: "IN_PROGRESS", label: "Đang tiến hành" },
+  { id: "DONE", label: "Đã hoàn thành" }
+];
+
+export function GroupedKanbanBoard({ projects, tasks, onTaskUpdated, selectedProjectId }: GroupedKanbanBoardProps) {
+  const router = useRouter();
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    setDraggedTaskId(taskId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = async (e: React.DragEvent, statusId: string) => {
+    e.preventDefault();
+    if (!draggedTaskId) return;
+
+    const task = tasks.find(t => t.id === draggedTaskId);
+    if (task && task.status !== statusId) {
+      try {
+        await taskApi.updateStatus(draggedTaskId, statusId as EnrichedTask["status"]);
+        onTaskUpdated();
+      } catch (err: any) {
+        alert(err.message || "Lỗi khi cập nhật trạng thái");
+      }
+    }
+    setDraggedTaskId(null);
+  };
+
+  const visibleProjects = projects.filter(p => selectedProjectId === "ALL" || p.id === selectedProjectId);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+      {visibleProjects.map(project => {
+        const projectTasks = tasks.filter(t => t.projectId === project.id);
+        if (projectTasks.length === 0 && selectedProjectId === "ALL") return null;
+
+        // Group by assignee
+        const tasksByAssignee: Record<string, EnrichedTask[]> = {};
+        const unassignedTasks: EnrichedTask[] = [];
+
+        projectTasks.forEach(task => {
+          if (task.assignee) {
+            if (!tasksByAssignee[task.assignee.id]) {
+              tasksByAssignee[task.assignee.id] = [];
+            }
+            tasksByAssignee[task.assignee.id].push(task);
+          } else {
+            unassignedTasks.push(task);
+          }
+        });
+
+        return (
+          <Surface key={project.id} title={project.name} kicker={project.code}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+              {Object.entries(tasksByAssignee).map(([assigneeId, userTasks]) => {
+                const assigneeName = userTasks[0]?.assignee?.name || "Người dùng";
+                return (
+                  <div key={assigneeId} style={{ border: "1px solid var(--border)", padding: "1rem", borderRadius: "8px", background: "var(--surface)" }}>
+                    <h4 style={{ margin: "0 0 1rem 0", paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" }}>
+                      Người thực hiện: {assigneeName}
+                    </h4>
+                    
+                    <div style={{ display: "flex", gap: "1rem", overflowX: "auto" }}>
+                      {COLUMNS.map(col => {
+                        const colTasks = userTasks.filter(t => t.status === col.id || (col.id === "IN_PROGRESS" && (t.status === "REVIEW" || t.status === "BLOCKED")));
+                        return (
+                          <div 
+                            key={col.id} 
+                            style={{ 
+                              flex: "1", 
+                              minWidth: "280px", 
+                              background: "var(--surface-sunken)", 
+                              borderRadius: "6px",
+                              padding: "0.75rem",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "0.75rem"
+                            }}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, col.id)}
+                          >
+                            <h5 style={{ margin: 0, fontSize: "0.875rem", display: "flex", justifyContent: "space-between" }}>
+                              {col.label}
+                              <span style={{ color: "var(--foreground-muted)" }}>{colTasks.length}</span>
+                            </h5>
+                            
+                            {colTasks.map(task => (
+                              <div
+                                key={task.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, task.id)}
+                                onClick={() => router.push(`/tasks?taskId=${task.id}`)}
+                                style={{
+                                  background: "var(--surface)",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: "6px",
+                                  padding: "0.75rem",
+                                  cursor: "grab",
+                                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "0.5rem",
+                                  opacity: draggedTaskId === task.id ? 0.5 : 1
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                  <strong style={{ fontSize: "0.875rem" }}>{task.key}</strong>
+                                  <StatusPill
+                                    label={taskPriorityLabel(task.priority)}
+                                    tone={task.priority === "CRITICAL" ? "critical" : task.priority === "HIGH" ? "watch" : "neutral"}
+                                  />
+                                </div>
+                                <div style={{ fontSize: "0.875rem" }}>{task.title}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {unassignedTasks.length > 0 && (
+                <div style={{ border: "1px dashed var(--border)", padding: "1rem", borderRadius: "8px", background: "var(--surface)" }}>
+                  <h4 style={{ margin: "0 0 1rem 0", paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" }}>
+                    Chưa phân công
+                  </h4>
+                  
+                  <div style={{ display: "flex", gap: "1rem", overflowX: "auto" }}>
+                    {COLUMNS.map(col => {
+                      const colTasks = unassignedTasks.filter(t => t.status === col.id || (col.id === "IN_PROGRESS" && (t.status === "REVIEW" || t.status === "BLOCKED")));
+                      return (
+                        <div 
+                          key={col.id} 
+                          style={{ 
+                            flex: "1", 
+                            minWidth: "280px", 
+                            background: "var(--surface-sunken)", 
+                            borderRadius: "6px",
+                            padding: "0.75rem",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.75rem"
+                          }}
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(e, col.id)}
+                        >
+                          <h5 style={{ margin: 0, fontSize: "0.875rem", display: "flex", justifyContent: "space-between" }}>
+                            {col.label}
+                            <span style={{ color: "var(--foreground-muted)" }}>{colTasks.length}</span>
+                          </h5>
+                          
+                          {colTasks.map(task => (
+                            <div
+                              key={task.id}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, task.id)}
+                              onClick={() => router.push(`/tasks?taskId=${task.id}`)}
+                              style={{
+                                background: "var(--surface)",
+                                border: "1px solid var(--border)",
+                                borderRadius: "6px",
+                                padding: "0.75rem",
+                                cursor: "grab",
+                                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "0.5rem",
+                                opacity: draggedTaskId === task.id ? 0.5 : 1
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                <strong style={{ fontSize: "0.875rem" }}>{task.key}</strong>
+                                <StatusPill
+                                  label={taskPriorityLabel(task.priority)}
+                                  tone={task.priority === "CRITICAL" ? "critical" : task.priority === "HIGH" ? "watch" : "neutral"}
+                                />
+                              </div>
+                              <div style={{ fontSize: "0.875rem" }}>{task.title}</div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Surface>
+        );
+      })}
+    </div>
+  );
+}

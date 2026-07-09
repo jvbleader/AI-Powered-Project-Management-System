@@ -208,6 +208,7 @@ export const apiEndpoints = {
   auth: {
     login: { method: "POST" as EndpointMethod, path: "/login" },
     logout: { method: "POST" as EndpointMethod, path: "/logout" },
+    logoutAll: { method: "POST" as EndpointMethod, path: "/logout-all" },
     refresh: { method: "GET" as EndpointMethod, path: "/refresh" },
     changePassword: { method: "PUT" as EndpointMethod, path: "/change-password" },
     me: { method: "GET" as EndpointMethod, path: "/me" },

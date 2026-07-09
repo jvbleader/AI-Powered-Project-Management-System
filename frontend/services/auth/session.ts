@@ -1,10 +1,21 @@
 import { authApi } from "@/services/api";
 import { readStoredAvatar } from "@/lib/utils/avatar";
-import type { AuthSession, LoginPayload } from "@/types";
+import { UserProfile, type AuthSession, LoginPayload } from "@/types";
 
-export const STORAGE_KEY = "flowpilot-session";
-export const SESSION_STORAGE_KEY = "flowpilot-session-runtime";
+export const STORAGE_KEY = "flowpilot-session-v1";
+export const SESSION_STORAGE_KEY = "flowpilot-session-session-v1";
 export const SESSION_CHANGE_EVENT = "flowpilot-session-change";
+
+const authChannel = typeof window !== "undefined" ? new BroadcastChannel('auth_channel') : null;
+
+if (authChannel) {
+  authChannel.onmessage = (event) => {
+    if (event.data === 'logout') {
+      clearClientSession();
+      emitSessionChange();
+    }
+  };
+}
 
 function emitSessionChange() {
   window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
@@ -153,6 +164,16 @@ export async function signOut() {
     await authApi.logout().catch(() => null);
     clearClientSession();
     emitSessionChange();
+    authChannel?.postMessage('logout');
+  }
+}
+
+export async function signOutAll() {
+  if (typeof window !== "undefined") {
+    await authApi.logoutAll().catch(() => null);
+    clearClientSession();
+    emitSessionChange();
+    authChannel?.postMessage('logout');
   }
 }
 

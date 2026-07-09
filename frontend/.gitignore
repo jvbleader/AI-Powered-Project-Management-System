@@ -1,7 +1,7 @@
 # =========================
 # Frontend only - Next.js
 # =========================
-
+/.DS_Store
 # Dependencies
 /node_modules/
 /.pnp

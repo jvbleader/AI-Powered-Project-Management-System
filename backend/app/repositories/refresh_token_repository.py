@@ -8,6 +8,11 @@ def revoke_all_for_user(db: Session, user_id: int) -> None:
     db.commit()
 
 
+def revoke_token(db: Session, token_hash: str) -> None:
+    db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).update({"revoked": True})
+    db.commit()
+
+
 def create(db: Session, refresh_token: RefreshToken) -> RefreshToken:
     db.add(refresh_token)
     db.commit()

@@ -56,12 +56,22 @@ export function roleLabel(role: UserRole) {
   }[role];
 }
 
+export function projectRoleLabel(roleName: string) {
+  const map: Record<string, string> = {
+    PROJECT_MANAGER: "Project Manager",
+    DEVELOPER: "Developer",
+    QA: "QA",
+    VIEWER: "Viewer",
+  };
+  return map[roleName] || roleName;
+}
+
 export function projectStatusLabel(status: ProjectStatus) {
   return {
     PLANNING: "Đang lập kế hoạch",
     ACTIVE: "Đang triển khai",
-    AT_RISK: "Cần lưu ý",
-    COMPLETED: "Hoàn thành",
+    AT_RISK: "Rủi ro trễ hạn",
+    COMPLETED: "Đã hoàn thành",
   }[status];
 }
 

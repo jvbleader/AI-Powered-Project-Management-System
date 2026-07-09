@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
-import { signOut } from "@/services/auth/session";
+import { signOut, signOutAll } from "@/services/auth/session";
+import { primeTasksPageData } from "@/services/page-cache/tasks-page";
 import { AssistantBubble } from "@/components/assistant-bubble";
 import { useAuthSession } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
@@ -51,6 +52,8 @@ export function WorkspaceShell({
         currentUser: session.currentUser,
       }
     : shellData;
+  const currentUser = activeShellData.currentUser;
+  const currentUserId = activeShellData.currentUser.id;
 
   const filteredNavigation = navigation.filter((item) => {
     if (item.href !== "/team") {
@@ -83,9 +86,35 @@ export function WorkspaceShell({
     };
   }, []);
 
+  useEffect(() => {
+    navigation.forEach((item) => {
+      router.prefetch(item.href);
+    });
+  }, [router]);
+
+  useEffect(() => {
+    const warmupTimer = window.setTimeout(() => {
+      void primeTasksPageData(currentUser);
+    }, 250);
+
+    return () => {
+      window.clearTimeout(warmupTimer);
+    };
+  }, [currentUserId]);
+
+  const warmTasksPage = () => {
+    void primeTasksPageData(currentUser);
+  };
+
   const handleSignOut = async () => {
     setIsProfileMenuOpen(false);
     await signOut();
+    router.push("/login");
+  };
+
+  const handleSignOutAll = async () => {
+    setIsProfileMenuOpen(false);
+    await signOutAll();
     router.push("/login");
   };
 
@@ -189,6 +218,25 @@ export function WorkspaceShell({
                     <small>Thoát khỏi phiên hiện tại</small>
                   </span>
                 </button>
+
+                <button
+                  type="button"
+                  className="profile-menu-item profile-menu-button"
+                  role="menuitem"
+                  onClick={handleSignOutAll}
+                  style={{ color: "var(--danger-foreground)" }}
+                >
+                  <span className="profile-menu-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                    </svg>
+                  </span>
+                  <span className="profile-menu-copy">
+                    <strong>Đăng xuất tất cả</strong>
+                    <small>Thoát khỏi tất cả các thiết bị</small>
+                  </span>
+                </button>
               </div>
             ) : null}
           </div>
@@ -200,6 +248,9 @@ export function WorkspaceShell({
               key={item.href}
               href={item.href}
               className={classNames("nav-link", pathname === item.href && "nav-link-active")}
+              onPointerEnter={item.href === "/tasks" ? warmTasksPage : undefined}
+              onFocus={item.href === "/tasks" ? warmTasksPage : undefined}
+              onPointerDown={item.href === "/tasks" ? warmTasksPage : undefined}
             >
               <NavIcon icon={item.icon} />
               <span>{item.label}</span>

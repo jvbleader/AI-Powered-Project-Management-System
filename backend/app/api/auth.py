@@ -47,13 +47,28 @@ def login(user: UserLogin, db: Session = Depends(get_db), response: Response = N
 def logout(
     response: Response,
     db: Session = Depends(get_db),
+    refresh_token: str | None = Cookie(None),
+):
+    if refresh_token:
+        auth_service.logout_user(db, refresh_token)
+
+    response.delete_cookie(key="access_token", httponly=True, samesite="lax")
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="lax")
+    return {"message": "Đăng xuất thành công"}
+
+
+@router.post("/logout-all")
+def logout_all(
+    response: Response,
+    db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    auth_service.logout_user(db, current_user.id)
+    auth_service.logout_all_devices(db, current_user.id)
     db.commit()
 
     response.delete_cookie(key="access_token", httponly=True, samesite="lax")
-    return {"message": "Đăng xuất thành công"}
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="lax")
+    return {"message": "Đã đăng xuất khỏi tất cả thiết bị"}
 
 
 @router.get("/refresh")

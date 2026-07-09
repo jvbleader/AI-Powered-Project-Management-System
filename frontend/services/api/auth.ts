@@ -55,6 +55,23 @@ export const authApi = {
     }
   },
 
+  async logoutAll() {
+    try {
+      return await requestApi<{ message: string }>(apiEndpoints.auth.logoutAll, {
+        body: JSON.stringify({}),
+      });
+    } catch (error) {
+      await requestApi<{ message: string; user_id: number }>(apiEndpoints.auth.refresh);
+      try {
+        return await requestApi<{ message: string }>(apiEndpoints.auth.logoutAll, {
+          body: JSON.stringify({}),
+        });
+      } catch {
+        throw error;
+      }
+    }
+  },
+
   async me() {
     const currentUser = await fetchCurrentUserProfile();
     return wrapBackendResponse(currentUser);
