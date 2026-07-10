@@ -27,8 +27,8 @@ export function TaskCard({ task, onClick, onDragStart }: TaskCardProps) {
       </div>
       <h3>{task.title}</h3>
       <p>{task.description}</p>
-      <div className="task-meta">
-        <span>{task.assignee.name}</span>
+      <div className="task-card-footer">
+        <span>{task.assignee?.name || "Chưa giao"}</span>
         <span>{formatDate(task.dueDate)}</span>
       </div>
       {isTaskOverdue(task) ? <span className="deadline-flag">Quá hạn</span> : null}

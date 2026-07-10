@@ -20,7 +20,7 @@ type LogworkPageState = {
 
 export default function LogworkPage() {
   const session = useAuthSession();
-  const viewer = normalizeViewer(session?.currentUser);
+  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
   const privileged = isPrivilegedUser(viewer);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string>("ALL");

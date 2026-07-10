@@ -1,0 +1,182 @@
+.treeContainer {
+  font-family: var(--font-body);
+  padding: 1rem 0;
+  background: transparent;
+}
+
+.treeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+/* The vertical connecting line for children */
+.treeList::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 20px; /* Aligned with the center of the expand toggle */
+  border-left: 2px solid #e2e8f0;
+  z-index: 1;
+}
+
+.treeNode {
+  margin: 0.5rem 0;
+  position: relative;
+  padding-left: 44px; /* Space for the branch line */
+}
+
+/* The horizontal branch line */
+.treeNode::before {
+  content: "";
+  position: absolute;
+  top: 22px;
+  left: 20px;
+  width: 20px;
+  border-top: 2px solid #e2e8f0;
+  z-index: 1;
+}
+
+/* Hide the vertical line for the last child so it doesn't extend past the last node */
+.treeNode:last-child > .treeList::before {
+  display: none;
+}
+.treeNode:last-child::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 22px;
+  left: 20px;
+  border-left: 2px solid #e2e8f0;
+  z-index: 1;
+}
+
+/* Top level root node shouldn't have horizontal lines if it's the very root */
+.treeListRoot > .treeNode {
+  padding-left: 0;
+}
+.treeListRoot > .treeNode::before,
+.treeListRoot > .treeNode::after {
+  display: none;
+}
+.treeListRoot::before {
+  display: none;
+}
+
+.card {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.2s, background-color 0.2s;
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.cardLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.expandBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.2s;
+}
+.expandBtn:hover {
+  background: #e2e8f0;
+}
+
+.expandBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.emptySpacer {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.taskTitle {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardRight {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+}
+
+.metaItem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #64748b;
+}
+
+.metaItem strong {
+  color: #334155;
+  font-weight: 500;
+}
+
+.statusBadge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.statusTODO {
+  background: #f1f5f9;
+  color: #475569;
+}
+.statusIN_PROGRESS {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.statusREVIEW {
+  background: #fef3c7;
+  color: #d97706;
+}
+.statusDONE {
+  background: #ecfdf5;
+  color: #059669;
+}
+.statusBLOCKED {
+  background: #fef2f2;
+  color: #dc2626;
+}

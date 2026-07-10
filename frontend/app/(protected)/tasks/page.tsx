@@ -1,30 +1,32 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, StatusPill, Surface } from "@/components/ui";
-import { projectApi, taskApi, workspaceApi } from "@/services/api";
+import { taskApi, workspaceApi } from "@/services/api";
+import {
+  getTasksPageCache,
+  primeTasksPageData,
+  setTasksPageCache,
+  type TaskPageState,
+} from "@/services/page-cache/tasks-page";
 import { normalizeViewer } from "@/lib/mock/permissions";
 import { formatDate, formatHours, taskPriorityLabel, taskStatusLabel } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
-import type { EnrichedTask, Project, WorkspaceShellData } from "@/types";
+import type { WorkspaceShellData } from "@/types";
 import { TaskDetails } from "./_components/task-details";
-
-const columns = ["TODO", "IN_PROGRESS", "REVIEW", "BLOCKED", "DONE"] as const;
-
-type TaskPageState = {
-  shellData: WorkspaceShellData;
-  projects: Project[];
-  tasks: EnrichedTask[];
-};
+import { GroupedKanbanBoard } from "./_components/grouped-kanban-board";
 
 function TasksPageContent() {
   const session = useAuthSession();
-  const viewer = normalizeViewer(session?.currentUser);
+  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
+  const cachedTaskState = getTasksPageCache(viewer.id);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("ALL");
-  const [taskState, setTaskState] = useState<TaskPageState | null>(null);
+  const [viewMode, setViewMode] = useState<"kanban">("kanban");
+  const [taskState, setTaskState] = useState<TaskPageState | null>(cachedTaskState);
+  const [isBoardLoading, setIsBoardLoading] = useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -34,26 +36,53 @@ function TasksPageContent() {
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadTasks() {
-      const [{ data: shellData }, { data: projects }, { data: tasks }] = await Promise.all([
+    async function loadBoard() {
+      setIsBoardLoading(true);
+      const nextState = await primeTasksPageData(viewer);
+
+      if (isCancelled) {
+        return;
+      }
+
+      setTaskState(nextState);
+      setIsBoardLoading(false);
+    }
+
+    async function loadSelectedTaskDetail(taskId: string) {
+      const [{ data: shellData }, { data: task }] = await Promise.all([
         workspaceApi.getShellData(viewer),
-        projectApi.list(undefined, viewer),
-        taskApi.getEnrichedBoard(undefined, viewer),
+        taskApi.getEnrichedTask(taskId, viewer),
       ]);
 
       if (isCancelled) {
         return;
       }
 
-      setTaskState({ shellData, projects, tasks });
+      setTaskState({
+        shellData,
+        projects: task.project ? [task.project] : [],
+        tasks: [task],
+      });
     }
 
-    void loadTasks();
+    async function hydratePage() {
+      const cachedState = getTasksPageCache(viewer.id);
+      const hasSelectedTaskInCache =
+        Boolean(cachedState?.tasks.some((task) => task.id === selectedTaskId));
+
+      if (selectedTaskId && !hasSelectedTaskInCache) {
+        await loadSelectedTaskDetail(selectedTaskId);
+      }
+
+      await loadBoard();
+    }
+
+    void hydratePage();
 
     return () => {
       isCancelled = true;
     };
-  }, [viewer]);
+  }, [selectedTaskId, viewer]);
 
   const shellData =
     taskState?.shellData ??
@@ -83,7 +112,7 @@ function TasksPageContent() {
         <TaskDetails task={selectedTask} viewerId={viewer.id} />
       ) : (
         <>
-          <section className="filter-row">
+          <section className="filter-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
             <label>
               <span>Dự án</span>
               <select
@@ -103,16 +132,38 @@ function TasksPageContent() {
           <div
             style={{ display: "flex", flexDirection: "column", gap: "2rem", marginTop: "1.5rem" }}
           >
-            {(taskState?.projects ?? [])
-              .filter((p) => selectedProjectId === "ALL" || p.id === selectedProjectId)
-              .map((project) => {
-                const pTasks = (taskState?.tasks ?? []).filter((t) => t.projectId === project.id);
-                if (pTasks.length === 0 && selectedProjectId === "ALL") return null;
+            {viewMode === "kanban" ? (
+              <GroupedKanbanBoard 
+                projects={taskState?.projects ?? []}
+                tasks={filteredTasks} 
+                selectedProjectId={selectedProjectId}
+                onTaskUpdated={() => {
+                  taskApi.getEnrichedBoard(undefined, viewer, {
+                    projects: taskState?.projects ?? [],
+                  }).then(res => {
+                    setTaskState((current) => {
+                      if (!current) {
+                        return null;
+                      }
 
-                return (
-                  <Surface key={project.id} title={project.name} kicker={project.code}>
-                    {pTasks.length ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                      const nextState = { ...current, tasks: res.data };
+                      setTasksPageCache(viewer.id, nextState);
+                      return nextState;
+                    });
+                  });
+                }}
+              />
+            ) : (
+              (taskState?.projects ?? [])
+                .filter((p) => selectedProjectId === "ALL" || p.id === selectedProjectId)
+                .map((project) => {
+                  const pTasks = (taskState?.tasks ?? []).filter((t) => t.projectId === project.id);
+                  if (pTasks.length === 0 && selectedProjectId === "ALL") return null;
+
+                  return (
+                    <Surface key={project.id} title={project.name} kicker={project.code}>
+                      {pTasks.length ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                         {pTasks.map((task) => (
                           <article
                             key={task.id}
@@ -163,7 +214,7 @@ function TasksPageContent() {
                             >
                               <div style={{ display: "flex", gap: "1.5rem" }}>
                                 <span>
-                                  <strong>Người làm:</strong> {task.assignee.name}
+                                  <strong>Người làm:</strong> {task.assignee?.name || "Không xác định"}
                                 </span>
                                 <span>
                                   <strong>Hạn:</strong> {formatDate(task.dueDate)}
@@ -175,20 +226,28 @@ function TasksPageContent() {
                             </div>
                           </article>
                         ))}
-                      </div>
-                    ) : (
-                      <EmptyState
-                        title="Không có nhiệm vụ"
-                        description="Bạn chưa có nhiệm vụ nào trong dự án này."
-                      />
-                    )}
-                  </Surface>
-                );
-              })}
+                        </div>
+                      ) : (
+                        <EmptyState
+                          title="Chưa có nhiệm vụ"
+                          description="Hiện không có nhiệm vụ nào cho dự án này."
+                        />
+                      )}
+                    </Surface>
+                  );
+                })
+            )}
 
             {filteredTasks.length === 0 && selectedProjectId === "ALL" && (
               <Surface title="Chưa có nhiệm vụ">
-                <EmptyState title="Trống" description="Bạn chưa có bất kỳ nhiệm vụ nào." />
+                <EmptyState
+                  title={isBoardLoading ? "Đang tải nhiệm vụ" : "Trống"}
+                  description={
+                    isBoardLoading
+                      ? "Hệ thống đang đồng bộ danh sách nhiệm vụ của bạn."
+                      : "Bạn chưa có bất kỳ nhiệm vụ nào."
+                  }
+                />
               </Surface>
             )}
           </div>

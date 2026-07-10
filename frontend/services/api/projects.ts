@@ -1,54 +1,108 @@
-import { Project, ProjectFilters, UserProfile } from "@/types";
-import { filterProjects, getProject, respond } from "./core";
-import { projects } from "@/lib/mock/data";
+import { Project, ProjectFilters, UserProfile, ApiResponse } from "@/types";
+import { requestApi, apiEndpoints } from "./core";
+
+function mapBackendProject(data: any): Project {
+  return {
+    ...data,
+    id: data.id.toString(),
+    managerId: data.managerId ? `usr-${data.managerId}` : "",
+    memberIds: data.memberIds ? data.memberIds.map((id: number) => `usr-${id}`) : [],
+    startDate: data.startDate || "",
+    endDate: data.endDate || "",
+    currentSprintId: data.currentSprintId?.toString() || null,
+    objectives: data.objectives || [],
+    metrics: data.metrics || {
+      completedTasks: 0,
+      overdueTasks: 0,
+      logworkCoverage: 0,
+      velocity: 0,
+    },
+  };
+}
 
 export const projectApi = {
-  async list(filters?: ProjectFilters, viewer?: UserProfile | null) {
-    return respond(filterProjects(filters, viewer), 100);
-  },
+  async list(filters?: ProjectFilters, viewer?: UserProfile | null): Promise<ApiResponse<Project[]>> {
+    const params = new URLSearchParams();
+    if (filters?.search) params.append("search", filters.search);
+    if (filters?.status) params.append("status", filters.status);
+    if (filters?.managerId) params.append("manager_id", filters.managerId.replace("usr-", ""));
+    
+    // pagination params if needed
+    params.append("page_size", "100");
 
-  async get(projectId: string, viewer?: UserProfile | null) {
-    const accessibleProject =
-      filterProjects(undefined, viewer).find((project) => project.id === projectId) ??
-      getProject(projectId);
-    return respond(accessibleProject, 80);
-  },
-
-  async create(payload: Omit<Project, "id">) {
-    const created: Project = {
-      ...payload,
-      id: `prj-${projects.length + 1}`,
+    const endpoint = {
+      ...apiEndpoints.projects.list,
+      path: `${apiEndpoints.projects.list.path}?${params.toString()}`,
     };
-    projects.unshift(created);
-    return respond(created, 180);
+    
+    const response = await requestApi<any>(endpoint);
+    const items = response.data.items ? response.data.items.map(mapBackendProject) : [];
+    
+    return { data: items, meta: response.meta };
   },
 
-  async update(projectId: string, payload: Partial<Project>) {
-    const index = projects.findIndex((project) => project.id === projectId);
-    const updated = { ...projects[index], ...payload };
-    projects[index] = updated;
-    return respond(updated, 160);
+  async get(projectId: string, viewer?: UserProfile | null): Promise<ApiResponse<Project>> {
+    const endpoint = apiEndpoints.projects.detail(projectId);
+    const response = await requestApi<any>(endpoint);
+    return { data: mapBackendProject(response.data), meta: response.meta };
   },
 
-  async addMember(projectId: string, memberId: string) {
-    const index = projects.findIndex((project) => project.id === projectId);
-    const current = projects[index];
-    const nextMemberIds = current.memberIds.includes(memberId)
-      ? current.memberIds
-      : [...current.memberIds, memberId];
-    const updated = { ...current, memberIds: nextMemberIds };
-    projects[index] = updated;
-    return respond(updated, 140);
+  async create(payload: Record<string, any>): Promise<ApiResponse<Project>> {
+    const response = await requestApi<any>(apiEndpoints.projects.create, {
+      body: JSON.stringify(payload),
+    });
+    const created = mapBackendProject(response.data);
+    return { data: created, meta: response.meta };
   },
 
-  async removeMember(projectId: string, memberId: string) {
-    const index = projects.findIndex((project) => project.id === projectId);
-    const current = projects[index];
-    const updated = {
-      ...current,
-      memberIds: current.memberIds.filter((id) => id !== memberId),
-    };
-    projects[index] = updated;
-    return respond(updated, 140);
+  async update(projectId: string, payload: Partial<Project>): Promise<ApiResponse<Project>> {
+    const endpoint = apiEndpoints.projects.update(projectId);
+    
+    const backendPayload: any = { ...payload };
+    if (payload.startDate) backendPayload.start_date = payload.startDate;
+    if (payload.endDate) backendPayload.end_date = payload.endDate;
+    
+    const response = await requestApi<any>(endpoint, {
+      body: JSON.stringify(backendPayload),
+    });
+    
+    return { data: mapBackendProject(response.data), meta: response.meta };
+  },
+
+  async listMembers(projectId: string): Promise<ApiResponse<any[]>> {
+    const endpoint = { method: "GET" as const, path: `/api/projects/${projectId}/members` };
+    const response = await requestApi<any>(endpoint);
+    return { data: response.data, meta: response.meta };
+  },
+
+  async listRoles(): Promise<ApiResponse<any[]>> {
+    const endpoint = { method: "GET" as const, path: `/api/project-roles` };
+    const response = await requestApi<any>(endpoint);
+    return { data: response.data, meta: response.meta };
+  },
+
+  async updateMemberRole(projectId: string, memberId: number, roleId: number): Promise<ApiResponse<any>> {
+    const endpoint = { method: "PATCH" as const, path: `/api/projects/${projectId}/members/${memberId}` };
+    const response = await requestApi<any>(endpoint, {
+      body: JSON.stringify({ role_id: roleId }),
+    });
+    return { data: response.data, meta: response.meta };
+  },
+
+  async addMember(projectId: string, userId: string, roleId: number = 2): Promise<ApiResponse<any>> {
+    const endpoint = { method: "POST" as const, path: `/api/projects/${projectId}/members` };
+    const response = await requestApi<any>(endpoint, {
+      body: JSON.stringify({
+        user_id: parseInt(userId.replace("usr-", ""), 10),
+        role_id: roleId,
+      })
+    });
+    return { data: response.data, meta: response.meta };
+  },
+
+  async removeMember(projectId: string, memberId: number): Promise<ApiResponse<any>> {
+    const endpoint = { method: "DELETE" as const, path: `/api/projects/${projectId}/members/${memberId}` };
+    const response = await requestApi<any>(endpoint);
+    return { data: response.data, meta: response.meta };
   },
 };

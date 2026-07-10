@@ -56,8 +56,8 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
           />
           <StatCard
             label="Người thực hiện"
-            value={task.assignee.name}
-            note={task.assignee.title}
+            value={task.assignee?.name || "Chưa phân công"}
+            note={task.assignee?.title || ""}
             tone="critical"
           />
         </section>

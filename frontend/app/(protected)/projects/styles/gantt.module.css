@@ -1,0 +1,294 @@
+.ganttContainer {
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 13px;
+  color: #333333;
+}
+
+.ganttLayout {
+  display: flex;
+  min-width: 100%;
+  overflow-x: auto;
+}
+
+.ganttLeftPane {
+  flex: 0 0 840px;
+  min-width: 840px;
+  border-right: 1px solid #dcdcdc;
+  position: sticky;
+  left: 0;
+  background: #ffffff;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+
+.ganttRightPane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: max-content;
+}
+
+.ganttHeaderRow {
+  display: flex;
+  border-bottom: 1px solid #dcdcdc;
+  background: #f8f9fa;
+  color: #333333;
+  font-weight: 600;
+  height: 56px;
+}
+
+.ganttLeftHeader {
+  display: flex;
+  flex: 0 0 840px;
+  min-width: 840px;
+  border-right: 1px solid #dcdcdc;
+  position: sticky;
+  left: 0;
+  background: #f8f9fa;
+  z-index: 11;
+  height: 100%;
+}
+
+.ganttLeftHeaderCell {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-right: 1px solid #dcdcdc;
+}
+
+.ganttLeftHeaderCell:last-child {
+  border-right: none;
+}
+
+.ganttRightHeader {
+  display: grid;
+  height: 100%;
+  flex: 1;
+}
+
+.ganttRightHeaderTop {
+  display: flex;
+  border-bottom: 1px solid #dcdcdc;
+  height: 28px;
+}
+
+.ganttMonthHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #dcdcdc;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ganttRightHeaderBottom {
+  display: grid;
+  height: 28px;
+}
+
+.ganttDayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #dcdcdc;
+  font-size: 11px;
+  font-weight: normal;
+  color: #555;
+}
+
+.ganttBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.ganttRow {
+  display: flex;
+  border-bottom: 1px solid #eeeeee;
+  height: 32px;
+  position: relative;
+}
+
+/* Root task row background */
+.ganttRowRoot .ganttLeftCell {
+  background: #aed9d4;
+}
+
+/* Alternating rows */
+.ganttRow:nth-child(even) .ganttLeftCell:not(.ganttRowRoot) {
+  background: #fafafa;
+}
+
+.ganttRow:hover .ganttLeftCell {
+  background: #e6f0fa;
+}
+
+.ganttLeftCell {
+  display: flex;
+  flex: 0 0 840px;
+  min-width: 840px;
+  border-right: 1px solid #dcdcdc;
+  position: sticky;
+  left: 0;
+  background: #ffffff;
+  z-index: 10;
+}
+
+.ganttLeftCol {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-right: 1px solid #dcdcdc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ganttLeftCol:last-child {
+  border-right: none;
+}
+
+.ganttRightCell {
+  flex: 1;
+  position: relative;
+  display: grid;
+}
+
+.ganttGridLines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ganttGridLine {
+  border-right: 1px solid #eaeaea;
+}
+
+/* Parent Task Bar: Trapezoid ends */
+.ganttBarParent {
+  position: relative;
+  z-index: 1;
+  height: 10px;
+  margin-top: 6px;
+  background: #8cc63f; /* Green */
+  display: flex;
+  border-bottom: 2px solid #2b5797; /* Blue bottom line */
+}
+
+.ganttBarParent::before,
+.ganttBarParent::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  border-top: 8px solid #2b5797; /* Dark blue */
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+}
+
+.ganttBarParent::before {
+  left: -3px;
+}
+
+.ganttBarParent::after {
+  right: -3px;
+}
+
+/* Child Task Bar */
+.ganttBarChild {
+  position: relative;
+  z-index: 1;
+  height: 18px;
+  margin-top: 7px;
+  border-radius: 3px;
+  background: #2b88d8; /* Light blue */
+  border: 1px solid #1c68a6;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.ganttBarProgress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #8bc4f5; /* Lighter inner blue */
+  width: 50%;
+  border-radius: 2px 0 0 2px;
+  z-index: -1;
+}
+
+/* Specific colors for child bar */
+.barColorGreen {
+  background: #8cc63f;
+  border-color: #689f28;
+}
+
+/* Icons and toggles */
+.expandBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin-right: 6px;
+  color: #555;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+}
+
+.taskIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  color: #666;
+}
+
+.statusIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statusCircle {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.statusText {
+  font-size: 12px;
+  color: #333;
+}
+
+/* Status colors */
+.circleGreen { background: #8cc63f; }
+.circleGray { background: #607d8b; }
+.circleRed { background: #f44336; }
+.circleYellow { background: #ffc107; }
+
+/* Milestone */
+.ganttMilestone {
+  position: relative;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  background: #ff9800;
+  transform: rotate(45deg);
+  margin-top: 9px;
+  margin-left: auto;
+  margin-right: auto;
+  border: 1px solid #e65100;
+}

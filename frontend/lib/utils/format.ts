@@ -14,19 +14,28 @@ const dateFormatter = new Intl.DateTimeFormat("vi-VN", {
 });
 
 export function formatDate(date: string) {
-  return dateFormatter.format(new Date(date));
+  if (!date) return "(Chưa có)";
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "(Không hợp lệ)";
+  return dateFormatter.format(d);
 }
 
 export function formatDateTime(date: string) {
+  if (!date) return "(Chưa có)";
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "(Không hợp lệ)";
   return new Intl.DateTimeFormat("vi-VN", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(date));
+  }).format(d);
 }
 
 export function formatRange(start: string, end: string) {
+  if (!start && !end) return "Chưa xác định";
+  if (!end) return `${formatDate(start)} - (Chưa có)`;
+  if (!start) return `(Chưa có) - ${formatDate(end)}`;
   return `${formatDate(start)} - ${formatDate(end)}`;
 }
 
@@ -47,12 +56,22 @@ export function roleLabel(role: UserRole) {
   }[role];
 }
 
+export function projectRoleLabel(roleName: string) {
+  const map: Record<string, string> = {
+    PROJECT_MANAGER: "Project Manager",
+    DEVELOPER: "Developer",
+    QA: "QA",
+    VIEWER: "Viewer",
+  };
+  return map[roleName] || roleName;
+}
+
 export function projectStatusLabel(status: ProjectStatus) {
   return {
     PLANNING: "Đang lập kế hoạch",
     ACTIVE: "Đang triển khai",
-    AT_RISK: "Cần lưu ý",
-    COMPLETED: "Hoàn thành",
+    AT_RISK: "Rủi ro trễ hạn",
+    COMPLETED: "Đã hoàn thành",
   }[status];
 }
 
@@ -111,4 +130,24 @@ export function daysUntil(date: string) {
   const target = new Date(date).getTime();
   const today = new Date("2026-06-29T12:00:00Z").getTime();
   return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+}
+
+export function differenceInDays(start: string | Date, end: string | Date) {
+  const startDate = new Date(start).getTime();
+  const endDate = new Date(end).getTime();
+  return Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+}
+
+export function generateDateRange(start: string, end: string) {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const dates: Date[] = [];
+  
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return dates;
 }

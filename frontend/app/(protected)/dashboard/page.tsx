@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import {
@@ -42,7 +42,7 @@ type DashboardState = {
 
 export default function DashboardPage() {
   const session = useAuthSession();
-  const viewer = normalizeViewer(session?.currentUser);
+  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [dashboardState, setDashboardState] = useState<DashboardState | null>(null);
 
@@ -328,7 +328,7 @@ export default function DashboardPage() {
                 return (
                   <div key={entry.id} className="table-row">
                     <span>{formatDate(entry.date)}</span>
-                    <strong>{relatedTask?.assignee.name ?? viewer.name}</strong>
+                    <strong>{relatedTask?.assignee?.name ?? viewer.name}</strong>
                     <p>{entry.note}</p>
                   </div>
                 );
@@ -352,7 +352,7 @@ export default function DashboardPage() {
                     <p>{task.title}</p>
                   </div>
                   <div className="align-right">
-                    <span>{task.assignee.name}</span>
+                    <span>{task.assignee?.name ?? "Chưa phân công"}</span>
                     <span>Hạn {formatDate(task.dueDate)}</span>
                   </div>
                 </article>

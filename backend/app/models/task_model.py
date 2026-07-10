@@ -32,3 +32,13 @@ class TaskAssignees(Base):
     project_member_id = Column(Integer, ForeignKey("project_members.id"), nullable=False)
     assigned_by_member_id = Column(Integer, ForeignKey("project_members.id"), nullable=False)
     assigned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class TaskComment(Base):
+    __tablename__ = "task_comments"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    project_member_id = Column(Integer, ForeignKey("project_members.id"), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
