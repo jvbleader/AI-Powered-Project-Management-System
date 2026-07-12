@@ -1,19 +1,11 @@
 import { logworkEntries, projects, sprints, tasks, users } from "@/lib/mock/data";
 import { getDirectoryUserByEmail, getDirectoryUserById } from "@/services/users/directory";
-import type {
-  LogworkEntry,
-  Project,
-  Sprint,
-  Task,
-  TaskStatus,
-  UserProfile,
-  UserRole,
-} from "@/types";
+import type { LogworkEntry, Project, Sprint, Task, UserProfile, UserRole } from "@/types";
 
 export const DEMO_TODAY = "2026-06-29";
 
 const privilegedRoles = new Set<UserRole>(["ADMIN", "MANAGER", "LEADER"]);
-const reviewLikeStatuses = new Set<TaskStatus>(["IN_PROGRESS", "REVIEW", "BLOCKED"]);
+const projectManagementRoles = new Set<UserRole>(["MANAGER", "LEADER"]);
 
 export function getDemoUserByEmail(email?: string | null) {
   if (!email) {
@@ -57,20 +49,33 @@ export function isPrivilegedUser(viewer?: UserProfile | null) {
   return privilegedRoles.has(normalizeViewer(viewer).role);
 }
 
+export function isAdminUser(viewer?: UserProfile | null) {
+  return normalizeViewer(viewer).role === "ADMIN";
+}
+
+export function canAccessTeamDirectory(viewer?: UserProfile | null) {
+  return privilegedRoles.has(normalizeViewer(viewer).role);
+}
+
 export function canManageProject(viewer: UserProfile, project: Project) {
-  if (viewer.role === "ADMIN") {
+  const currentViewer = normalizeViewer(viewer);
+
+  if (currentViewer.role === "ADMIN") {
     return true;
   }
 
-  if (viewer.role === "MANAGER") {
-    return project.managerId === viewer.id || project.memberIds.includes(viewer.id);
+  const isProjectMember =
+    project.managerId === currentViewer.id || project.memberIds.includes(currentViewer.id);
+
+  if (!isProjectMember) {
+    return false;
   }
 
-  if (viewer.role === "LEADER") {
-    return project.memberIds.includes(viewer.id);
+  if (project.managerId === currentViewer.id) {
+    return true;
   }
 
-  return false;
+  return projectManagementRoles.has(currentViewer.role);
 }
 
 export function getAccessibleProjects(viewer?: UserProfile | null) {
@@ -88,27 +93,82 @@ export function getAccessibleProjects(viewer?: UserProfile | null) {
 export function getManagedProjects(viewer?: UserProfile | null) {
   const currentViewer = normalizeViewer(viewer);
 
-  if (currentViewer.role === "ADMIN") {
-    return [...projects];
+  return projects.filter((project) => canManageProject(currentViewer, project));
+}
+
+export function canManageAnyProject(viewer?: UserProfile | null) {
+  return getManagedProjects(viewer).length > 0;
+}
+
+export function getAccessibleProjectUserIds(viewer?: UserProfile | null) {
+  const currentViewer = normalizeViewer(viewer);
+  const visibleUserIds = new Set<string>([currentViewer.id]);
+
+  getAccessibleProjects(currentViewer).forEach((project) => {
+    project.memberIds.forEach((memberId) => visibleUserIds.add(memberId));
+    if (project.managerId) {
+      visibleUserIds.add(project.managerId);
+    }
+  });
+
+  return visibleUserIds;
+}
+
+export function getAccessibleProjectUsers(viewer?: UserProfile | null) {
+  if (isAdminUser(viewer)) {
+    return [...users];
   }
 
-  if (currentViewer.role === "MANAGER") {
-    return projects.filter((project) => project.managerId === currentViewer.id);
+  const visibleUserIds = getAccessibleProjectUserIds(viewer);
+  return users.filter((user) => visibleUserIds.has(user.id));
+}
+
+export function getManagedProjectUsers(viewer?: UserProfile | null) {
+  if (isAdminUser(viewer)) {
+    return [...users];
   }
 
-  if (currentViewer.role === "LEADER") {
-    return projects.filter((project) => project.memberIds.includes(currentViewer.id));
+  const visibleUserIds = new Set<string>([normalizeViewer(viewer).id]);
+  getManagedProjects(viewer).forEach((project) => {
+    project.memberIds.forEach((memberId) => visibleUserIds.add(memberId));
+    if (project.managerId) {
+      visibleUserIds.add(project.managerId);
+    }
+  });
+
+  return users.filter((user) => visibleUserIds.has(user.id));
+}
+
+export function getLogworkTrackedUsers(viewer?: UserProfile | null) {
+  const currentViewer = normalizeViewer(viewer);
+
+  if (isAdminUser(currentViewer)) {
+    return users.filter((user) => user.role !== "ADMIN");
   }
 
-  return [];
+  if (canManageAnyProject(currentViewer)) {
+    return getManagedProjectUsers(currentViewer).filter((user) => user.role !== "ADMIN");
+  }
+
+  return [currentViewer];
 }
 
 export function getAccessibleSprints(viewer?: UserProfile | null) {
   const accessibleProjectIds = new Set(getAccessibleProjects(viewer).map((project) => project.id));
   const currentViewer = normalizeViewer(viewer);
 
-  if (isPrivilegedUser(currentViewer)) {
+  const managedProjectIds = new Set(getManagedProjects(currentViewer).map((project) => project.id));
+
+  if (isAdminUser(currentViewer)) {
     return sprints.filter((sprint) => accessibleProjectIds.has(sprint.projectId));
+  }
+
+  if (projectManagementRoles.has(currentViewer.role)) {
+    return sprints.filter((sprint) => accessibleProjectIds.has(sprint.projectId));
+  }
+
+  if (managedProjectIds.size > 0) {
+    return sprints.filter((sprint) => managedProjectIds.has(sprint.projectId));
   }
 
   const ownSprintIds = new Set(
@@ -127,26 +187,46 @@ export function getAccessibleTasks(viewer?: UserProfile | null) {
   const accessibleProjectIds = new Set(
     getAccessibleProjects(currentViewer).map((project) => project.id),
   );
-  const scopedTasks = tasks.filter((task) => accessibleProjectIds.has(task.projectId));
+  const managedProjectIds = new Set(getManagedProjects(currentViewer).map((project) => project.id));
 
-  if (isPrivilegedUser(currentViewer)) {
-    return scopedTasks;
+  if (isAdminUser(currentViewer)) {
+    return [...tasks];
   }
 
-  return scopedTasks.filter((task) => task.assigneeId === currentViewer.id);
+  return tasks.filter((task) => {
+    if (!accessibleProjectIds.has(task.projectId)) {
+      return false;
+    }
+
+    if (managedProjectIds.has(task.projectId)) {
+      return true;
+    }
+
+    return task.assigneeId === currentViewer.id;
+  });
 }
 
 export function getAccessibleLogwork(viewer?: UserProfile | null) {
   const currentViewer = normalizeViewer(viewer);
   const accessibleTaskIds = new Set(getAccessibleTasks(currentViewer).map((task) => task.id));
+  const managedProjectIds = new Set(getManagedProjects(currentViewer).map((project) => project.id));
 
-  if (isPrivilegedUser(currentViewer)) {
-    return logworkEntries.filter((entry) => accessibleTaskIds.has(entry.taskId));
-  }
+  return logworkEntries.filter((entry) => {
+    if (!accessibleTaskIds.has(entry.taskId)) {
+      return false;
+    }
 
-  return logworkEntries.filter(
-    (entry) => entry.userId === currentViewer.id && accessibleTaskIds.has(entry.taskId),
-  );
+    const relatedTask = tasks.find((task) => task.id === entry.taskId);
+    if (!relatedTask) {
+      return false;
+    }
+
+    if (isAdminUser(currentViewer) || managedProjectIds.has(relatedTask.projectId)) {
+      return true;
+    }
+
+    return entry.userId === currentViewer.id;
+  });
 }
 
 export function getProjectMembers(project: Project) {
@@ -194,7 +274,7 @@ export function categorizeTask(task: Task, today = DEMO_TODAY) {
     return "TODO";
   }
 
-  if (reviewLikeStatuses.has(task.status)) {
+  if (task.status === "IN_PROGRESS") {
     return "IN_PROGRESS";
   }
 

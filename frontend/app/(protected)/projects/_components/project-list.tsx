@@ -16,7 +16,7 @@ interface ProjectListProps {
   onEditProjectClick?: (project: Project) => void;
 }
 
-const PROJECTS_PER_PAGE = 5;
+const PROJECTS_PER_PAGE = 10;
 
 export function ProjectList({
   projects,
@@ -28,6 +28,7 @@ export function ProjectList({
   onAddProjectClick,
   onEditProjectClick,
 }: ProjectListProps) {
+  void onSelectProject;
   const router = useRouter();
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
@@ -47,6 +48,16 @@ export function ProjectList({
 
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PROJECTS_PER_PAGE));
   const validPage = Math.min(page, totalPages);
+  const canEditProject = (project: Project) => {
+    if (viewerRole === "ADMIN" || project.managerId === viewerId) {
+      return true;
+    }
+
+    return (
+      (viewerRole === "MANAGER" || viewerRole === "LEADER") &&
+      project.memberIds.includes(viewerId)
+    );
+  };
   
   const paginatedProjects = filteredProjects.slice(
     (validPage - 1) * PROJECTS_PER_PAGE,
@@ -191,7 +202,7 @@ export function ProjectList({
                           >
                             Xem
                           </button>
-                          {onEditProjectClick && (viewerRole === "ADMIN" || project.managerId === viewerId) && (
+                          {onEditProjectClick && canEditProject(project) && (
                             <button
                               type="button"
                               className="icon-button"
@@ -225,7 +236,7 @@ export function ProjectList({
                         <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--foreground-muted)" }}>{project.code}</p>
                       </div>
                     </div>
-                    {onEditProjectClick && (viewerRole === "ADMIN" || project.managerId === viewerId) && (
+                    {onEditProjectClick && canEditProject(project) && (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onEditProjectClick(project); }}
@@ -293,4 +304,3 @@ export function ProjectList({
     </Surface>
   );
 }
-

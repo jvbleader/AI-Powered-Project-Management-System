@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type Tone = "accent" | "on-track" | "watch" | "critical" | "neutral";
+type Tone = "accent" | "on-track" | "watch" | "critical" | "neutral" | "todo" | "progress" | "done";
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -162,8 +162,8 @@ export function DonutChart({
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
   const colors = {
     todo: "#facc15",
-    progress: "#22c55e",
-    done: "#3b82f6",
+    progress: "#3b82f6",
+    done: "#22c55e",
     outdate: "#ef4444",
   } as const;
 

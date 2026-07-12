@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { differenceInDays } from "@/lib/utils/format";
+import { differenceInDays, taskStatusLabel, toWorkflowTaskStatus } from "@/lib/utils/format";
 import type { EnrichedTask } from "@/types";
 import styles from "../styles/wbs-tree.module.css";
 
@@ -60,7 +60,8 @@ export function WbsTree({ tasks }: WbsTreeProps) {
           const isExpanded = expanded[node.task.id] !== false;
           const hasChildren = node.children.length > 0;
           const duration = differenceInDays(node.task.startDate, node.task.dueDate) + 1;
-          const statusClass = styles[`status${node.task.status}`] || styles.statusTODO;
+          const workflowStatus = toWorkflowTaskStatus(node.task.status);
+          const statusClass = styles[`status${workflowStatus}`] || styles.statusTODO;
 
           const fStart = new Date(node.task.startDate).toLocaleDateString("vi-VN");
           const fEnd = new Date(node.task.dueDate).toLocaleDateString("vi-VN");
@@ -70,7 +71,10 @@ export function WbsTree({ tasks }: WbsTreeProps) {
               <div className={styles.card} onClick={() => handleRowClick(node.task.id)}>
                 <div className={styles.cardLeft}>
                   {hasChildren ? (
-                    <button className={styles.expandBtn} onClick={(e) => toggleExpand(node.task.id, e)}>
+                    <button
+                      className={styles.expandBtn}
+                      onClick={(e) => toggleExpand(node.task.id, e)}
+                    >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         {isExpanded ? (
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -84,7 +88,7 @@ export function WbsTree({ tasks }: WbsTreeProps) {
                   )}
                   <span className={styles.taskTitle}>{node.task.title}</span>
                 </div>
-                
+
                 <div className={styles.cardRight}>
                   <div className={styles.metaItem}>
                     <strong>Thời lượng:</strong> {duration} ngày
@@ -96,11 +100,11 @@ export function WbsTree({ tasks }: WbsTreeProps) {
                     <strong>Kết thúc:</strong> {fEnd}
                   </div>
                   <div className={`${styles.statusBadge} ${statusClass}`}>
-                    {node.task.status.replace("_", " ")}
+                    {taskStatusLabel(workflowStatus)}
                   </div>
                 </div>
               </div>
-              
+
               {isExpanded && hasChildren && renderTree(node.children)}
             </li>
           );
@@ -117,9 +121,5 @@ export function WbsTree({ tasks }: WbsTreeProps) {
     );
   }
 
-  return (
-    <div className={styles.treeContainer}>
-      {renderTree(rootNodes, true)}
-    </div>
-  );
+  return <div className={styles.treeContainer}>{renderTree(rootNodes, true)}</div>;
 }

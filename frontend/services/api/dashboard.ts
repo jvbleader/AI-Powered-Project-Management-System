@@ -1,99 +1,141 @@
 import { DashboardOverview, UserProfile } from "@/types";
-import { aiInsights, users } from "@/lib/mock/data";
-import {
-  DEMO_TODAY,
-  getAccessibleLogwork,
-  getAccessibleProjects,
-  getAccessibleTasks,
-  getSuggestedActiveProject,
-  getSuggestedActiveSprint,
-  isPrivilegedUser,
-  isTaskOverdue,
-  normalizeViewer,
-  summarizeTaskCategories,
-} from "@/lib/mock/permissions";
-import { getProject, respond } from "./core";
+
+import { requestApi } from "./core";
+import { mapBackendProject } from "./projects";
+
+function normalizeTaskStatus(status: unknown): "TODO" | "IN_PROGRESS" | "DONE" {
+  const normalized = typeof status === "string" ? status.trim().toUpperCase() : "TODO";
+
+  if (normalized === "DONE") {
+    return "DONE";
+  }
+
+  if (normalized === "IN_PROGRESS" || normalized === "INPROGRESS") {
+    return "IN_PROGRESS";
+  }
+
+  return "TODO";
+}
+
+function mapTaskPreview(item: any) {
+  return {
+    id: item.id.toString(),
+    key: item.key,
+    title: item.title,
+    status: normalizeTaskStatus(item.status),
+    priority: item.priority?.toUpperCase() || "MEDIUM",
+    startDate: item.startDate ?? null,
+    dueDate: item.dueDate ?? null,
+    assigneeName: item.assigneeName ?? null,
+    sprintName: item.sprintName ?? null,
+  };
+}
+
+function mapSprintSummary(item: any) {
+  return {
+    id: item.id.toString(),
+    name: item.name,
+    status: item.status,
+    goal: item.goal ?? null,
+    startDate: item.startDate,
+    endDate: item.endDate,
+    plannedProgress: item.plannedProgress ?? 0,
+    actualProgress: item.actualProgress ?? 0,
+    totalTasks: item.totalTasks ?? 0,
+    todoCount: item.todoCount ?? 0,
+    inProgressCount: item.inProgressCount ?? 0,
+    doneCount: item.doneCount ?? 0,
+    estimatedHours: item.estimatedHours ?? 0,
+    loggedHours: item.loggedHours ?? 0,
+    health: item.health ?? "on-track",
+  };
+}
+
+function mapWorkloadMember(item: any) {
+  return {
+    userId: item.userId.toString(),
+    memberId: item.memberId.toString(),
+    name: item.name,
+    email: item.email,
+    roleName: item.roleName,
+    assignedTasks: item.assignedTasks ?? 0,
+    todoTasks: item.todoTasks ?? 0,
+    inProgressTasks: item.inProgressTasks ?? 0,
+    doneTasks: item.doneTasks ?? 0,
+    overdueTasks: item.overdueTasks ?? 0,
+    estimatedHours: item.estimatedHours ?? 0,
+    loggedHours: item.loggedHours ?? 0,
+    progress: item.progress ?? 0,
+  };
+}
+
+function mapRecentLogwork(item: any) {
+  return {
+    id: item.id.toString(),
+    taskId: item.taskId.toString(),
+    taskKey: item.taskKey,
+    taskTitle: item.taskTitle,
+    userId: item.userId.toString(),
+    userName: item.userName,
+    workDate: item.workDate,
+    hours: item.hours ?? 0,
+    note: item.note ?? "",
+    progressPercent: item.progressPercent ?? 0,
+  };
+}
+
+function mapDashboardOverview(data: any): DashboardOverview {
+  return {
+    project: data.project ? mapBackendProject(data.project) : null,
+    portfolioProgress: data.portfolioProgress ?? 0,
+    projectProgress: data.projectProgress ?? 0,
+    activeSprintProgress: data.activeSprintProgress ?? 0,
+    logworkCoverage: data.logworkCoverage ?? 0,
+    criticalAlerts: data.criticalAlerts ?? 0,
+    projectsInScope: data.projectsInScope ?? 0,
+    openTasksInScope: data.openTasksInScope ?? 0,
+    taskSummary: {
+      todo: data.taskSummary?.todo ?? 0,
+      inProgress: data.taskSummary?.inProgress ?? 0,
+      done: data.taskSummary?.done ?? 0,
+      total: data.taskSummary?.total ?? 0,
+      overdue: data.taskSummary?.overdue ?? 0,
+    },
+    activeSprint: data.activeSprint ? mapSprintSummary(data.activeSprint) : null,
+    sprintSummaries: Array.isArray(data.sprintSummaries)
+      ? data.sprintSummaries.map(mapSprintSummary)
+      : [],
+    overdueTasks: Array.isArray(data.overdueTasks) ? data.overdueTasks.map(mapTaskPreview) : [],
+    activeTasks: Array.isArray(data.activeTasks) ? data.activeTasks.map(mapTaskPreview) : [],
+    workloadBoard: Array.isArray(data.workloadBoard)
+      ? data.workloadBoard.map(mapWorkloadMember)
+      : [],
+    recentLogwork: Array.isArray(data.recentLogwork)
+      ? data.recentLogwork.map(mapRecentLogwork)
+      : [],
+  };
+}
 
 export const dashboardApi = {
   async getOverview(viewer?: UserProfile | null, projectId?: string) {
-    const currentViewer = normalizeViewer(viewer);
-    const activeProject = getSuggestedActiveProject(currentViewer);
-    const selectedProject = projectId ? getProject(projectId) : activeProject;
-    const scopedProject =
-      getAccessibleProjects(currentViewer).find((project) => project.id === selectedProject.id) ??
-      activeProject;
-    const activeSprint = getSuggestedActiveSprint(currentViewer, scopedProject.id);
-    const visibleProjects = getAccessibleProjects(currentViewer);
-    const visibleTasks = getAccessibleTasks(currentViewer);
-    const overdueTasks = visibleTasks.filter(
-      (task) => task.projectId === scopedProject.id && isTaskOverdue(task),
-    );
-    const workloadBoard = users
-      .filter((user) => activeProject.memberIds.includes(user.id))
-      .map((user) => ({
-        user,
-        utilization: Math.round((user.workloadHours / user.capacityHours) * 100),
-      }));
-    const visibleLogwork = getAccessibleLogwork(currentViewer).slice(0, 5);
-    const scopedProjectTasks = visibleTasks.filter((task) => task.projectId === scopedProject.id);
-    const taskCategories = summarizeTaskCategories(scopedProjectTasks);
-    const portfolioProgress = visibleProjects.length
-      ? Math.round(
-          visibleProjects.reduce((sum, project) => sum + project.progress, 0) /
-            visibleProjects.length,
-        )
-      : 0;
-    const logworkOwners = isPrivilegedUser(currentViewer)
-      ? users.filter((user) => user.role !== "ADMIN")
-      : [currentViewer];
-    const logworkCoverage = logworkOwners.length
-      ? Math.round(
-          (logworkOwners.filter((user) => {
-            return getAccessibleLogwork(currentViewer).some(
-              (entry) => entry.userId === user.id && entry.date === DEMO_TODAY,
-            );
-          }).length /
-            logworkOwners.length) *
-            100,
-        )
-      : 0;
+    void viewer;
 
-    const data: DashboardOverview = {
-      activeProject: scopedProject,
-      activeSprint,
-      portfolioProgress,
-      stats: [
-        {
-          label: "Tiến độ danh mục",
-          value: `${portfolioProgress}%`,
-          change: `${visibleProjects.length} dự án trong phạm vi của bạn`,
-          tone: "accent",
-        },
-        {
-          label: "Hoàn thành sprint",
-          value: `${activeSprint.progress}%`,
-          change: `${activeSprint.completedPoints}/${activeSprint.committedPoints} điểm đã bàn giao`,
-          tone: activeSprint.health,
-        },
-        {
-          label: "Tỷ lệ logwork",
-          value: `${logworkCoverage}%`,
-          change: `${visibleLogwork.length} bản ghi gần nhất đang hiển thị`,
-          tone: logworkCoverage >= 80 ? "on-track" : "watch",
-        },
-        {
-          label: "Cảnh báo trọng yếu",
-          value: `${taskCategories.OUTDATE + overdueTasks.filter((task) => task.status === "BLOCKED").length}`,
-          change: `${taskCategories.OUTDATE} công việc đã trễ hạn`,
-          tone: taskCategories.OUTDATE > 0 ? "critical" : "on-track",
-        },
-      ],
-      overdueTasks,
-      workloadBoard,
-      recentLogwork: visibleLogwork,
-      aiInsights,
+    const params = new URLSearchParams();
+    if (projectId) {
+      params.append("project_id", projectId);
+    }
+
+    const path = params.size
+      ? `/api/dashboard/overview?${params.toString()}`
+      : "/api/dashboard/overview";
+    const response = await requestApi<any>({
+      method: "GET",
+      path,
+    });
+
+    return {
+      data: mapDashboardOverview(response.data),
+      meta: response.meta,
     };
-
-    return respond(data, 120);
   },
 };

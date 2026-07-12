@@ -2,12 +2,14 @@ import { normalizeViewer } from "@/lib/mock/permissions";
 import { projectApi } from "@/services/api/projects";
 import { taskApi } from "@/services/api/tasks";
 import { workspaceApi } from "@/services/api/workspace";
+import { userApi } from "@/services/api/users";
 import type { EnrichedTask, Project, UserProfile, WorkspaceShellData } from "@/types";
 
 export type TaskPageState = {
   shellData: WorkspaceShellData;
   projects: Project[];
   tasks: EnrichedTask[];
+  users: UserProfile[];
 };
 
 type TaskPageCacheEntry = {
@@ -49,15 +51,16 @@ export async function primeTasksPageData(viewer?: UserProfile | null) {
     return pendingTaskPageRequest.promise;
   }
 
-  const promise = (async () => {
-    const [{ data: shellData }, { data: projects }] = await Promise.all([
-      workspaceApi.getShellData(resolvedViewer),
-      projectApi.list(undefined, resolvedViewer),
-    ]);
-    const { data: tasks } = await taskApi.getEnrichedBoard(undefined, resolvedViewer, { projects });
-    const nextState = { shellData, projects, tasks };
+    const promise = (async () => {
+      const [{ data: shellData }, { data: projects }, { data: users }] = await Promise.all([
+        workspaceApi.getShellData(resolvedViewer),
+        projectApi.list(undefined, resolvedViewer),
+        userApi.list(resolvedViewer),
+      ]);
+      const { data: tasks } = await taskApi.getEnrichedBoard(undefined, resolvedViewer, { projects, users });
+      const nextState = { shellData, projects, tasks, users };
 
-    setTasksPageCache(resolvedViewer.id, nextState);
+      setTasksPageCache(resolvedViewer.id, nextState);
     return nextState;
   })().finally(() => {
     if (pendingTaskPageRequest?.viewerId === resolvedViewer.id) {

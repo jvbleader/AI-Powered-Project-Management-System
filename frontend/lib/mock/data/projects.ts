@@ -19,6 +19,7 @@ export const projects: Project[] = [
       overdueTasks: 0,
       logworkCoverage: 0,
       velocity: 0,
+      totalTasks: 0,
     },
   },
 ];

@@ -6,6 +6,8 @@ import styles from "../styles/gantt.module.css";
 
 interface GanttChartProps {
   tasks: EnrichedTask[];
+  onTaskClick?: (taskId: string) => void;
+  onAddSubtask?: (parentId: string) => void;
 }
 
 interface WbsNode {
@@ -14,7 +16,16 @@ interface WbsNode {
   level: number;
 }
 
-export function GanttChart({ tasks }: GanttChartProps) {
+const NAME_COL_WIDTH = 260;
+const STATUS_COL_WIDTH = 130;
+const ASSIGNEE_COL_WIDTH = 140;
+const START_COL_WIDTH = 110;
+const END_COL_WIDTH = 110;
+const DAY_COLUMN_WIDTH = 18;
+const LEFT_PANE_WIDTH =
+  NAME_COL_WIDTH + STATUS_COL_WIDTH + ASSIGNEE_COL_WIDTH + START_COL_WIDTH + END_COL_WIDTH;
+
+export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -71,14 +82,14 @@ export function GanttChart({ tasks }: GanttChartProps) {
     const maxDateStr = maxDate.toISOString().split("T")[0];
 
     const dates = generateDateRange(minDateStr, maxDateStr);
-    
+
     // Group by month
     const monthsMap = new Map<string, number>();
     dates.forEach(d => {
       const key = d.toLocaleDateString("en-US", { month: "long" });
       monthsMap.set(key, (monthsMap.get(key) || 0) + 1);
     });
-    
+
     const months = Array.from(monthsMap.entries()).map(([name, days]) => ({ name, days }));
 
     return { dates, minDateStr, months };
@@ -93,7 +104,11 @@ export function GanttChart({ tasks }: GanttChartProps) {
   };
 
   const handleRowClick = (taskId: string) => {
-    router.push(`/tasks?taskId=${taskId}`);
+    if (onTaskClick) {
+      onTaskClick(taskId);
+    } else {
+      router.push(`/tasks?taskId=${taskId}`);
+    }
   };
 
   const renderTree = (nodes: WbsNode[], indexCounter = { count: 1 }): React.ReactNode => {
@@ -102,21 +117,18 @@ export function GanttChart({ tasks }: GanttChartProps) {
       const hasChildren = node.children.length > 0;
       const isRoot = node.level === 0;
 
+      const effectiveDueDate = node.task.dueDate || node.task.startDate;
       const startCol = differenceInDays(minDateStr, node.task.startDate) + 1;
-      const endCol = differenceInDays(minDateStr, node.task.dueDate) + 2;
+      const endCol = differenceInDays(minDateStr, effectiveDueDate) + 2;
 
-      // Status mapping
-      let circleClass = styles.circleGray;
-      let stateText = "planned";
+      let circleClass = styles.circleYellow;
+      let stateText = "To do";
       if (node.task.status === "DONE") {
-        circleClass = styles.circleGray;
-        stateText = "completed";
-      } else if (node.task.status === "IN_PROGRESS" || node.task.status === "REVIEW") {
         circleClass = styles.circleGreen;
-        stateText = "in process";
-      } else {
-        circleClass = styles.circleRed;
-        stateText = "planned";
+        stateText = "Done";
+      } else if (node.task.status === "IN_PROGRESS") {
+        circleClass = styles.circleBlue;
+        stateText = "In Progress";
       }
 
       // Root tasks get teal background
@@ -124,9 +136,9 @@ export function GanttChart({ tasks }: GanttChartProps) {
 
       // Triangle icon
       const ToggleIcon = isExpanded ? (
-        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
       ) : (
-        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
       );
 
       // Task icon (generic box)
@@ -142,7 +154,7 @@ export function GanttChart({ tasks }: GanttChartProps) {
           <div className={rowClass}>
             {/* Left Cell */}
             <div className={styles.ganttLeftCell} onClick={() => handleRowClick(node.task.id)}>
-              <div className={styles.ganttLeftCol} style={{ width: "300px", paddingLeft: `${node.level * 20 + 8}px` }}>
+              <div className={styles.ganttLeftCol} style={{ width: `${NAME_COL_WIDTH}px`, paddingLeft: `${node.level * 18 + 8}px` }}>
                 {hasChildren ? (
                   <button className={styles.expandBtn} onClick={(e) => toggleExpand(node.task.id, e)}>
                     {ToggleIcon}
@@ -151,27 +163,43 @@ export function GanttChart({ tasks }: GanttChartProps) {
                   <span style={{ width: 22, display: "inline-block" }}></span>
                 )}
                 <span className={styles.taskIcon}>{TaskIcon}</span>
-                <span>{node.task.title}</span>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {node.task.title}
+                </span>
+                {onAddSubtask ? (
+                  <button
+                    type="button"
+                    className={styles.expandBtn}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onAddSubtask(node.task.id);
+                    }}
+                    title="Tạo subtask"
+                    style={{ marginLeft: "auto" }}
+                  >
+                    +
+                  </button>
+                ) : null}
               </div>
-              <div className={styles.ganttLeftCol} style={{ width: "150px" }}>
+              <div className={styles.ganttLeftCol} style={{ width: `${STATUS_COL_WIDTH}px` }}>
                 <div className={styles.statusIndicator}>
                   <div className={`${styles.statusCircle} ${circleClass}`} />
                   <span className={styles.statusText}>{stateText}</span>
                 </div>
               </div>
-              <div className={styles.ganttLeftCol} style={{ width: "150px" }}>
+              <div className={styles.ganttLeftCol} style={{ width: `${ASSIGNEE_COL_WIDTH}px` }}>
                 <span style={{ color: "#555", fontSize: "12px" }}>
                   {node.task.assignee?.name || "Chưa giao"}
                 </span>
               </div>
-              <div className={styles.ganttLeftCol} style={{ width: "120px" }}>
+              <div className={styles.ganttLeftCol} style={{ width: `${START_COL_WIDTH}px` }}>
                 <span style={{ color: "#555", fontSize: "12px" }}>
                   {new Date(node.task.startDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
-              <div className={styles.ganttLeftCol} style={{ width: "120px" }}>
+              <div className={styles.ganttLeftCol} style={{ width: `${END_COL_WIDTH}px` }}>
                 <span style={{ color: "#555", fontSize: "12px" }}>
-                  {new Date(node.task.dueDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  {new Date(effectiveDueDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
             </div>
@@ -179,7 +207,7 @@ export function GanttChart({ tasks }: GanttChartProps) {
             {/* Right Cell */}
             <div
               className={styles.ganttRightCell}
-              style={{ gridTemplateColumns: `repeat(${dates.length}, 20px)`, cursor: "pointer" }}
+              style={{ gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`, cursor: "pointer" }}
               onClick={() => handleRowClick(node.task.id)}
             >
               <div
@@ -214,21 +242,21 @@ export function GanttChart({ tasks }: GanttChartProps) {
           {/* Header */}
           <div className={styles.ganttHeaderRow}>
             <div className={styles.ganttLeftHeader}>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: "300px" }}>Tên công việc</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: "150px" }}>Trạng thái</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: "150px" }}>Người thực hiện</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: "120px" }}>Bắt đầu</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: "120px" }}>Kết thúc</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${NAME_COL_WIDTH}px` }}>Tên công việc</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${STATUS_COL_WIDTH}px` }}>Trạng thái</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${ASSIGNEE_COL_WIDTH}px` }}>Người thực hiện</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${START_COL_WIDTH}px` }}>Bắt đầu</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${END_COL_WIDTH}px` }}>Kết thúc</div>
             </div>
             <div className={styles.ganttRightHeader}>
               <div className={styles.ganttRightHeaderTop}>
                 {months.map((m, i) => (
-                  <div key={i} className={styles.ganttMonthHeader} style={{ width: `${m.days * 20}px` }}>
+                  <div key={i} className={styles.ganttMonthHeader} style={{ width: `${m.days * DAY_COLUMN_WIDTH}px` }}>
                     {m.name}
                   </div>
                 ))}
               </div>
-              <div className={styles.ganttRightHeaderBottom} style={{ gridTemplateColumns: `repeat(${dates.length}, 20px)` }}>
+              <div className={styles.ganttRightHeaderBottom} style={{ gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)` }}>
                 {dates.map((date, i) => {
                   // Show date only every 7 days (e.g. if it's Monday) to match the spaced out dates in screenshot
                   const isMonday = date.getDay() === 1;
@@ -248,8 +276,8 @@ export function GanttChart({ tasks }: GanttChartProps) {
             <div
               className={styles.ganttGridLines}
               style={{
-                left: "840px", // Offset for left pane
-                gridTemplateColumns: `repeat(${dates.length}, 20px)`,
+                left: `${LEFT_PANE_WIDTH}px`,
+                gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`,
               }}
             >
               {dates.map((date, i) => (

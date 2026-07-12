@@ -25,6 +25,7 @@ def _hydrate_task_response(db: Session, task: TaskResponse):
 
 def _hydrate_task_list_response(db: Session, tasks: List[TaskResponse]):
     assignees_by_task_id = {task.id: [] for task in tasks}
+    creator_user_ids_by_member_id: dict[int, int | None] = {}
     assignee_rows = task_service.task_repository.list_task_assignee_users(
         db,
         [task.id for task in tasks],
@@ -42,6 +43,15 @@ def _hydrate_task_list_response(db: Session, tasks: List[TaskResponse]):
     for task in tasks:
         task.assignees = assignees_by_task_id.get(task.id, [])
         task.key = f"TASK-{task.id}"
+        if task.created_by_member_id not in creator_user_ids_by_member_id:
+            member = task_service.project_repository.get_project_member_by_id(
+                db,
+                task.created_by_member_id,
+                task.project_id,
+                include_inactive=True,
+            )
+            creator_user_ids_by_member_id[task.created_by_member_id] = member.user_id if member else None
+        task.created_by_user_id = creator_user_ids_by_member_id.get(task.created_by_member_id)
 
 @router.get("", response_model=List[TaskResponse])
 def get_tasks(

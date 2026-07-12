@@ -1,56 +1,32 @@
-# =========================
-# Frontend only - Next.js
-# =========================
 /.DS_Store
-# Dependencies
 /node_modules/
 /.pnp
 /.pnp.js
 /.pnp.*
-
-# Next.js output
 /.next/
 /out/
 /build/
-
-# Frontend env files
 /.env
 /.env.local
 /.env.development
 /.env.production
 /.env.test
-
-# Keep example env
-!/.env.example
-
-# Vercel
+/.env.example
 /.vercel/
-
-# TypeScript / Next.js generated files
 /*.tsbuildinfo
 /next-env.d.ts
-
-# Frontend cache
 /.cache/
 /.eslintcache
 /.stylelintcache
 /.turbo/
-
-# Frontend test coverage
 /coverage/
 /.nyc_output/
-
-# Package manager logs
 /npm-debug.log*
 /yarn-debug.log*
 /yarn-error.log*
 /pnpm-debug.log*
-
-# Package manager local cache
 /.npm/
 /.pnpm-store/
-
-# Yarn Berry
 /.yarn/*
 !/.yarn/patches
 !/.yarn/plugins

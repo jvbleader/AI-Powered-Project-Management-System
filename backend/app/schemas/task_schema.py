@@ -1,6 +1,7 @@
-from typing import Optional, List
-from pydantic import BaseModel
+from typing import List, Literal, Optional
+from pydantic import BaseModel, Field
 from datetime import date, datetime
+from pydantic import field_validator
 
 class TaskAssigneeResponse(BaseModel):
     user_id: str
@@ -51,30 +52,99 @@ class LogWorkResponse(LogWorkBase):
 class TaskBase(BaseModel):
     title: str
     description: Optional[str] = None
-    status: Optional[str] = "todo"
-    priority: Optional[str] = "medium"
+    status: Literal["todo", "in_progress", "done"] = "todo"
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    start_date: date
     deadline: Optional[date] = None
     estimated_hours: Optional[float] = None
     sprint_id: Optional[int] = None
     parent_task_id: Optional[int] = None
 
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Tiêu đề không được để trống.")
+        return stripped
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Mô tả không được để trống.")
+        return stripped
+
+
+    @field_validator("estimated_hours")
+    @classmethod
+    def validate_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and value <= 0:
+            raise ValueError("Thời gian ước tính phải lớn hơn 0.")
+        return value
+
 class TaskCreate(TaskBase):
-    assignee_user_ids: Optional[List[str]] = []
+    assignee_user_ids: List[str] = Field(default_factory=list)
+
+    @field_validator("deadline")
+    @classmethod
+    def validate_deadline(cls, value: Optional[date], info):
+        if value is None:
+            return value
+        start_date = info.data.get("start_date")
+        if start_date and value < start_date:
+            raise ValueError("Hạn chót phải sau hoặc bằng ngày bắt đầu.")
+        return value
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[str] = None
-    priority: Optional[str] = None
+    status: Optional[Literal["todo", "in_progress", "done"]] = None
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = None
+    start_date: Optional[date] = None
     deadline: Optional[date] = None
     estimated_hours: Optional[float] = None
     sprint_id: Optional[int] = None
     parent_task_id: Optional[int] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_optional_title(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Tiêu đề không được để trống.")
+        return stripped
+
+    @field_validator("description")
+    @classmethod
+    def validate_optional_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Mô tả không được để trống.")
+        return stripped
+
+    @field_validator("estimated_hours")
+    @classmethod
+    def validate_optional_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and value <= 0:
+            raise ValueError("Thời gian ước tính phải lớn hơn 0.")
+        return value
 
 class TaskResponse(TaskBase):
     id: int
     project_id: int
     created_by_member_id: int
+    created_by_user_id: Optional[int] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

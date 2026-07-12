@@ -3,15 +3,16 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { signOut, signOutAll } from "@/services/auth/session";
+import { projectApi } from "@/services/api/projects";
 import { primeTasksPageData } from "@/services/page-cache/tasks-page";
 import { AssistantBubble } from "@/components/assistant-bubble";
 import { useAuthSession } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
 import { ChangePasswordModal } from "@/components/change-password-modal";
-import type { WorkspaceShellData } from "@/types";
+import type { UserRole, WorkspaceShellData } from "@/types";
 
 const navigation = [
   { href: "/dashboard", label: "Tổng quan", icon: "grid" },
@@ -20,6 +21,14 @@ const navigation = [
   { href: "/team", label: "Nhân sự", icon: "users" },
 ];
 
+const teamVisibleRoles = new Set(["ADMIN", "MANAGER", "LEADER"]);
+const sidebarRoleTitles: Record<UserRole, string> = {
+  ADMIN: "Platform Admin",
+  MANAGER: "Project Manager",
+  LEADER: "Team Lead",
+  MEMBER: "Team Member",
+};
+
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -27,7 +36,6 @@ function classNames(...values: Array<string | false | null | undefined>) {
 export function WorkspaceShell({
   shellData,
   heading,
-  subheading,
   highlightLabel,
   highlightValue,
   children,
@@ -44,6 +52,9 @@ export function WorkspaceShell({
   const session = useAuthSession();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [canViewTeamNavigation, setCanViewTeamNavigation] = useState(
+    teamVisibleRoles.has(shellData.currentUser.role),
+  );
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeShellData = session
@@ -54,14 +65,41 @@ export function WorkspaceShell({
     : shellData;
   const currentUser = activeShellData.currentUser;
   const currentUserId = activeShellData.currentUser.id;
+  const sidebarUserTitle = currentUser.department
+    ? `${sidebarRoleTitles[currentUser.role] ?? currentUser.title} - ${currentUser.department}`
+    : sidebarRoleTitles[currentUser.role] ?? currentUser.title;
 
-  const filteredNavigation = navigation.filter((item) => {
-    if (item.href !== "/team") {
-      return true;
+  const filteredNavigation = navigation.filter(
+    (item) => item.href !== "/team" || canViewTeamNavigation,
+  );
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function resolveTeamNavigationAccess() {
+      if (teamVisibleRoles.has(currentUser.role)) {
+        setCanViewTeamNavigation(true);
+        return;
+      }
+
+      try {
+        const { data: projects } = await projectApi.list(undefined, currentUser);
+        if (!isCancelled) {
+          setCanViewTeamNavigation(projects.some((project) => project.managerId === currentUser.id));
+        }
+      } catch {
+        if (!isCancelled) {
+          setCanViewTeamNavigation(false);
+        }
+      }
     }
 
-    return activeShellData.currentUser.role !== "MEMBER";
-  });
+    void resolveTeamNavigationAccess();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -87,10 +125,10 @@ export function WorkspaceShell({
   }, []);
 
   useEffect(() => {
-    navigation.forEach((item) => {
+    filteredNavigation.forEach((item) => {
       router.prefetch(item.href);
     });
-  }, [router]);
+  }, [filteredNavigation, router]);
 
   useEffect(() => {
     const warmupTimer = window.setTimeout(() => {
@@ -100,7 +138,7 @@ export function WorkspaceShell({
     return () => {
       window.clearTimeout(warmupTimer);
     };
-  }, [currentUserId]);
+  }, [currentUser, currentUserId]);
 
   const warmTasksPage = () => {
     void primeTasksPageData(currentUser);
@@ -156,7 +194,7 @@ export function WorkspaceShell({
               </span>
               <div className="sidebar-profile-copy">
                 <strong>{activeShellData.currentUser.name}</strong>
-                <p>{activeShellData.currentUser.title}</p>
+                <p>{sidebarUserTitle}</p>
               </div>
               <span className="profile-chevron" aria-hidden="true">
                 <svg viewBox="0 0 24 24">

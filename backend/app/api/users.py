@@ -73,6 +73,7 @@ def get_users(
 ):
     users, total, total_pages = user_service.get_users(
         db=db,
+        current_user=current_user,
         search=search,
         status_filter=status_filter,
         role=role,

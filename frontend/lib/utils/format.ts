@@ -84,14 +84,32 @@ export function sprintStatusLabel(status: SprintStatus) {
   }[status];
 }
 
+export function toWorkflowTaskStatus(status: TaskStatus): "TODO" | "IN_PROGRESS" | "DONE" {
+  if (status === "DONE") {
+    return "DONE";
+  }
+
+  if (status === "TODO") {
+    return "TODO";
+  }
+
+  return "IN_PROGRESS";
+}
+
 export function taskStatusLabel(status: TaskStatus) {
   return {
     TODO: "Cần thực hiện",
-    IN_PROGRESS: "Đang xử lý",
-    REVIEW: "Chờ rà soát",
-    BLOCKED: "Đang vướng",
+    IN_PROGRESS: "Đang tiến hành",
     DONE: "Hoàn thành",
-  }[status];
+  }[toWorkflowTaskStatus(status)];
+}
+
+export function taskStatusTone(status: TaskStatus): "todo" | "progress" | "done" {
+  return {
+    TODO: "todo" as const,
+    IN_PROGRESS: "progress" as const,
+    DONE: "done" as const,
+  }[toWorkflowTaskStatus(status)];
 }
 
 export function taskPriorityLabel(priority: TaskPriority) {
@@ -142,12 +160,12 @@ export function generateDateRange(start: string, end: string) {
   const startDate = new Date(start);
   const endDate = new Date(end);
   const dates: Date[] = [];
-  
+
   const current = new Date(startDate);
   while (current <= endDate) {
     dates.push(new Date(current));
     current.setDate(current.getDate() + 1);
   }
-  
+
   return dates;
 }

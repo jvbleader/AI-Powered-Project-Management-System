@@ -179,9 +179,11 @@
   z-index: 1;
   height: 10px;
   margin-top: 6px;
-  background: #8cc63f; /* Green */
+  background: #8cc63f;
+  /* Green */
   display: flex;
-  border-bottom: 2px solid #2b5797; /* Blue bottom line */
+  border-bottom: 2px solid #2b5797;
+  /* Blue bottom line */
 }
 
 .ganttBarParent::before,
@@ -189,7 +191,8 @@
   content: "";
   position: absolute;
   top: 100%;
-  border-top: 8px solid #2b5797; /* Dark blue */
+  border-top: 8px solid #2b5797;
+  /* Dark blue */
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
 }
@@ -209,7 +212,8 @@
   height: 18px;
   margin-top: 7px;
   border-radius: 3px;
-  background: #2b88d8; /* Light blue */
+  background: #2b88d8;
+  /* Light blue */
   border: 1px solid #1c68a6;
   display: flex;
   align-items: center;
@@ -221,7 +225,8 @@
   top: 0;
   left: 0;
   height: 100%;
-  background: #8bc4f5; /* Lighter inner blue */
+  background: #8bc4f5;
+  /* Lighter inner blue */
   width: 50%;
   border-radius: 2px 0 0 2px;
   z-index: -1;
@@ -274,10 +279,49 @@
 }
 
 /* Status colors */
-.circleGreen { background: #8cc63f; }
-.circleGray { background: #607d8b; }
-.circleRed { background: #f44336; }
-.circleYellow { background: #ffc107; }
+.circleGreen {
+  background: #8cc63f;
+}
+
+.circleGray {
+  background: #607d8b;
+}
+
+.circleRed {
+  background: #f44336;
+}
+
+.circleYellow {
+  background: #ffc107;
+}
+
+/* Milestone */
+.ganttMilestone {
+  position: relative;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  background: #ff9800;
+  transform: rotate(45deg);
+  margin-top: 9px;
+  margin-left: auto;
+  margin-right: auto;
+  border: 1px solid #e65100;
+}
+
+
+/* Status colors */
+.circleGreen {
+  background: #22c55e;
+}
+
+.circleBlue {
+  background: #3b82f6;
+}
+
+.circleYellow {
+  background: #facc15;
+}
 
 /* Milestone */
 .ganttMilestone {

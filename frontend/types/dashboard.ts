@@ -1,34 +1,94 @@
 import type { HealthTone } from "./common";
 import type { Project } from "./project";
-import type { Sprint } from "./sprint";
-import type { Task } from "./task";
-import type { UserProfile } from "./user";
-import type { LogworkEntry } from "./logwork";
-import type { AiInsight } from "./ai";
+import type { TaskPriority } from "./task";
 
-export interface DashboardStat {
-  label: string;
-  value: string;
-  change: string;
-  tone: HealthTone | "accent";
+export interface DashboardTaskSummary {
+  todo: number;
+  inProgress: number;
+  done: number;
+  total: number;
+  overdue: number;
+}
+
+export interface DashboardSprintSummary {
+  id: string;
+  name: string;
+  status: "PLANNED" | "ACTIVE" | "REVIEW" | "CLOSED";
+  goal?: string | null;
+  startDate: string;
+  endDate: string;
+  plannedProgress: number;
+  actualProgress: number;
+  totalTasks: number;
+  todoCount: number;
+  inProgressCount: number;
+  doneCount: number;
+  estimatedHours: number;
+  loggedHours: number;
+  health: HealthTone;
+}
+
+export interface DashboardTaskPreview {
+  id: string;
+  key: string;
+  title: string;
+  status: "TODO" | "IN_PROGRESS" | "DONE";
+  priority: TaskPriority;
+  startDate?: string | null;
+  dueDate?: string | null;
+  assigneeName?: string | null;
+  sprintName?: string | null;
+}
+
+export interface DashboardWorkloadMember {
+  userId: string;
+  memberId: string;
+  name: string;
+  email: string;
+  roleName: string;
+  assignedTasks: number;
+  todoTasks: number;
+  inProgressTasks: number;
+  doneTasks: number;
+  overdueTasks: number;
+  estimatedHours: number;
+  loggedHours: number;
+  progress: number;
+}
+
+export interface DashboardRecentLogwork {
+  id: string;
+  taskId: string;
+  taskKey: string;
+  taskTitle: string;
+  userId: string;
+  userName: string;
+  workDate: string;
+  hours: number;
+  note: string;
+  progressPercent: number;
 }
 
 export interface DashboardOverview {
-  activeProject: Project;
-  activeSprint: Sprint;
+  project: Project | null;
   portfolioProgress: number;
-  stats: DashboardStat[];
-  overdueTasks: Task[];
-  workloadBoard: Array<{
-    user: UserProfile;
-    utilization: number;
-  }>;
-  recentLogwork: LogworkEntry[];
-  aiInsights: AiInsight[];
+  projectProgress: number;
+  activeSprintProgress: number;
+  logworkCoverage: number;
+  criticalAlerts: number;
+  projectsInScope: number;
+  openTasksInScope: number;
+  taskSummary: DashboardTaskSummary;
+  activeSprint: DashboardSprintSummary | null;
+  sprintSummaries: DashboardSprintSummary[];
+  overdueTasks: DashboardTaskPreview[];
+  activeTasks: DashboardTaskPreview[];
+  workloadBoard: DashboardWorkloadMember[];
+  recentLogwork: DashboardRecentLogwork[];
 }
 
 export interface WorkspaceShellData {
-  currentUser: UserProfile;
+  currentUser: import("./user").UserProfile;
   activeProjects: number;
   openTasks: number;
   missingLogwork: number;

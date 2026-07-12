@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.user_model import User
 from app.repositories import (
     department_repository,
+    project_repository,
     refresh_token_repository,
     user_repository,
 )
@@ -17,7 +18,16 @@ from app.schemas.user_schema import (
     UserRoleUpdate,
     UserStatusUpdate,
 )
+from app.utils.project_helpers import (
+    is_admin_user,
+    list_accessible_project_ids,
+    user_can_access_team_directory,
+)
 from app.utils.password_hash import hash_password
+
+
+def _is_admin_user(user: User) -> bool:
+    return bool(user and (getattr(user, "is_admin", False) or getattr(user, "role", None) == "ADMIN"))
 
 
 def update_phone(db: Session, current_user: User, data: UpdatePhone) -> User:
@@ -39,7 +49,7 @@ def update_avatar(db: Session, current_user: User, data: UpdateAvatar) -> User:
     return user_repository.commit_and_refresh(db, current_user)
 
 def create_user(db: Session, current_user: User, data: UserCreate) -> User:
-    if not current_user.is_admin:
+    if not _is_admin_user(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bạn không có quyền thực hiện hành động này.",
@@ -67,13 +77,14 @@ def create_user(db: Session, current_user: User, data: UserCreate) -> User:
         email=data.email.strip().lower(),
         password_hash=hashed_pass,
         role=data.role,
-        is_admin=data.is_admin,
+        is_admin=data.is_admin or data.role == "ADMIN",
         department_id=department_id,
     )
     return user_repository.create(db, new_user)
 
 def get_users(
     db: Session,
+    current_user: User,
     search: str | None = None,
     status_filter: str | None = None,
     role: str | None = None,
@@ -81,18 +92,29 @@ def get_users(
     page: int = 1,
     page_size: int = 10,
 ):
+    visible_user_ids: list[int] | None = None
+
+    if not is_admin_user(current_user):
+        if user_can_access_team_directory(db, current_user):
+            accessible_project_ids = list_accessible_project_ids(db, current_user)
+            visible_user_ids = project_repository.list_project_user_ids(db, accessible_project_ids)
+            visible_user_ids = sorted({*visible_user_ids, current_user.id})
+        else:
+            visible_user_ids = [current_user.id]
+
     return user_repository.get_users(
         db=db,
         search=search,
         status=status_filter,
         role=role,
         department=department,
+        user_ids=visible_user_ids,
         page=page,
         page_size=page_size,
     )
 
 def update_user_status(db: Session, current_user: User, user_id: int, data: UserStatusUpdate) -> User:
-    if not current_user.is_admin:
+    if not _is_admin_user(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bạn không có quyền thực hiện hành động này.",
@@ -111,7 +133,7 @@ def update_user_status(db: Session, current_user: User, user_id: int, data: User
     return user_repository.commit_and_refresh(db, user)
 
 def update_user_role(db: Session, current_user: User, user_id: int, data: UserRoleUpdate) -> User:
-    if not current_user.is_admin:
+    if not _is_admin_user(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bạn không có quyền thực hiện hành động này.",
@@ -122,7 +144,7 @@ def update_user_role(db: Session, current_user: User, user_id: int, data: UserRo
         raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
 
     user.role = data.role
-    user.is_admin = data.is_admin
+    user.is_admin = data.is_admin or data.role == "ADMIN"
 
     if data.department and data.department.strip():
         dept_name = data.department.strip()
@@ -135,7 +157,7 @@ def update_user_role(db: Session, current_user: User, user_id: int, data: UserRo
     return user_repository.commit_and_refresh(db, user)
 
 def reset_password(db: Session, current_user: User, data: AdminResetPassword) -> None:
-    if not current_user.is_admin:
+    if not _is_admin_user(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bạn không có quyền thực hiện hành động này.",

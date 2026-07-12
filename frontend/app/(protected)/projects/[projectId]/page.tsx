@@ -4,14 +4,15 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { projectApi, taskApi, workspaceApi, userApi } from "@/services/api";
-import { normalizeViewer, isPrivilegedUser } from "@/lib/mock/permissions";
+import { canManageProject, normalizeViewer } from "@/lib/mock/permissions";
 import { useAuthSession } from "@/hooks/use-session";
 import type { EnrichedTask, Project, WorkspaceShellData, UserProfile } from "@/types";
 import { GanttChart } from "../_components/gantt-chart";
 import { ProjectMembers } from "../_components/project-members";
+import { CreateTaskModal } from "../_components/create-task-modal";
+import { TaskDetailModal } from "../../tasks/_components/task-detail-modal";
 import { Surface, EmptyState, StatusPill, ProgressBar } from "@/components/ui";
-import { formatRange, projectStatusLabel } from "@/lib/utils/format";
-import { enrichTask } from "@/services/api/core";
+import { formatRange, projectStatusLabel, toWorkflowTaskStatus } from "@/lib/utils/format";
 
 type ProjectDetailState = {
   shellData: WorkspaceShellData;
@@ -27,11 +28,14 @@ export default function ProjectDetailPage() {
 
   const session = useAuthSession();
   const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
-  const canManage = isPrivilegedUser(viewer);
 
   const [state, setState] = useState<ProjectDetailState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "gantt" | "members">("gantt");
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [defaultParentTaskId, setDefaultParentTaskId] = useState<string>("");
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -40,24 +44,18 @@ export default function ProjectDetailPage() {
       if (!projectId) return;
 
       try {
-        const [{ data: shellData }, { data: projects }, { data: allTasks }, { data: users }] = await Promise.all([
-          workspaceApi.getShellData(viewer),
-          projectApi.list(undefined, viewer),
-          taskApi.getEnrichedBoard({ projectId }, viewer),
-          userApi.list(viewer)
-        ]);
+        const [{ data: shellData }, { data: project }, { data: allTasks }, { data: users }] =
+          await Promise.all([
+            workspaceApi.getShellData(viewer),
+            projectApi.get(projectId, viewer),
+            taskApi.getEnrichedBoard({ projectId }, viewer),
+            userApi.list(viewer),
+          ]);
 
         if (isCancelled) return;
 
-        const currentProject = projects.find((p) => p.id === projectId);
-
-        if (!currentProject) {
-          setError("Không tìm thấy dự án hoặc bạn không có quyền truy cập.");
-          return;
-        }
-
-        setState({ shellData, project: currentProject, tasks: allTasks, users });
-      } catch (err) {
+        setState({ shellData, project, tasks: allTasks, users });
+      } catch {
         if (!isCancelled) {
           setError("Lỗi khi tải chi tiết dự án.");
         }
@@ -80,6 +78,19 @@ export default function ProjectDetailPage() {
       missingLogwork: 0,
       alertCount: 0,
     } satisfies WorkspaceShellData);
+  const canManageCurrentProject = state ? canManageProject(viewer, state.project) : false;
+
+  const workflowTaskSummary = useMemo(
+    () =>
+      (state?.tasks ?? []).reduce(
+        (summary, task) => {
+          summary[toWorkflowTaskStatus(task.status)] += 1;
+          return summary;
+        },
+        { TODO: 0, IN_PROGRESS: 0, DONE: 0 },
+      ),
+    [state?.tasks],
+  );
 
   return (
     <WorkspaceShell
@@ -107,15 +118,25 @@ export default function ProjectDetailPage() {
         </Surface>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          
           {/* Tabs */}
-          <div style={{ display: "flex", gap: "1rem", borderBottom: "1px solid var(--border)", paddingBottom: "0.5rem", overflowX: "auto" }}>
-            <button 
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              borderBottom: "1px solid var(--border)",
+              paddingBottom: "0.5rem",
+              overflowX: "auto",
+            }}
+          >
+            <button
               type="button"
               style={{
                 background: "transparent",
                 border: "none",
-                borderBottom: activeTab === "overview" ? "2px solid var(--primary-base)" : "2px solid transparent",
+                borderBottom:
+                  activeTab === "overview"
+                    ? "2px solid var(--primary-base)"
+                    : "2px solid transparent",
                 padding: "0.5rem 1rem",
                 cursor: "pointer",
                 fontWeight: activeTab === "overview" ? 600 : 400,
@@ -127,12 +148,13 @@ export default function ProjectDetailPage() {
               Tổng quan
             </button>
 
-            <button 
+            <button
               type="button"
               style={{
                 background: "transparent",
                 border: "none",
-                borderBottom: activeTab === "gantt" ? "2px solid var(--primary-base)" : "2px solid transparent",
+                borderBottom:
+                  activeTab === "gantt" ? "2px solid var(--primary-base)" : "2px solid transparent",
                 padding: "0.5rem 1rem",
                 cursor: "pointer",
                 fontWeight: activeTab === "gantt" ? 600 : 400,
@@ -143,12 +165,15 @@ export default function ProjectDetailPage() {
             >
               Gantt Chart
             </button>
-            <button 
+            <button
               type="button"
               style={{
                 background: "transparent",
                 border: "none",
-                borderBottom: activeTab === "members" ? "2px solid var(--primary-base)" : "2px solid transparent",
+                borderBottom:
+                  activeTab === "members"
+                    ? "2px solid var(--primary-base)"
+                    : "2px solid transparent",
                 padding: "0.5rem 1rem",
                 cursor: "pointer",
                 fontWeight: activeTab === "members" ? 600 : 400,
@@ -172,7 +197,13 @@ export default function ProjectDetailPage() {
                 }}
               >
                 <div>
-                  <p style={{ margin: "0 0 0.5rem 0", color: "var(--foreground-muted)", fontSize: "0.875rem" }}>
+                  <p
+                    style={{
+                      margin: "0 0 0.5rem 0",
+                      color: "var(--foreground-muted)",
+                      fontSize: "0.875rem",
+                    }}
+                  >
                     Trạng thái
                   </p>
                   <StatusPill
@@ -189,13 +220,25 @@ export default function ProjectDetailPage() {
                   />
                 </div>
                 <div>
-                  <p style={{ margin: "0 0 0.5rem 0", color: "var(--foreground-muted)", fontSize: "0.875rem" }}>
+                  <p
+                    style={{
+                      margin: "0 0 0.5rem 0",
+                      color: "var(--foreground-muted)",
+                      fontSize: "0.875rem",
+                    }}
+                  >
                     Tiến độ
                   </p>
                   <ProgressBar value={state.project.progress} />
                 </div>
                 <div>
-                  <p style={{ margin: "0 0 0.5rem 0", color: "var(--foreground-muted)", fontSize: "0.875rem" }}>
+                  <p
+                    style={{
+                      margin: "0 0 0.5rem 0",
+                      color: "var(--foreground-muted)",
+                      fontSize: "0.875rem",
+                    }}
+                  >
                     Thời gian
                   </p>
                   <p style={{ margin: 0, fontWeight: 500 }}>
@@ -203,7 +246,13 @@ export default function ProjectDetailPage() {
                   </p>
                 </div>
                 <div>
-                  <p style={{ margin: "0 0 0.5rem 0", color: "var(--foreground-muted)", fontSize: "0.875rem" }}>
+                  <p
+                    style={{
+                      margin: "0 0 0.5rem 0",
+                      color: "var(--foreground-muted)",
+                      fontSize: "0.875rem",
+                    }}
+                  >
                     Quản lý dự án
                   </p>
                   <p style={{ margin: 0, fontWeight: 500 }}>
@@ -211,24 +260,56 @@ export default function ProjectDetailPage() {
                   </p>
                 </div>
                 <div>
-                  <p style={{ margin: "0 0 0.5rem 0", color: "var(--foreground-muted)", fontSize: "0.875rem" }}>
+                  <p
+                    style={{
+                      margin: "0 0 0.5rem 0",
+                      color: "var(--foreground-muted)",
+                      fontSize: "0.875rem",
+                    }}
+                  >
                     Thống kê công việc ({state.tasks.length} tasks)
                   </p>
-                  <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap", fontSize: "0.875rem", fontWeight: 500 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "1.25rem",
+                      flexWrap: "wrap",
+                      fontSize: "0.875rem",
+                      fontWeight: 500,
+                    }}
+                  >
                     <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#94a3b8" }} /> {state.tasks.filter(t => t.status === "TODO").length} Todo
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: "50%",
+                          backgroundColor: "#facc15",
+                        }}
+                      />{" "}
+                      {workflowTaskSummary.TODO} Todo
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#3b82f6" }} /> {state.tasks.filter(t => t.status === "IN_PROGRESS").length} In Progress
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: "50%",
+                          backgroundColor: "#3b82f6",
+                        }}
+                      />{" "}
+                      {workflowTaskSummary.IN_PROGRESS} In Progress
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#eab308" }} /> {state.tasks.filter(t => t.status === "REVIEW").length} Review
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#ef4444" }} /> {state.tasks.filter(t => t.status === "BLOCKED").length} Blocked
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#22c55e" }} /> {state.tasks.filter(t => t.status === "DONE").length} Done
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: "50%",
+                          backgroundColor: "#22c55e",
+                        }}
+                      />{" "}
+                      {workflowTaskSummary.DONE} Done
                     </span>
                   </div>
                 </div>
@@ -236,32 +317,118 @@ export default function ProjectDetailPage() {
             </Surface>
           )}
 
-
           {activeTab === "gantt" && (
-            state.tasks.length > 0 ? (
-              <section style={{ flex: 1, display: "flex", height: "calc(100vh - 300px)" }}>
-                <GanttChart tasks={state.tasks} />
-              </section>
-            ) : (
-              <Surface title="Tiến độ công việc">
-                <EmptyState
-                  title="Chưa có công việc nào"
-                  description="Dự án này chưa có công việc (task) nào được khởi tạo. Hãy tạo công việc để theo dõi tiến độ trên biểu đồ Gantt."
-                />
-              </Surface>
-            )
+            <>
+              {canManageCurrentProject ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "1rem",
+                    padding: "1rem 1.25rem",
+                    borderRadius: "20px",
+                    border: "1px solid rgba(148, 163, 184, 0.16)",
+                    background:
+                      "linear-gradient(135deg, rgba(255,255,255,0.94), rgba(239,246,255,0.88))",
+                  }}
+                >
+                  <div>
+                    <strong style={{ display: "block", color: "var(--ink)" }}>
+                      Tạo task trực tiếp từ dự án
+                    </strong>
+                    <p style={{ marginTop: "0.35rem" }}>
+                      Task mới sẽ được thêm lại ngay trong Gantt chart để bạn theo dõi timeline trực
+                      quan hơn.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => {
+                      setDefaultParentTaskId("");
+                      setIsCreateModalOpen(true);
+                    }}
+                  >
+                    + Tạo task
+                  </button>
+                </div>
+              ) : null}
+
+              {state.tasks.length > 0 ? (
+                <section style={{ flex: 1, display: "flex", height: "calc(100vh - 300px)" }}>
+                  <GanttChart
+                    tasks={state.tasks}
+                    onTaskClick={(taskId) => {
+                      setSelectedTaskId(taskId);
+                      setIsTaskDetailModalOpen(true);
+                    }}
+                    onAddSubtask={
+                      canManageCurrentProject
+                        ? (parentId) => {
+                            setDefaultParentTaskId(parentId);
+                            setIsCreateModalOpen(true);
+                          }
+                        : undefined
+                    }
+                  />
+                </section>
+              ) : (
+                <Surface title="Tiến độ công việc">
+                  <EmptyState
+                    title="Chưa có công việc nào"
+                    description="Dự án này chưa có task nào được khởi tạo. Tạo task mới để biểu đồ Gantt bắt đầu hiển thị timeline."
+                  />
+                </Surface>
+              )}
+            </>
           )}
 
           {activeTab === "members" && (
-            <ProjectMembers 
-              projectId={projectId} 
-              viewerId={viewer.id} 
-              canManage={canManage || state.project.managerId === viewer.id} 
-              accessibleUsers={state.users} 
+            <ProjectMembers
+              projectId={projectId}
+              viewerId={viewer.id}
+              canManage={canManageCurrentProject}
+              accessibleUsers={state.users}
             />
           )}
-
         </div>
+      )}
+
+      {isCreateModalOpen && state && canManageCurrentProject ? (
+        <CreateTaskModal
+          projectId={state.project.id}
+          projectName={state.project.name}
+          isOpen={isCreateModalOpen}
+          users={state.users.filter((user) => state.project.memberIds.includes(user.id))}
+          tasks={state.tasks}
+          defaultParentTaskId={defaultParentTaskId}
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            setDefaultParentTaskId("");
+          }}
+          onSuccess={async () => {
+            const { data: updatedTasks } = await taskApi.getEnrichedBoard({ projectId }, viewer);
+            setState((prev) => (prev ? { ...prev, tasks: updatedTasks } : null));
+          }}
+        />
+      ) : null}
+
+      {state && (
+        <TaskDetailModal
+          taskId={selectedTaskId}
+          isOpen={isTaskDetailModalOpen}
+          onClose={() => setIsTaskDetailModalOpen(false)}
+          users={state.users}
+          viewerId={viewer.id}
+          canManage={canManageCurrentProject}
+          onTaskUpdated={(updatedTask) => {
+             setState(prev => prev ? {
+               ...prev,
+               tasks: prev.tasks.map(t => t.id === updatedTask.id ? { ...t, ...updatedTask } : t)
+             } : null);
+          }}
+        />
       )}
     </WorkspaceShell>
   );

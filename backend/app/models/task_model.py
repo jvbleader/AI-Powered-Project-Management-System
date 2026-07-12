@@ -18,6 +18,7 @@ class Task(Base):
     created_by_member_id = Column(Integer, ForeignKey("project_members.id"), nullable=False)
     status = Column(String(50), nullable=False, default="todo", index=True)
     priority = Column(String(50), nullable=False, default="medium", index=True)
+    start_date = Column(Date, nullable=False, index=True)
     deadline = Column(Date, index=True)
     estimated_hours = Column(Numeric)
     completed_at = Column(DateTime)

@@ -16,7 +16,9 @@ from app.schemas.project_schema import (
 from app.utils.project_helpers import (
     ensure_default_roles,
     get_pm_role,
+    is_admin_user,
     to_db_status,
+    user_can_manage_project,
     user_is_project_manager,
     user_is_project_member,
 )
@@ -37,11 +39,11 @@ def require_project_access(
     if not project:
         raise HTTPException(status_code=404, detail="Không tìm thấy dự án.")
 
-    if current_user.is_admin:
+    if is_admin_user(current_user):
         return project
 
     if require_manager:
-        if not user_is_project_manager(db, project_id, current_user.id):
+        if not user_can_manage_project(db, project_id, current_user):
             raise HTTPException(
                 status_code=403,
                 detail="Bạn không có quyền quản lý dự án này.",
@@ -75,7 +77,7 @@ def list_projects(
     
     projects, total = project_repository.list_projects(
         db=db,
-        is_admin=current_user.is_admin,
+        is_admin=is_admin_user(current_user),
         current_user_id=current_user.id,
         search=search,
         db_status=to_db_status(status) if status and status != "ALL" else None,
@@ -92,7 +94,7 @@ def list_projects(
 
 
 def create_project(db: Session, current_user: User, data: ProjectCreate) -> Project:
-    if not current_user.is_admin:
+    if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Chỉ có Admin mới có quyền tạo dự án.")
 
     existing_project = project_repository.get_project_by_name(db, data.name)
@@ -185,7 +187,7 @@ def update_project(
 def list_project_members(db: Session, current_user: User, project_id: str, search: str | None = None):
     numeric_id = parse_project_id(project_id)
     require_project_access(db, numeric_id, current_user)
-    return project_repository.list_project_members(db, numeric_id, search)
+    return project_repository.list_project_members(db, numeric_id, search, include_inactive=True)
 
 
 def add_project_member(
@@ -206,12 +208,19 @@ def add_project_member(
         raise HTTPException(status_code=400, detail="Vai trò không hợp lệ.")
 
     pm_role = get_pm_role(db)
-    if role.id == pm_role.id and not current_user.is_admin:
+    if role.id == pm_role.id and not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Chỉ có Admin mới có thể thêm Quản lý dự án.")
 
-    existing = project_repository.get_project_member(db, numeric_id, data.user_id)
+    existing = project_repository.get_project_member(db, numeric_id, data.user_id, include_inactive=True)
     if existing:
-        raise HTTPException(status_code=400, detail="Người dùng đã là thành viên dự án.")
+        if getattr(existing, 'is_active', True):
+            raise HTTPException(status_code=400, detail="Người dùng đã là thành viên dự án.")
+        else:
+            existing.is_active = True
+            existing.role_id = data.role_id
+            db.commit()
+            db.refresh(existing)
+            return existing, user, role
 
     member = ProjectMember(
         project_id=numeric_id,
@@ -242,7 +251,7 @@ def update_project_member(
     pm_role = get_pm_role(db)
     
     # PM không thể tự sửa PM (cả từ PM xuống Member, và từ Member lên PM)
-    if not current_user.is_admin:
+    if not is_admin_user(current_user):
         if member.role_id == pm_role.id:
             raise HTTPException(status_code=403, detail="Bạn không có quyền chỉnh sửa Quản lý dự án.")
         if data.role_id == pm_role.id:
@@ -274,7 +283,7 @@ def remove_project_member(db: Session, current_user: User, project_id: str, memb
 
     pm_role = get_pm_role(db)
     
-    if not current_user.is_admin and member.role_id == pm_role.id:
+    if not is_admin_user(current_user) and member.role_id == pm_role.id:
         raise HTTPException(status_code=403, detail="Bạn không có quyền xóa Quản lý dự án.")
 
     if member.role_id == pm_role.id:
@@ -285,5 +294,5 @@ def remove_project_member(db: Session, current_user: User, project_id: str, memb
                 detail="Không thể gỡ quản lý dự án duy nhất.",
             )
 
-    project_repository.delete_project_member(db, member)
+    member.is_active = False
     db.commit()

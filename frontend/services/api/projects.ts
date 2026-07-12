@@ -1,7 +1,7 @@
 import { Project, ProjectFilters, UserProfile, ApiResponse } from "@/types";
 import { requestApi, apiEndpoints } from "./core";
 
-function mapBackendProject(data: any): Project {
+export function mapBackendProject(data: any): Project {
   return {
     ...data,
     id: data.id.toString(),
@@ -16,6 +16,7 @@ function mapBackendProject(data: any): Project {
       overdueTasks: 0,
       logworkCoverage: 0,
       velocity: 0,
+      totalTasks: 0,
     },
   };
 }

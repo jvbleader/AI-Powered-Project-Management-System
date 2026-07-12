@@ -12,9 +12,9 @@ import {
   getAccessibleLogwork,
   getAccessibleSprints,
   getAccessibleTasks,
+  getLogworkTrackedUsers,
   getTaskAssignee,
   getTaskReporter,
-  isPrivilegedUser,
   normalizeViewer,
 } from "@/lib/mock/permissions";
 import {
@@ -127,6 +127,10 @@ export function toRoleTitle(role: UserRole) {
 
   if (role === "MANAGER") {
     return "Project Manager";
+  }
+
+  if (role === "LEADER") {
+    return "Team Lead";
   }
 
   return "Team Member";
@@ -392,16 +396,21 @@ export async function fetchCurrentUserProfile() {
     return backendProfile;
   }
 
+  const effectiveDepartment = backendProfile.department ?? storedProfile.department ?? "";
+  const effectiveTitle = effectiveDepartment
+    ? `${toRoleTitle(backendProfile.role)} - ${effectiveDepartment}`
+    : toRoleTitle(backendProfile.role);
+
   return {
     ...storedProfile,
     ...backendProfile,
     role: backendProfile.role,
-    roles: storedProfile.roles?.length ? storedProfile.roles : [backendProfile.role],
-    title: storedProfile.jobTitle?.trim() || storedProfile.title || backendProfile.title,
+    roles: [backendProfile.role],
+    title: effectiveTitle,
     avatarUrl: storedProfile.avatarUrl ?? backendProfile.avatarUrl,
     phoneNumber: storedProfile.phoneNumber ?? "",
-    department: storedProfile.department ?? "",
-    jobTitle: storedProfile.jobTitle ?? storedProfile.title ?? backendProfile.title,
+    department: effectiveDepartment,
+    jobTitle: storedProfile.jobTitle ?? effectiveTitle,
     address: storedProfile.address ?? "",
     employeeCode: storedProfile.employeeCode,
     status: storedProfile.status ?? (backendProfile.isActive ? "ACTIVE" : "INACTIVE"),
@@ -436,9 +445,7 @@ export function isTaskOpen(task: Task) {
 
 export function missingLogworkCount(viewer?: UserProfile | null) {
   const currentViewer = normalizeViewer(viewer);
-  const visibleUsers = isPrivilegedUser(currentViewer)
-    ? users.filter((user) => user.role !== "ADMIN")
-    : [currentViewer];
+  const visibleUsers = getLogworkTrackedUsers(currentViewer);
 
   return visibleUsers.filter((user) => {
     return !logworkEntries.some((entry) => entry.userId === user.id && entry.date === DEMO_TODAY);

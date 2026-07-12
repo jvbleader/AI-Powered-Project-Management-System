@@ -6,7 +6,7 @@ import styles from "../styles/team.module.css";
 
 interface UserTableProps {
   directory: PaginatedUsers;
-  taskSummaryByUserId: Record<string, { total: number; open: number; blocked: number }>;
+  taskSummaryByUserId: Record<string, { total: number; open: number; inProgress: number }>;
   isLoading: boolean;
   canManageUsers: boolean;
   page: number;
@@ -76,7 +76,7 @@ export function UserTable({
                   const summaryByUser = taskSummaryByUserId[user.id] ?? {
                     total: 0,
                     open: 0,
-                    blocked: 0,
+                    inProgress: 0,
                   };
 
                   return (
@@ -133,7 +133,7 @@ export function UserTable({
                       <td>
                         <div className={styles.contactCell}>
                           <span>{summaryByUser.open} task mở</span>
-                          <small>{summaryByUser.blocked} task blocked</small>
+                          <small>{summaryByUser.inProgress} task đang tiến hành</small>
                         </div>
                       </td>
                       <td>{user.phoneNumber || "Chưa có"}</td>

@@ -18,6 +18,12 @@
   --watch-soft: rgba(217, 119, 6, 0.12);
   --critical: #dc2626;
   --critical-soft: rgba(220, 38, 38, 0.12);
+  --todo: #ca8a04;
+  --todo-soft: rgba(250, 204, 21, 0.18);
+  --progress: #2563eb;
+  --progress-soft: rgba(37, 99, 235, 0.14);
+  --done: #16a34a;
+  --done-soft: rgba(34, 197, 94, 0.14);
   --shadow: 0 22px 48px rgba(15, 23, 42, 0.08);
   --radius-xl: 26px;
   --radius-lg: 20px;
@@ -1147,6 +1153,24 @@ p {
   background: var(--critical-soft);
 }
 
+.pill-todo,
+.stat-todo {
+  color: var(--todo);
+  background: var(--todo-soft);
+}
+
+.pill-progress,
+.stat-progress {
+  color: var(--progress);
+  background: var(--progress-soft);
+}
+
+.pill-done,
+.stat-done {
+  color: var(--done);
+  background: var(--done-soft);
+}
+
 .stat-card {
   border-radius: 24px;
   padding: 1.15rem 1.2rem;
@@ -1181,6 +1205,13 @@ p {
 
 .stack-list.compact {
   gap: 0.55rem;
+}
+
+.sprint-summary-card {
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(248, 250, 252, 0.94);
 }
 
 .line-item,
@@ -1325,6 +1356,19 @@ p {
 .detail-panel p,
 .privacy-panel p {
   margin: 0.25rem 0 0;
+}
+
+.selection-card-meta,
+.dashboard-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.selection-card-meta {
+  margin-top: 0.85rem;
+  color: rgba(93, 107, 130, 0.94);
+  font-size: 0.92rem;
 }
 
 .surface-form {
@@ -1505,12 +1549,12 @@ p {
 
 .segment-bar-progress,
 .segment-dot-progress {
-  background: #22c55e;
+  background: #3b82f6;
 }
 
 .segment-bar-done,
 .segment-dot-done {
-  background: #3b82f6;
+  background: #22c55e;
 }
 
 .segment-bar-outdate,
@@ -1661,11 +1705,105 @@ p {
   overflow-x: auto;
 }
 
+.project-task-board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+}
+
+.project-task-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  padding: 1.25rem;
+  border-radius: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.88)),
+    var(--surface);
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.06);
+}
+
+.project-task-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.project-task-section-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.project-task-section-copy h3 {
+  font-size: 1.2rem;
+}
+
+.project-task-section-kicker {
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.project-task-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  gap: 0.75rem;
+  flex: 0 0 auto;
+}
+
+.project-task-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 18px;
+  border: 1px solid transparent;
+}
+
+.project-task-summary-item strong {
+  font-size: 1.1rem;
+}
+
+.project-task-summary-item span {
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+.project-task-summary-item.todo {
+  background: rgba(250, 204, 21, 0.16);
+  border-color: rgba(202, 138, 4, 0.18);
+}
+
+.project-task-summary-item.in_progress {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.14);
+}
+
+.project-task-summary-item.done {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(22, 163, 74, 0.14);
+}
+
+.project-task-section-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(280px, 1fr));
+  gap: 1.1rem;
+  align-items: start;
+}
+
 .kanban-column {
   min-width: 240px;
   padding: 1rem;
   border-radius: 24px;
-  background: rgba(241, 245, 249, 0.78);
+  background: rgba(241, 245, 249, 0.72);
   border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
@@ -1673,7 +1811,100 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.kanban-column-header strong {
+  font-size: 0.98rem;
+}
+
+.kanban-column-header span {
+  min-width: 2rem;
+  padding: 0.28rem 0.62rem;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--muted);
+}
+
+.task-kanban-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.task-kanban-card {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 22px;
+  padding: 1rem 1rem 1.05rem;
+  cursor: grab;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.task-kanban-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.1);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.task-kanban-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.task-kanban-card-head strong {
+  font-size: 0.9rem;
+}
+
+.task-kanban-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.task-kanban-card-title {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.42;
+  color: var(--ink);
+}
+
+.task-kanban-card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.88rem;
+  line-height: 1.62;
+  color: rgba(93, 107, 130, 0.95);
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.task-kanban-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.task-kanban-empty {
+  padding: 1.3rem 1rem;
+  text-align: center;
+  color: var(--foreground-muted);
+  border: 1px dashed rgba(148, 163, 184, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.54);
 }
 
 .task-card {
@@ -2121,6 +2352,24 @@ p {
 
   .kanban-board {
     grid-template-columns: repeat(5, minmax(260px, 1fr));
+  }
+
+  .project-task-section-head,
+  .project-task-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .project-task-section-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-task-section-board {
+    grid-template-columns: 1fr;
+  }
+
+  .task-kanban-card-meta {
+    grid-template-columns: 1fr;
   }
 
   .table-row-button,

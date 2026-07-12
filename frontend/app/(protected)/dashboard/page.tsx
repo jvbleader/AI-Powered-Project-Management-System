@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import {
@@ -14,31 +14,45 @@ import {
   StatusPill,
   Surface,
 } from "@/components/ui";
-import { dashboardApi, projectApi, sprintApi, taskApi, workspaceApi } from "@/services/api";
-import {
-  calculateSprintCompletion,
-  categorizeTask,
-  getProjectManager,
-  isPrivilegedUser,
-  normalizeViewer,
-} from "@/lib/mock/permissions";
+import { useAuthSession } from "@/hooks/use-session";
+import { normalizeViewer } from "@/lib/mock/permissions";
 import {
   formatDate,
+  formatHours,
+  formatPercent,
   formatRange,
   healthToneLabel,
+  projectRoleLabel,
   roleLabel,
   taskStatusLabel,
+  taskStatusTone,
 } from "@/lib/utils/format";
-import { useAuthSession } from "@/hooks/use-session";
-import type { DashboardOverview, EnrichedTask, Project, Sprint, WorkspaceShellData } from "@/types";
+import { dashboardApi, projectApi } from "@/services/api";
+import type { DashboardOverview, Project, WorkspaceShellData } from "@/types";
 
 type DashboardState = {
-  shellData: WorkspaceShellData;
   overview: DashboardOverview;
   projects: Project[];
-  sprints: Sprint[];
-  tasks: EnrichedTask[];
 };
+
+type DashboardStat = {
+  label: string;
+  value: string;
+  note: string;
+  tone: "accent" | "on-track" | "watch" | "critical";
+};
+
+function toneFromProgress(value: number): "on-track" | "watch" | "critical" {
+  if (value >= 75) {
+    return "on-track";
+  }
+
+  if (value >= 45) {
+    return "watch";
+  }
+
+  return "critical";
+}
 
 export default function DashboardPage() {
   const session = useAuthSession();
@@ -50,17 +64,9 @@ export default function DashboardPage() {
     let isCancelled = false;
 
     async function loadDashboard() {
-      const [{ data: projects }] = await Promise.all([projectApi.list(undefined, viewer)]);
-
+      const { data: projects } = await projectApi.list(undefined, viewer);
       const projectId = selectedProjectId ?? projects[0]?.id;
-
-      const [{ data: shellData }, { data: overview }, { data: sprints }, { data: tasks }] =
-        await Promise.all([
-          workspaceApi.getShellData(viewer),
-          dashboardApi.getOverview(viewer, projectId),
-          sprintApi.list(undefined, viewer),
-          taskApi.getEnrichedBoard(undefined, viewer),
-        ]);
+      const { data: overview } = await dashboardApi.getOverview(viewer, projectId);
 
       if (isCancelled) {
         return;
@@ -68,11 +74,8 @@ export default function DashboardPage() {
 
       setSelectedProjectId(projectId ?? null);
       setDashboardState({
-        shellData,
         overview,
         projects,
-        sprints,
-        tasks,
       });
     }
 
@@ -83,46 +86,83 @@ export default function DashboardPage() {
     };
   }, [selectedProjectId, viewer]);
 
-  const shellData =
-    dashboardState?.shellData ??
-    ({
-      currentUser: viewer,
-      activeProjects: 0,
-      openTasks: 0,
-      missingLogwork: 0,
-      alertCount: 0,
-    } satisfies WorkspaceShellData);
-
+  const overview = dashboardState?.overview ?? null;
   const projectList = dashboardState?.projects ?? [];
-  const selectedProject =
-    projectList.find((project) => project.id === selectedProjectId) ??
-    dashboardState?.overview.activeProject ??
-    null;
-  const selectedProjectTasks = selectedProject
-    ? (dashboardState?.tasks ?? []).filter((task) => task.projectId === selectedProject.id)
-    : [];
-  const selectedProjectSprints = selectedProject
-    ? (dashboardState?.sprints ?? []).filter((sprint) => sprint.projectId === selectedProject.id)
-    : [];
-  const taskSummary = {
-    TODO: 0,
-    IN_PROGRESS: 0,
-    DONE: 0,
-    OUTDATE: 0,
+  const selectedProject = overview?.project ?? null;
+  const taskSummary = overview?.taskSummary ?? {
+    todo: 0,
+    inProgress: 0,
+    done: 0,
+    total: 0,
+    overdue: 0,
   };
-
-  selectedProjectTasks.forEach((task) => {
-    taskSummary[categorizeTask(task)] += 1;
-  });
-
   const taskSegments = [
-    { label: "To do", value: taskSummary.TODO, tone: "todo" as const },
-    { label: "In Progress", value: taskSummary.IN_PROGRESS, tone: "progress" as const },
-    { label: "Done", value: taskSummary.DONE, tone: "done" as const },
-    { label: "Outdate", value: taskSummary.OUTDATE, tone: "outdate" as const },
+    { label: "To do", value: taskSummary.todo, tone: "todo" as const },
+    { label: "In Progress", value: taskSummary.inProgress, tone: "progress" as const },
+    { label: "Done", value: taskSummary.done, tone: "done" as const },
   ];
-
-  const memberScopedText = isPrivilegedUser(viewer)
+  const canManageScope =
+    viewer.role === "ADMIN" ||
+    viewer.role === "MANAGER" ||
+    viewer.role === "LEADER" ||
+    projectList.some((project) => project.managerId === viewer.id);
+  const missingLogwork =
+    overview?.workloadBoard.length
+      ? Math.max(
+          0,
+          overview.workloadBoard.length -
+            Math.round((overview.workloadBoard.length * overview.logworkCoverage) / 100),
+        )
+      : 0;
+  const shellData: WorkspaceShellData = {
+    currentUser: viewer,
+    activeProjects: projectList.filter((project) => project.status === "ACTIVE").length,
+    openTasks: overview?.openTasksInScope ?? 0,
+    missingLogwork,
+    alertCount: overview?.criticalAlerts ?? 0,
+  };
+  const statCards: DashboardStat[] = overview
+    ? [
+        {
+          label: "Tiến độ danh mục",
+          value: formatPercent(overview.portfolioProgress),
+          note: `${overview.projectsInScope} dự án trong phạm vi truy cập`,
+          tone: "accent" as const,
+        },
+        {
+          label: "Tiến độ dự án",
+          value: formatPercent(overview.projectProgress),
+          note: `${taskSummary.done}/${taskSummary.total} task đã hoàn thành`,
+          tone: toneFromProgress(overview.projectProgress),
+        },
+        {
+          label: "Sprint hiện tại",
+          value: formatPercent(overview.activeSprintProgress),
+          note: overview.activeSprint
+            ? `${overview.activeSprint.doneCount}/${overview.activeSprint.totalTasks} task đã chốt`
+            : "Chưa có sprint hoạt động",
+          tone: overview.activeSprint?.health ?? "watch",
+        },
+        {
+          label: "Tỷ lệ logwork",
+          value: formatPercent(overview.logworkCoverage),
+          note: `${missingLogwork} thành viên chưa cập nhật hôm nay`,
+          tone:
+            overview.logworkCoverage >= 80
+              ? "on-track"
+              : overview.logworkCoverage >= 50
+                ? "watch"
+                : "critical",
+        },
+        {
+          label: "Cảnh báo trọng yếu",
+          value: `${overview.criticalAlerts}`,
+          note: `${taskSummary.overdue} task quá hạn trong dự án đang chọn`,
+          tone: overview.criticalAlerts > 0 ? "critical" : "on-track",
+        },
+      ]
+    : [];
+  const memberScopedText = canManageScope
     ? "Bạn đang xem phạm vi quản lí và điều phối."
     : "Bạn đang xem đúng các dự án, sprint và công việc mình tham gia.";
 
@@ -130,9 +170,9 @@ export default function DashboardPage() {
     <WorkspaceShell
       shellData={shellData}
       heading="Dashboard dự án"
-      subheading="Tổng quan tiến độ dự án, nhịp sprint và trạng thái task trong phạm vi công việc của bạn."
+      subheading="Theo dõi tiến độ dự án, sprint, trạng thái task và phân bổ khối lượng công việc trong cùng một màn hình."
       highlightLabel="Phạm vi"
-      highlightValue={isPrivilegedUser(viewer) ? "Quản lí" : "Cá nhân"}
+      highlightValue={canManageScope ? "Quản lí" : "Cá nhân"}
     >
       <section className="scope-banner">
         <div>
@@ -140,12 +180,8 @@ export default function DashboardPage() {
           <p>{memberScopedText}</p>
         </div>
         <StatusPill
-          label={
-            dashboardState?.overview.activeSprint
-              ? dashboardState.overview.activeSprint.name
-              : "Đang đồng bộ"
-          }
-          tone={dashboardState?.overview.activeSprint?.health ?? "accent"}
+          label={overview?.activeSprint ? overview.activeSprint.name : "Đang đồng bộ"}
+          tone={overview?.activeSprint?.health ?? "accent"}
         />
       </section>
 
@@ -157,21 +193,17 @@ export default function DashboardPage() {
           aside={
             selectedProject ? (
               <StatusPill
-                label={`${selectedProject.progress}% hoàn thành`}
-                tone={
-                  selectedProject.progress >= 70
-                    ? "on-track"
-                    : selectedProject.progress >= 40
-                      ? "watch"
-                      : "critical"
-                }
+                label={`${overview?.projectProgress ?? selectedProject.progress}% hoàn thành`}
+                tone={toneFromProgress(overview?.projectProgress ?? selectedProject.progress)}
               />
             ) : undefined
           }
         >
           {selectedProject ? (
             <>
-              <p className="hero-copy">{selectedProject.description}</p>
+              <p className="hero-copy">
+                {selectedProject.description || "Dự án này đang được tổng hợp tiến độ và phân tích tải công việc theo thời gian thực."}
+              </p>
               <div className="hero-meta">
                 <div>
                   <span>Khung thời gian</span>
@@ -179,22 +211,34 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <span>Quản lý</span>
-                  <strong>{getProjectManager(selectedProject).name}</strong>
+                  <strong>{selectedProject.managerName || "Chưa phân công"}</strong>
+                </div>
+                <div>
+                  <span>Số task trong phạm vi</span>
+                  <strong>{selectedProject.metrics.totalTasks}</strong>
                 </div>
               </div>
-              <ProgressBar value={selectedProject.progress} label="Tiến độ hoàn thành dự án" />
+              <ProgressBar
+                value={overview?.projectProgress ?? selectedProject.progress}
+                label="Tiến độ hoàn thành dự án"
+              />
               <div className="token-row">
-                {selectedProject.objectives.map((objective) => (
-                  <span key={objective} className="soft-token">
-                    {objective}
-                  </span>
-                ))}
+                <span className="soft-token">
+                  {selectedProject.metrics.completedTasks} task hoàn thành
+                </span>
+                <span className="soft-token">
+                  {selectedProject.metrics.overdueTasks} task quá hạn
+                </span>
+                <span className="soft-token">
+                  {selectedProject.metrics.logworkCoverage}% phủ logwork
+                </span>
+                <span className="soft-token">Velocity {selectedProject.metrics.velocity}%</span>
               </div>
             </>
           ) : (
             <EmptyState
               title="Chưa có dự án trong phạm vi"
-              description="Hãy thêm thành viên vào dự án hoặc đăng nhập bằng tài khoản có dự án đang hoạt động."
+              description="Hãy thêm thành viên vào dự án hoặc đăng nhập bằng tài khoản đang tham gia dự án."
             />
           )}
         </Surface>
@@ -203,19 +247,19 @@ export default function DashboardPage() {
           <DonutChart
             segments={taskSegments.map((segment) => ({ value: segment.value, tone: segment.tone }))}
             centerLabel="Task"
-            centerValue={`${selectedProjectTasks.length}`}
+            centerValue={`${taskSummary.total}`}
           />
           <SegmentBar segments={taskSegments} />
         </Surface>
       </section>
 
       <section className="stat-grid">
-        {(dashboardState?.overview.stats ?? []).map((stat) => (
+        {statCards.map((stat) => (
           <StatCard
             key={stat.label}
             label={stat.label}
             value={stat.value}
-            note={stat.change}
+            note={stat.note}
             tone={stat.tone}
           />
         ))}
@@ -240,6 +284,12 @@ export default function DashboardPage() {
                     <span>{project.progress}%</span>
                   </div>
                   <ProgressBar value={project.progress} />
+                  <div className="selection-card-meta">
+                    <span>
+                      {project.metrics.completedTasks}/{project.metrics.totalTasks} task done
+                    </span>
+                    <span>{project.metrics.overdueTasks} quá hạn</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -252,14 +302,39 @@ export default function DashboardPage() {
         </Surface>
 
         <Surface title="Tiến độ từng sprint" kicker="Sprint">
-          {selectedProjectSprints.length ? (
-            <MiniBars
-              items={selectedProjectSprints.map((sprint) => ({
-                label: sprint.name,
-                value: calculateSprintCompletion(sprint),
-                note: `${formatDate(sprint.plannedStart)} - ${formatDate(sprint.plannedEnd)}`,
-              }))}
-            />
+          {(overview?.sprintSummaries ?? []).length ? (
+            <div className="stack-list compact">
+              {overview?.sprintSummaries.map((sprint) => (
+                <article key={sprint.id} className="sprint-summary-card">
+                  <div className="selection-card-head">
+                    <div>
+                      <strong>{sprint.name}</strong>
+                      <p>
+                        {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
+                      </p>
+                    </div>
+                    <StatusPill
+                      label={healthToneLabel(sprint.health)}
+                      tone={sprint.health}
+                    />
+                  </div>
+                  <MiniBars
+                    items={[
+                      {
+                        label: "Actual",
+                        value: sprint.actualProgress,
+                        note: `${sprint.doneCount}/${sprint.totalTasks} task done`,
+                      },
+                      {
+                        label: "Plan",
+                        value: sprint.plannedProgress,
+                        note: `${formatHours(sprint.loggedHours)} log / ${formatHours(sprint.estimatedHours)} estimate`,
+                      },
+                    ]}
+                  />
+                </article>
+              ))}
+            </div>
           ) : (
             <EmptyState
               title="Chưa có sprint"
@@ -271,20 +346,33 @@ export default function DashboardPage() {
 
       <section className="two-up">
         <Surface title="Tổng hợp sprint hiện tại" kicker="Chi tiết">
-          {dashboardState?.overview.activeSprint ? (
-            <KeyValueList
-              items={[
-                { label: "Sprint", value: dashboardState.overview.activeSprint.name },
-                {
-                  label: "Mục tiêu",
-                  value: dashboardState.overview.activeSprint.goal,
-                },
-                {
-                  label: "Sức khỏe",
-                  value: healthToneLabel(dashboardState.overview.activeSprint.health),
-                },
-              ]}
-            />
+          {overview?.activeSprint ? (
+            <div className="dashboard-stack">
+              <KeyValueList
+                items={[
+                  { label: "Sprint", value: overview.activeSprint.name },
+                  {
+                    label: "Mục tiêu",
+                    value: overview.activeSprint.goal || "Chưa khai báo",
+                  },
+                  {
+                    label: "Sức khỏe",
+                    value: healthToneLabel(overview.activeSprint.health),
+                  },
+                ]}
+              />
+              <SegmentBar
+                segments={[
+                  { label: "To do", value: overview.activeSprint.todoCount, tone: "todo" },
+                  {
+                    label: "In Progress",
+                    value: overview.activeSprint.inProgressCount,
+                    tone: "progress",
+                  },
+                  { label: "Done", value: overview.activeSprint.doneCount, tone: "done" },
+                ]}
+              />
+            </div>
           ) : (
             <EmptyState
               title="Chưa có sprint hiện tại"
@@ -293,18 +381,56 @@ export default function DashboardPage() {
           )}
         </Surface>
 
-        <Surface title="Task trễ hạn và cần chú ý" kicker="Rủi ro">
-          {(dashboardState?.overview.overdueTasks ?? []).length ? (
+        <Surface title="Phân tích khối lượng công việc" kicker="Workload">
+          {(overview?.workloadBoard ?? []).length ? (
             <div className="stack-list">
-              {dashboardState?.overview.overdueTasks.map((task) => (
+              {overview?.workloadBoard.map((member) => (
+                <article key={member.userId} className="member-progress-row">
+                  <div>
+                    <strong>{member.name}</strong>
+                    <p>
+                      {projectRoleLabel(member.roleName)} · {member.assignedTasks} task được giao
+                    </p>
+                  </div>
+                  <div className="member-progress-copy">
+                    <ProgressBar value={member.progress} />
+                    <p>
+                      {member.todoTasks} todo · {member.inProgressTasks} doing ·{" "}
+                      {member.doneTasks} done · {formatHours(member.loggedHours)} /{" "}
+                      {formatHours(member.estimatedHours)}
+                    </p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Chưa có dữ liệu workload"
+              description="Khi dự án có thành viên và task được gán, phần này sẽ hiển thị tải công việc từng người."
+            />
+          )}
+        </Surface>
+      </section>
+
+      <section className="two-up">
+        <Surface title="Task trễ hạn và cần chú ý" kicker="Rủi ro">
+          {(overview?.overdueTasks ?? []).length ? (
+            <div className="stack-list">
+              {overview?.overdueTasks.map((task) => (
                 <article key={task.id} className="risk-row">
                   <div>
                     <strong>{task.key}</strong>
                     <p>{task.title}</p>
                   </div>
                   <div className="align-right">
-                    <StatusPill label={taskStatusLabel(task.status)} tone="critical" />
-                    <span>Hạn {formatDate(task.dueDate)}</span>
+                    <StatusPill
+                      label={taskStatusLabel(task.status)}
+                      tone={taskStatusTone(task.status)}
+                    />
+                    <span>
+                      {task.assigneeName || "Chưa phân công"} · Hạn{" "}
+                      {formatDate(task.dueDate || "")}
+                    </span>
                   </div>
                 </article>
               ))}
@@ -316,23 +442,54 @@ export default function DashboardPage() {
             />
           )}
         </Surface>
+
+        <Surface title="Các hạng mục đang chạy" kicker="Task board">
+          {(overview?.activeTasks ?? []).length ? (
+            <div className="stack-list">
+              {overview?.activeTasks.map((task) => (
+                <article key={task.id} className="activity-row">
+                  <div>
+                    <strong>{task.key}</strong>
+                    <p>{task.title}</p>
+                  </div>
+                  <div className="align-right">
+                    <StatusPill
+                      label={taskStatusLabel(task.status)}
+                      tone={taskStatusTone(task.status)}
+                    />
+                    <span>
+                      {task.assigneeName || "Chưa phân công"} · Hạn{" "}
+                      {formatDate(task.dueDate || "")}
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Chưa có task"
+              description="Project này chưa có task nào trong phạm vi hiển thị hiện tại."
+            />
+          )}
+        </Surface>
       </section>
 
       <section className="two-up">
         <Surface title="Logwork gần nhất" kicker="Dòng thời gian">
-          {(dashboardState?.overview.recentLogwork ?? []).length ? (
+          {(overview?.recentLogwork ?? []).length ? (
             <div className="table-like">
-              {dashboardState?.overview.recentLogwork.map((entry) => {
-                const relatedTask = dashboardState.tasks.find((task) => task.id === entry.taskId);
-
-                return (
-                  <div key={entry.id} className="table-row">
-                    <span>{formatDate(entry.date)}</span>
-                    <strong>{relatedTask?.assignee?.name ?? viewer.name}</strong>
-                    <p>{entry.note}</p>
-                  </div>
-                );
-              })}
+              {overview?.recentLogwork.map((entry) => (
+                <div key={entry.id} className="table-row">
+                  <span>{formatDate(entry.workDate)}</span>
+                  <strong>{entry.userName}</strong>
+                  <p>
+                    {entry.taskKey} · {entry.taskTitle}
+                  </p>
+                  <small>
+                    {formatHours(entry.hours)} · {entry.progressPercent}% tiến độ
+                  </small>
+                </div>
+              ))}
             </div>
           ) : (
             <EmptyState
@@ -342,26 +499,30 @@ export default function DashboardPage() {
           )}
         </Surface>
 
-        <Surface title="Các hạng mục đang chạy" kicker="Task board">
-          {selectedProjectTasks.length ? (
-            <div className="stack-list">
-              {selectedProjectTasks.slice(0, 6).map((task) => (
-                <article key={task.id} className="activity-row">
-                  <div>
-                    <strong>{task.key}</strong>
-                    <p>{task.title}</p>
-                  </div>
-                  <div className="align-right">
-                    <span>{task.assignee?.name ?? "Chưa phân công"}</span>
-                    <span>Hạn {formatDate(task.dueDate)}</span>
-                  </div>
-                </article>
-              ))}
+        <Surface title="Điểm kiểm soát nhanh" kicker="Overview">
+          {selectedProject ? (
+            <div className="summary-grid">
+              <article className="summary-card">
+                <span>Task đang mở</span>
+                <strong>{overview?.openTasksInScope ?? 0}</strong>
+              </article>
+              <article className="summary-card">
+                <span>Sprint đang theo dõi</span>
+                <strong>{overview?.sprintSummaries.length ?? 0}</strong>
+              </article>
+              <article className="summary-card">
+                <span>Thành viên có tải việc</span>
+                <strong>{overview?.workloadBoard.length ?? 0}</strong>
+              </article>
+              <article className="summary-card">
+                <span>Logwork hôm nay</span>
+                <strong>{formatPercent(overview?.logworkCoverage ?? 0)}</strong>
+              </article>
             </div>
           ) : (
             <EmptyState
-              title="Chưa có task"
-              description="Project này chưa có task nào trong phạm vi hiển thị hiện tại."
+              title="Chưa có dữ liệu tổng quan"
+              description="Chọn dự án để xem nhanh các chỉ số điều phối chính."
             />
           )}
         </Surface>

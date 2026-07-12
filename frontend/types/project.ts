@@ -5,6 +5,7 @@ export interface ProjectMetrics {
   overdueTasks: number;
   logworkCoverage: number;
   velocity: number;
+  totalTasks: number;
 }
 
 export interface Project {

@@ -5,7 +5,11 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, ProgressBar, StatCard, StatusPill, Surface } from "@/components/ui";
 import { logworkApi, projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
-import { DEMO_TODAY, isPrivilegedUser, normalizeViewer } from "@/lib/mock/permissions";
+import {
+  DEMO_TODAY,
+  getLogworkTrackedUsers,
+  normalizeViewer,
+} from "@/lib/mock/permissions";
 import { formatDate, formatHours } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
 import type { EnrichedTask, LogworkEntry, Project, UserProfile, WorkspaceShellData } from "@/types";
@@ -21,7 +25,6 @@ type LogworkPageState = {
 export default function LogworkPage() {
   const session = useAuthSession();
   const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
-  const privileged = isPrivilegedUser(viewer);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string>("ALL");
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -102,14 +105,17 @@ export default function LogworkPage() {
 
   const todayEntries = filteredEntries.filter((entry) => entry.date === DEMO_TODAY);
   const totalHours = filteredEntries.reduce((sum, entry) => sum + entry.hours, 0);
-  const trackedUsers = privileged
-    ? (pageState?.users.filter((user) => user.role !== "ADMIN") ?? [])
-    : [viewer];
+  const trackedUsers = getLogworkTrackedUsers(viewer);
   const todayUserIds = new Set(todayEntries.map((entry) => entry.userId));
   const missingUsers = trackedUsers.filter((user) => !todayUserIds.has(user.id));
   const coverage = trackedUsers.length
     ? Math.round((todayUserIds.size / trackedUsers.length) * 100)
     : 0;
+  const canManageScopedLogwork =
+    viewer.role === "ADMIN" ||
+    viewer.role === "MANAGER" ||
+    viewer.role === "LEADER" ||
+    (pageState?.projects ?? []).some((project) => project.managerId === viewer.id);
 
   async function refreshLogwork(nextTaskId?: string) {
     const [
@@ -301,7 +307,7 @@ export default function LogworkPage() {
               const task = (pageState?.tasks ?? []).find(
                 (candidate) => candidate.id === entry.taskId,
               );
-              const canEdit = privileged || entry.userId === viewer.id;
+              const canEdit = canManageScopedLogwork || entry.userId === viewer.id;
 
               return (
                 <div key={entry.id} className="table-row">

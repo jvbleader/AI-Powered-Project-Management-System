@@ -19,10 +19,16 @@ def get_users(
     status: str | None = None,
     role: str | None = None,
     department: str | None = None,
+    user_ids: list[int] | None = None,
     page: int = 1,
     page_size: int = 10,
 ):
     query = db.query(User)
+
+    if user_ids is not None:
+        if not user_ids:
+            return [], 0, 1
+        query = query.filter(User.id.in_(user_ids))
 
     if search:
         search_term = f"%{search.lower()}%"

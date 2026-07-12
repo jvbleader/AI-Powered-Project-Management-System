@@ -1,5 +1,5 @@
 import { EmptyState, StatusPill, Surface } from "@/components/ui";
-import { formatRange, taskStatusLabel } from "@/lib/utils/format";
+import { taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
 import type { Task } from "@/types";
 
 interface ProjectTasksProps {
@@ -23,15 +23,7 @@ export function ProjectTasks({ tasks, projectName }: ProjectTasksProps) {
                 </div>
                 <StatusPill
                   label={taskStatusLabel(task.status)}
-                  tone={
-                    task.status === "DONE"
-                      ? "on-track"
-                      : task.status === "IN_PROGRESS"
-                        ? "watch"
-                        : task.status === "BLOCKED"
-                          ? "critical"
-                          : "neutral"
-                  }
+                  tone={taskStatusTone(task.status)}
                 />
               </div>
               <div className="task-meta">
