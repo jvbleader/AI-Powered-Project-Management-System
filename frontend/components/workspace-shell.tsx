@@ -38,6 +38,8 @@ export function WorkspaceShell({
   heading,
   highlightLabel,
   highlightValue,
+  headerAction,
+  assistantProjectId,
   children,
 }: {
   shellData: WorkspaceShellData;
@@ -45,6 +47,8 @@ export function WorkspaceShell({
   subheading: string;
   highlightLabel: string;
   highlightValue: string;
+  headerAction?: ReactNode;
+  assistantProjectId?: string | null;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -304,6 +308,7 @@ export function WorkspaceShell({
             {/* <p>{subheading}</p> */}
           </div>
           <div className="topbar-actions">
+            {headerAction}
             <div className="quick-chip">
               <span>{highlightLabel}</span>
               <strong>{highlightValue}</strong>
@@ -313,7 +318,7 @@ export function WorkspaceShell({
         <div className="page-stack">{children}</div>
       </main>
 
-      <AssistantBubble alertCount={activeShellData.alertCount} />
+      <AssistantBubble alertCount={activeShellData.alertCount} projectId={assistantProjectId} />
 
       {isPasswordModalOpen ? (
         <ChangePasswordModal session={session} onClose={() => setIsPasswordModalOpen(false)} />

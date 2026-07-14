@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Iterable, Sequence
@@ -53,15 +54,11 @@ def build_task_progress_map(logworks: Iterable[LogWork]) -> dict[int, float]:
 
 
 def resolve_task_progress_percent(task: Task, task_progress_map: dict[int, float] | None = None) -> float:
+    # Progress is effort-based: only completed leaf tasks contribute.
+    del task_progress_map
     normalized_status = normalize_task_status(task.status)
     if normalized_status == "done":
         return 100.0
-
-    if task_progress_map and task.id in task_progress_map:
-        return float(max(0.0, min(100.0, task_progress_map[task.id])))
-
-    if normalized_status == "in_progress":
-        return 50.0
 
     return 0.0
 
@@ -80,7 +77,7 @@ def calculate_progress_percent(
     for task in leaf_tasks:
         weight = decimal_to_float(getattr(task, "estimated_hours", None))
         if weight <= 0:
-            weight = 1.0
+            continue
 
         progress = resolve_task_progress_percent(task, task_progress_map)
         total_weight += weight
@@ -104,15 +101,24 @@ def count_task_statuses(tasks: Sequence[Task]) -> dict[str, int]:
 def count_overdue_tasks(
     tasks: Sequence[Task],
     today: date | None = None,
+    include_parent_tasks: bool = False,
 ) -> int:
+    return len(list_overdue_tasks(tasks, today, include_parent_tasks))
+
+
+def list_overdue_tasks(
+    tasks: Sequence[Task],
+    today: date | None = None,
+    include_parent_tasks: bool = False,
+) -> list[Task]:
     current_day = today or datetime.now(timezone.utc).date()
-    overdue = 0
+    task_list = tasks if include_parent_tasks else list_leaf_tasks(tasks)
 
-    for task in list_leaf_tasks(tasks):
-        if task.deadline and task.deadline < current_day and normalize_task_status(task.status) != "done":
-            overdue += 1
-
-    return overdue
+    return [
+        task
+        for task in task_list
+        if task.deadline and task.deadline < current_day and normalize_task_status(task.status) != "done"
+    ]
 
 
 def sum_estimated_hours(tasks: Sequence[Task]) -> float:
@@ -120,6 +126,43 @@ def sum_estimated_hours(tasks: Sequence[Task]) -> float:
         sum(decimal_to_float(getattr(task, "estimated_hours", None)) for task in list_leaf_tasks(tasks)),
         1,
     )
+
+
+def build_task_estimate_rollup(tasks: Sequence[Task]) -> dict[int, float]:
+    task_by_id = {task.id: task for task in tasks}
+    children_by_parent_id: dict[int, list[Task]] = defaultdict(list)
+
+    for task in tasks:
+        if task.parent_task_id is not None and task.parent_task_id in task_by_id:
+            children_by_parent_id[task.parent_task_id].append(task)
+
+    resolved: dict[int, float] = {}
+    active_stack: set[int] = set()
+
+    def resolve(task_id: int) -> float:
+        if task_id in resolved:
+            return resolved[task_id]
+
+        if task_id in active_stack:
+            return 0.0
+
+        active_stack.add(task_id)
+        task = task_by_id[task_id]
+        children = children_by_parent_id.get(task_id, [])
+
+        if not children:
+            total = decimal_to_float(getattr(task, "estimated_hours", None))
+        else:
+            total = sum(resolve(child.id) for child in children)
+
+        active_stack.remove(task_id)
+        resolved[task_id] = round(total, 1)
+        return resolved[task_id]
+
+    for task_id in task_by_id:
+        resolve(task_id)
+
+    return resolved
 
 
 def sum_logged_hours(logworks: Iterable[LogWork]) -> float:

@@ -74,7 +74,12 @@ export interface DashboardOverview {
   portfolioProgress: number;
   projectProgress: number;
   activeSprintProgress: number;
+  estimatedHoursTotal: number;
+  estimatedHoursDone: number;
+  estimatedHoursRemaining: number;
   logworkCoverage: number;
+  memberCount: number;
+  membersLoggedToday: number;
   criticalAlerts: number;
   projectsInScope: number;
   openTasksInScope: number;

@@ -1,7 +1,14 @@
-import { DashboardOverview, UserProfile } from "@/types";
+import type {
+  DashboardOverview,
+  DashboardRecentLogwork,
+  DashboardSprintSummary,
+  DashboardTaskPreview,
+  DashboardWorkloadMember,
+  UserProfile,
+} from "@/types";
 
 import { requestApi } from "./core";
-import { mapBackendProject } from "./projects";
+import { mapBackendProject, type BackendProject } from "./projects";
 
 function normalizeTaskStatus(status: unknown): "TODO" | "IN_PROGRESS" | "DONE" {
   const normalized = typeof status === "string" ? status.trim().toUpperCase() : "TODO";
@@ -17,101 +24,131 @@ function normalizeTaskStatus(status: unknown): "TODO" | "IN_PROGRESS" | "DONE" {
   return "TODO";
 }
 
-function mapTaskPreview(item: any) {
+type BackendRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): BackendRecord {
+  return value && typeof value === "object" ? (value as BackendRecord) : {};
+}
+
+function asString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+
+function asOptionalString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function asNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" ? value : fallback;
+}
+
+function mapTaskPreview(item: BackendRecord): DashboardTaskPreview {
   return {
-    id: item.id.toString(),
-    key: item.key,
-    title: item.title,
+    id: String(item.id ?? ""),
+    key: asString(item.key),
+    title: asString(item.title),
     status: normalizeTaskStatus(item.status),
-    priority: item.priority?.toUpperCase() || "MEDIUM",
-    startDate: item.startDate ?? null,
-    dueDate: item.dueDate ?? null,
-    assigneeName: item.assigneeName ?? null,
-    sprintName: item.sprintName ?? null,
+    priority: (asString(item.priority, "MEDIUM").toUpperCase() || "MEDIUM") as DashboardTaskPreview["priority"],
+    startDate: asOptionalString(item.startDate),
+    dueDate: asOptionalString(item.dueDate),
+    assigneeName: asOptionalString(item.assigneeName),
+    sprintName: asOptionalString(item.sprintName),
   };
 }
 
-function mapSprintSummary(item: any) {
+function mapSprintSummary(item: BackendRecord): DashboardSprintSummary {
   return {
-    id: item.id.toString(),
-    name: item.name,
-    status: item.status,
-    goal: item.goal ?? null,
-    startDate: item.startDate,
-    endDate: item.endDate,
-    plannedProgress: item.plannedProgress ?? 0,
-    actualProgress: item.actualProgress ?? 0,
-    totalTasks: item.totalTasks ?? 0,
-    todoCount: item.todoCount ?? 0,
-    inProgressCount: item.inProgressCount ?? 0,
-    doneCount: item.doneCount ?? 0,
-    estimatedHours: item.estimatedHours ?? 0,
-    loggedHours: item.loggedHours ?? 0,
-    health: item.health ?? "on-track",
+    id: String(item.id ?? ""),
+    name: asString(item.name),
+    status: (asString(item.status, "PLANNED") as DashboardSprintSummary["status"]),
+    goal: asOptionalString(item.goal),
+    startDate: asString(item.startDate),
+    endDate: asString(item.endDate),
+    plannedProgress: asNumber(item.plannedProgress),
+    actualProgress: asNumber(item.actualProgress),
+    totalTasks: asNumber(item.totalTasks),
+    todoCount: asNumber(item.todoCount),
+    inProgressCount: asNumber(item.inProgressCount),
+    doneCount: asNumber(item.doneCount),
+    estimatedHours: asNumber(item.estimatedHours),
+    loggedHours: asNumber(item.loggedHours),
+    health: (asString(item.health, "on-track") as DashboardSprintSummary["health"]),
   };
 }
 
-function mapWorkloadMember(item: any) {
+function mapWorkloadMember(item: BackendRecord): DashboardWorkloadMember {
   return {
-    userId: item.userId.toString(),
-    memberId: item.memberId.toString(),
-    name: item.name,
-    email: item.email,
-    roleName: item.roleName,
-    assignedTasks: item.assignedTasks ?? 0,
-    todoTasks: item.todoTasks ?? 0,
-    inProgressTasks: item.inProgressTasks ?? 0,
-    doneTasks: item.doneTasks ?? 0,
-    overdueTasks: item.overdueTasks ?? 0,
-    estimatedHours: item.estimatedHours ?? 0,
-    loggedHours: item.loggedHours ?? 0,
-    progress: item.progress ?? 0,
+    userId: String(item.userId ?? ""),
+    memberId: String(item.memberId ?? ""),
+    name: asString(item.name),
+    email: asString(item.email),
+    roleName: asString(item.roleName),
+    assignedTasks: asNumber(item.assignedTasks),
+    todoTasks: asNumber(item.todoTasks),
+    inProgressTasks: asNumber(item.inProgressTasks),
+    doneTasks: asNumber(item.doneTasks),
+    overdueTasks: asNumber(item.overdueTasks),
+    estimatedHours: asNumber(item.estimatedHours),
+    loggedHours: asNumber(item.loggedHours),
+    progress: asNumber(item.progress),
   };
 }
 
-function mapRecentLogwork(item: any) {
+function mapRecentLogwork(item: BackendRecord): DashboardRecentLogwork {
   return {
-    id: item.id.toString(),
-    taskId: item.taskId.toString(),
-    taskKey: item.taskKey,
-    taskTitle: item.taskTitle,
-    userId: item.userId.toString(),
-    userName: item.userName,
-    workDate: item.workDate,
-    hours: item.hours ?? 0,
-    note: item.note ?? "",
-    progressPercent: item.progressPercent ?? 0,
+    id: String(item.id ?? ""),
+    taskId: String(item.taskId ?? ""),
+    taskKey: asString(item.taskKey),
+    taskTitle: asString(item.taskTitle),
+    userId: String(item.userId ?? ""),
+    userName: asString(item.userName),
+    workDate: asString(item.workDate),
+    hours: asNumber(item.hours),
+    note: asString(item.note),
+    progressPercent: asNumber(item.progressPercent),
   };
 }
 
-function mapDashboardOverview(data: any): DashboardOverview {
+function mapDashboardOverview(data: unknown): DashboardOverview {
+  const overview = asRecord(data);
+  const taskSummary = asRecord(overview.taskSummary);
+
   return {
-    project: data.project ? mapBackendProject(data.project) : null,
-    portfolioProgress: data.portfolioProgress ?? 0,
-    projectProgress: data.projectProgress ?? 0,
-    activeSprintProgress: data.activeSprintProgress ?? 0,
-    logworkCoverage: data.logworkCoverage ?? 0,
-    criticalAlerts: data.criticalAlerts ?? 0,
-    projectsInScope: data.projectsInScope ?? 0,
-    openTasksInScope: data.openTasksInScope ?? 0,
+    project: overview.project ? mapBackendProject(overview.project as BackendProject) : null,
+    portfolioProgress: asNumber(overview.portfolioProgress),
+    projectProgress: asNumber(overview.projectProgress),
+    activeSprintProgress: asNumber(overview.activeSprintProgress),
+    estimatedHoursTotal: asNumber(overview.estimatedHoursTotal),
+    estimatedHoursDone: asNumber(overview.estimatedHoursDone),
+    estimatedHoursRemaining: asNumber(overview.estimatedHoursRemaining),
+    logworkCoverage: asNumber(overview.logworkCoverage),
+    memberCount: asNumber(overview.memberCount),
+    membersLoggedToday: asNumber(overview.membersLoggedToday),
+    criticalAlerts: asNumber(overview.criticalAlerts),
+    projectsInScope: asNumber(overview.projectsInScope),
+    openTasksInScope: asNumber(overview.openTasksInScope),
     taskSummary: {
-      todo: data.taskSummary?.todo ?? 0,
-      inProgress: data.taskSummary?.inProgress ?? 0,
-      done: data.taskSummary?.done ?? 0,
-      total: data.taskSummary?.total ?? 0,
-      overdue: data.taskSummary?.overdue ?? 0,
+      todo: asNumber(taskSummary.todo),
+      inProgress: asNumber(taskSummary.inProgress),
+      done: asNumber(taskSummary.done),
+      total: asNumber(taskSummary.total),
+      overdue: asNumber(taskSummary.overdue),
     },
-    activeSprint: data.activeSprint ? mapSprintSummary(data.activeSprint) : null,
-    sprintSummaries: Array.isArray(data.sprintSummaries)
-      ? data.sprintSummaries.map(mapSprintSummary)
+    activeSprint: overview.activeSprint ? mapSprintSummary(asRecord(overview.activeSprint)) : null,
+    sprintSummaries: Array.isArray(overview.sprintSummaries)
+      ? overview.sprintSummaries.map((item) => mapSprintSummary(asRecord(item)))
       : [],
-    overdueTasks: Array.isArray(data.overdueTasks) ? data.overdueTasks.map(mapTaskPreview) : [],
-    activeTasks: Array.isArray(data.activeTasks) ? data.activeTasks.map(mapTaskPreview) : [],
-    workloadBoard: Array.isArray(data.workloadBoard)
-      ? data.workloadBoard.map(mapWorkloadMember)
+    overdueTasks: Array.isArray(overview.overdueTasks)
+      ? overview.overdueTasks.map((item) => mapTaskPreview(asRecord(item)))
       : [],
-    recentLogwork: Array.isArray(data.recentLogwork)
-      ? data.recentLogwork.map(mapRecentLogwork)
+    activeTasks: Array.isArray(overview.activeTasks)
+      ? overview.activeTasks.map((item) => mapTaskPreview(asRecord(item)))
+      : [],
+    workloadBoard: Array.isArray(overview.workloadBoard)
+      ? overview.workloadBoard.map((item) => mapWorkloadMember(asRecord(item)))
+      : [],
+    recentLogwork: Array.isArray(overview.recentLogwork)
+      ? overview.recentLogwork.map((item) => mapRecentLogwork(asRecord(item)))
       : [],
   };
 }
@@ -128,7 +165,7 @@ export const dashboardApi = {
     const path = params.size
       ? `/api/dashboard/overview?${params.toString()}`
       : "/api/dashboard/overview";
-    const response = await requestApi<any>({
+    const response = await requestApi<unknown>({
       method: "GET",
       path,
     });

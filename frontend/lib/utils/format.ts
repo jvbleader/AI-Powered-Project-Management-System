@@ -8,28 +8,61 @@ import type {
   UserStatus,
 } from "@/types";
 
+export const VIETNAM_TIMEZONE = "Asia/Ho_Chi_Minh";
+
+function normalizeApiDateString(date: string) {
+  const trimmed = date.trim();
+
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  // Legacy backend payloads may return UTC timestamps without an explicit offset.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(trimmed)) {
+    return `${trimmed}Z`;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(trimmed)) {
+    return `${trimmed.replace(" ", "T")}Z`;
+  }
+
+  return trimmed;
+}
+
 const dateFormatter = new Intl.DateTimeFormat("vi-VN", {
   month: "short",
   day: "numeric",
+  timeZone: VIETNAM_TIMEZONE,
 });
 
 export function formatDate(date: string) {
   if (!date) return "(Chưa có)";
-  const d = new Date(date);
+  const d = new Date(normalizeApiDateString(date));
   if (isNaN(d.getTime())) return "(Không hợp lệ)";
   return dateFormatter.format(d);
 }
 
 export function formatDateTime(date: string) {
   if (!date) return "(Chưa có)";
-  const d = new Date(date);
+  const d = new Date(normalizeApiDateString(date));
   if (isNaN(d.getTime())) return "(Không hợp lệ)";
   return new Intl.DateTimeFormat("vi-VN", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: VIETNAM_TIMEZONE,
   }).format(d);
+}
+
+export function toVietnamDateInputValue(date: Date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: VIETNAM_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(date);
 }
 
 export function formatRange(start: string, end: string) {
@@ -56,14 +89,47 @@ export function roleLabel(role: UserRole) {
   }[role];
 }
 
+export function normalizeProjectRoleName(roleName: string) {
+  const normalized = roleName
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  if (["PROJECT_MANAGER", "PROJECT_MANAGER_ROLE", "PROJECT_MANAGERS", "MANAGER", "PM"].includes(normalized)) {
+    return "PROJECT_MANAGER";
+  }
+
+  if (["DEVELOPER", "DEV", "MEMBER"].includes(normalized)) {
+    return "DEVELOPER";
+  }
+
+  if (["QA", "TESTER"].includes(normalized)) {
+    return "QA";
+  }
+
+  if (["VIEWER", "READ_ONLY", "READONLY"].includes(normalized)) {
+    return "VIEWER";
+  }
+
+  return normalized || roleName;
+}
+
+export function isSupportedProjectRoleName(roleName: string) {
+  return ["PROJECT_MANAGER", "DEVELOPER", "QA", "VIEWER"].includes(
+    normalizeProjectRoleName(roleName),
+  );
+}
+
 export function projectRoleLabel(roleName: string) {
+  const normalized = normalizeProjectRoleName(roleName);
   const map: Record<string, string> = {
-    PROJECT_MANAGER: "Project Manager",
+    PROJECT_MANAGER: "Quản lý dự án",
     DEVELOPER: "Developer",
     QA: "QA",
-    VIEWER: "Viewer",
+    VIEWER: "Người xem",
   };
-  return map[roleName] || roleName;
+  return map[normalized] || roleName;
 }
 
 export function projectStatusLabel(status: ProjectStatus) {

@@ -78,7 +78,12 @@ class DashboardOverviewResponse(BaseModel):
     portfolioProgress: int = 0
     projectProgress: int = 0
     activeSprintProgress: int = 0
+    estimatedHoursTotal: float = 0
+    estimatedHoursDone: float = 0
+    estimatedHoursRemaining: float = 0
     logworkCoverage: int = 0
+    memberCount: int = 0
+    membersLoggedToday: int = 0
     criticalAlerts: int = 0
     projectsInScope: int = 0
     openTasksInScope: int = 0

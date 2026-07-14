@@ -17,6 +17,10 @@ from app.utils.project_helpers import (
     ensure_default_roles,
     get_pm_role,
     is_admin_user,
+    is_supported_project_role_name,
+    list_managed_project_ids,
+    list_project_role_names,
+    normalize_project_role_name,
     to_db_status,
     user_can_manage_project,
     user_is_project_manager,
@@ -30,6 +34,15 @@ def parse_project_id(project_id: str) -> int:
         return int(raw)
     except ValueError:
         raise HTTPException(status_code=400, detail="Mã dự án không hợp lệ.")
+
+
+def _is_pm_role_name(role_name: str | None) -> bool:
+    return normalize_project_role_name(role_name) == "PROJECT_MANAGER"
+
+
+def _count_active_project_managers(db: Session, project_id: int) -> int:
+    member_rows = project_repository.list_project_members(db, project_id, include_inactive=False)
+    return sum(1 for _, _, role in member_rows if _is_pm_role_name(role.name))
 
 
 def require_project_access(
@@ -59,7 +72,15 @@ def require_project_access(
 
 def list_project_roles(db: Session):
     ensure_default_roles(db)
-    return project_repository.list_all_roles(db)
+    available_roles = {}
+    for role in project_repository.list_all_roles(db):
+        canonical_name = normalize_project_role_name(role.name)
+        if not is_supported_project_role_name(canonical_name):
+            continue
+        existing_role = available_roles.get(canonical_name)
+        if existing_role is None or role.name == canonical_name:
+            available_roles[canonical_name] = role
+    return [available_roles[name] for name in list_project_role_names() if name in available_roles]
 
 
 def list_projects(
@@ -73,8 +94,11 @@ def list_projects(
     page: int = 1,
     page_size: int = 10,
 ):
-    pm_role = get_pm_role(db) if manager_id else None
-    
+    manager_project_ids = None
+    if manager_id is not None:
+        manager = project_repository.get_user_by_id(db, manager_id)
+        manager_project_ids = list_managed_project_ids(db, manager) if manager else []
+
     projects, total = project_repository.list_projects(
         db=db,
         is_admin=is_admin_user(current_user),
@@ -83,8 +107,7 @@ def list_projects(
         db_status=to_db_status(status) if status and status != "ALL" else None,
         start_date_from=start_date_from,
         start_date_to=start_date_to,
-        manager_id=manager_id,
-        pm_role_id=pm_role.id if pm_role else None,
+        manager_project_ids=manager_project_ids,
         page=page,
         page_size=page_size
     )
@@ -207,8 +230,7 @@ def add_project_member(
     if not role:
         raise HTTPException(status_code=400, detail="Vai trò không hợp lệ.")
 
-    pm_role = get_pm_role(db)
-    if role.id == pm_role.id and not is_admin_user(current_user):
+    if _is_pm_role_name(role.name) and not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Chỉ có Admin mới có thể thêm Quản lý dự án.")
 
     existing = project_repository.get_project_member(db, numeric_id, data.user_id, include_inactive=True)
@@ -248,17 +270,19 @@ def update_project_member(
     if not role:
         raise HTTPException(status_code=400, detail="Vai trò không hợp lệ.")
 
-    pm_role = get_pm_role(db)
-    
+    current_role = project_repository.get_role_by_id(db, member.role_id)
+    current_is_pm = _is_pm_role_name(current_role.name if current_role else None)
+    target_is_pm = _is_pm_role_name(role.name)
+
     # PM không thể tự sửa PM (cả từ PM xuống Member, và từ Member lên PM)
     if not is_admin_user(current_user):
-        if member.role_id == pm_role.id:
+        if current_is_pm:
             raise HTTPException(status_code=403, detail="Bạn không có quyền chỉnh sửa Quản lý dự án.")
-        if data.role_id == pm_role.id:
+        if target_is_pm:
             raise HTTPException(status_code=403, detail="Chỉ có Admin mới có thể cấp quyền Quản lý dự án.")
 
-    if member.role_id == pm_role.id and data.role_id != pm_role.id:
-        pm_count = project_repository.count_project_role(db, numeric_id, pm_role.id)
+    if current_is_pm and not target_is_pm:
+        pm_count = _count_active_project_managers(db, numeric_id)
         if pm_count <= 1:
             raise HTTPException(
                 status_code=400,
@@ -281,13 +305,14 @@ def remove_project_member(db: Session, current_user: User, project_id: str, memb
     if not member:
         raise HTTPException(status_code=404, detail="Không tìm thấy thành viên dự án.")
 
-    pm_role = get_pm_role(db)
-    
-    if not is_admin_user(current_user) and member.role_id == pm_role.id:
+    current_role = project_repository.get_role_by_id(db, member.role_id)
+    current_is_pm = _is_pm_role_name(current_role.name if current_role else None)
+
+    if not is_admin_user(current_user) and current_is_pm:
         raise HTTPException(status_code=403, detail="Bạn không có quyền xóa Quản lý dự án.")
 
-    if member.role_id == pm_role.id:
-        pm_count = project_repository.count_project_role(db, numeric_id, pm_role.id)
+    if current_is_pm:
+        pm_count = _count_active_project_managers(db, numeric_id)
         if pm_count <= 1:
             raise HTTPException(
                 status_code=400,

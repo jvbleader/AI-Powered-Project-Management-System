@@ -116,8 +116,10 @@ export function EmptyState({ title, description }: { title: string; description:
 
 export function SegmentBar({
   segments,
+  showLegend = true,
 }: {
   segments: Array<{ label: string; value: number; tone: "todo" | "progress" | "done" | "outdate" }>;
+  showLegend?: boolean;
 }) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
 
@@ -137,15 +139,17 @@ export function SegmentBar({
         })}
       </div>
 
-      <div className="segment-legend">
-        {segments.map((segment) => (
-          <div key={segment.label} className="segment-legend-item">
-            <span className={classNames("segment-dot", `segment-dot-${segment.tone}`)} />
-            <span>{segment.label}</span>
-            <strong>{segment.value}</strong>
-          </div>
-        ))}
-      </div>
+      {showLegend ? (
+        <div className="segment-legend">
+          {segments.map((segment) => (
+            <div key={segment.label} className="segment-legend-item">
+              <span className={classNames("segment-dot", `segment-dot-${segment.tone}`)} />
+              <span>{segment.label}</span>
+              <strong>{segment.value}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

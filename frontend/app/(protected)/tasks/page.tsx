@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
+import { ProjectScopeSelect } from "@/components/project-scope-select";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, Surface } from "@/components/ui";
 import { taskApi, workspaceApi, userApi } from "@/services/api";
@@ -99,6 +100,13 @@ function TasksPageContent() {
     : selectedProjectId === "ALL"
       ? taskState.tasks
       : taskState.tasks.filter((task) => task.projectId === selectedProjectId);
+  const projectOptions = [
+    { value: "ALL", label: "Tất cả dự án" },
+    ...((taskState?.projects ?? []).map((project) => ({
+      value: project.id,
+      label: project.name,
+    })) || []),
+  ];
   const canManageSelectedTask = Boolean(
     selectedTask &&
       (viewer.role === "ADMIN" ||
@@ -114,64 +122,56 @@ function TasksPageContent() {
       subheading="Kanban tổng hợp cho toàn bộ task trong phạm vi quyền hiện tại của bạn."
       highlightLabel="Task đang mở"
       highlightValue={`${filteredTasks.filter((task) => task.status !== "DONE").length}`}
+      headerAction={
+        <ProjectScopeSelect
+          label="Phạm vi dự án"
+          value={selectedProjectId}
+          onChange={setSelectedProjectId}
+          options={projectOptions}
+          disabled={!projectOptions.length}
+        />
+      }
     >
-      <section className="filter-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-            <label>
-              <span>Dự án</span>
-              <select
-                value={selectedProjectId}
-                onChange={(event) => setSelectedProjectId(event.target.value)}
-              >
-                <option value="ALL">Tất cả dự án</option>
-                {(taskState?.projects ?? []).map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </section>
-
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "2rem", marginTop: "1.5rem" }}
-          >
-            <GroupedKanbanBoard
-              projects={taskState?.projects ?? []}
-              tasks={filteredTasks}
-              selectedProjectId={selectedProjectId}
-              onTaskUpdated={() => {
-                taskApi
-                  .getEnrichedBoard(undefined, viewer, {
-                    projects: taskState?.projects ?? [],
-                    users: taskState?.users ?? [],
-                  })
-                  .then((res) => {
-                    setTaskState((current) => {
-                      if (!current) {
-                        return null;
-                      }
-
-                      const nextState = { ...current, tasks: res.data };
-                      setTasksPageCache(viewer.id, nextState);
-                      return nextState;
-                    });
-                  });
-              }}
-            />
-
-            {filteredTasks.length === 0 && selectedProjectId === "ALL" && (
-              <Surface title="Chưa có nhiệm vụ">
-                <EmptyState
-                  title={isBoardLoading ? "Đang tải nhiệm vụ" : "Trống"}
-                  description={
-                    isBoardLoading
-                      ? "Hệ thống đang đồng bộ danh sách nhiệm vụ của bạn."
-                      : "Bạn chưa có bất kỳ nhiệm vụ nào."
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: "2rem", marginTop: "0.25rem" }}
+      >
+        <GroupedKanbanBoard
+          projects={taskState?.projects ?? []}
+          tasks={filteredTasks}
+          selectedProjectId={selectedProjectId}
+          onTaskUpdated={() => {
+            taskApi
+              .getEnrichedBoard(undefined, viewer, {
+                projects: taskState?.projects ?? [],
+                users: taskState?.users ?? [],
+              })
+              .then((res) => {
+                setTaskState((current) => {
+                  if (!current) {
+                    return null;
                   }
-                />
-              </Surface>
-            )}
-          </div>
+
+                  const nextState = { ...current, tasks: res.data };
+                  setTasksPageCache(viewer.id, nextState);
+                  return nextState;
+                });
+              });
+          }}
+        />
+
+        {filteredTasks.length === 0 && selectedProjectId === "ALL" && (
+          <Surface title="Chưa có nhiệm vụ">
+            <EmptyState
+              title={isBoardLoading ? "Đang tải nhiệm vụ" : "Trống"}
+              description={
+                isBoardLoading
+                  ? "Hệ thống đang đồng bộ danh sách nhiệm vụ của bạn."
+                  : "Bạn chưa có bất kỳ nhiệm vụ nào."
+              }
+            />
+          </Surface>
+        )}
+      </div>
 
       <TaskDetailModal
         taskId={selectedTaskId}

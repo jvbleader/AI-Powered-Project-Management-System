@@ -27,6 +27,7 @@ from app.utils.dashboard_helpers import (
     count_overdue_tasks,
     count_task_statuses,
     decimal_to_float,
+    list_overdue_tasks,
     list_leaf_tasks,
     normalize_task_status,
     resolve_health_tone,
@@ -136,7 +137,13 @@ def get_dashboard_overview(
     task_progress_map = build_task_progress_map(project_logworks)
     leaf_tasks = list_leaf_tasks(project_tasks)
     task_counts = count_task_statuses(project_tasks)
-    overdue_count = count_overdue_tasks(project_tasks)
+    overdue_tasks_all = list_overdue_tasks(project_tasks, include_parent_tasks=True)
+    overdue_count = len(overdue_tasks_all)
+    estimated_hours_total = sum_estimated_hours(project_tasks)
+    estimated_hours_done = sum_estimated_hours(
+        [task for task in leaf_tasks if normalize_task_status(task.status) == "done"]
+    )
+    estimated_hours_remaining = max(0.0, round(estimated_hours_total - estimated_hours_done, 1))
 
     assignee_rows = task_repository.list_task_assignee_users(db, [task.id for task in project_tasks])
     assignee_by_task_id = {
@@ -187,6 +194,14 @@ def get_dashboard_overview(
 
     members = project_repository.list_project_members(db, selected_project.id, include_inactive=False)
     member_user_ids = [user.id for _, user, _ in members]
+    current_day = datetime.now(timezone.utc).date()
+    members_logged_today = len(
+        {
+            user.id
+            for logwork, _, _, user in project_logwork_rows
+            if logwork.work_date == current_day and user.id in member_user_ids
+        }
+    )
     logwork_coverage_rows = [
         type("CoverageLogwork", (), {"user_id": user.id, "work_date": logwork.work_date})
         for logwork, _, project_member, user in project_logwork_rows
@@ -195,10 +210,7 @@ def get_dashboard_overview(
 
     project_progress = calculate_progress_percent(project_tasks, task_progress_map)
 
-    overdue_tasks = sorted(
-        [task for task in leaf_tasks if task.deadline and task.deadline < datetime.now(timezone.utc).date() and normalize_task_status(task.status) != "done"],
-        key=lambda task: (task.deadline, task.id),
-    )[:6]
+    overdue_tasks = sorted(overdue_tasks_all, key=lambda task: (task.deadline, task.id))[:6]
     active_tasks = sorted(
         [task for task in leaf_tasks if normalize_task_status(task.status) != "done"],
         key=lambda task: (task.deadline or datetime.max.date(), task.id),
@@ -229,7 +241,7 @@ def get_dashboard_overview(
                 todoTasks=assigned_counts["todo"],
                 inProgressTasks=assigned_counts["in_progress"],
                 doneTasks=assigned_counts["done"],
-                overdueTasks=count_overdue_tasks(assigned_tasks),
+                overdueTasks=count_overdue_tasks(assigned_tasks, include_parent_tasks=True),
                 estimatedHours=sum_estimated_hours(assigned_tasks),
                 loggedHours=sum_logged_hours(member_logworks.get(user.id, [])),
                 progress=calculate_progress_percent(assigned_tasks, task_progress_map),
@@ -265,7 +277,12 @@ def get_dashboard_overview(
         portfolioProgress=portfolio_progress,
         projectProgress=project_progress,
         activeSprintProgress=active_sprint.actualProgress if active_sprint else 0,
+        estimatedHoursTotal=estimated_hours_total,
+        estimatedHoursDone=estimated_hours_done,
+        estimatedHoursRemaining=estimated_hours_remaining,
         logworkCoverage=logwork_coverage,
+        memberCount=len(member_user_ids),
+        membersLoggedToday=members_logged_today,
         criticalAlerts=overdue_count + critical_sprint_count,
         projectsInScope=len(accessible_project_responses),
         openTasksInScope=open_tasks_in_scope,

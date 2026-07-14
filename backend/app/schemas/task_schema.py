@@ -1,7 +1,13 @@
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pydantic import field_validator
+
+
+def _ensure_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 class TaskAssigneeResponse(BaseModel):
     user_id: str
@@ -25,6 +31,11 @@ class TaskCommentResponse(TaskCommentBase):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def attach_timezone(cls, value: datetime) -> datetime:
+        return _ensure_utc_datetime(value)
+
     class Config:
         from_attributes = True
 
@@ -34,6 +45,13 @@ class LogWorkBase(BaseModel):
     work_content: str
     comment: Optional[str] = None
     progress_percent: float
+
+    @field_validator("hours_spent")
+    @classmethod
+    def validate_hours_spent(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("Số giờ logwork không được âm.")
+        return value
 
 class LogWorkCreate(LogWorkBase):
     pass
@@ -45,6 +63,11 @@ class LogWorkResponse(LogWorkBase):
     user_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def attach_timezone(cls, value: datetime) -> datetime:
+        return _ensure_utc_datetime(value)
 
     class Config:
         from_attributes = True
@@ -150,6 +173,13 @@ class TaskResponse(TaskBase):
     updated_at: datetime
     key: Optional[str] = None  # Ví dụ: TASK-123
     assignees: List[TaskAssigneeResponse] = []
+
+    @field_validator("created_at", "updated_at", "completed_at")
+    @classmethod
+    def attach_timezone(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        return _ensure_utc_datetime(value)
     
     class Config:
         from_attributes = True

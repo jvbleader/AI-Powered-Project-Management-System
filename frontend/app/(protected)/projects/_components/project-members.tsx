@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Surface, StatusPill } from "@/components/ui";
 import { projectApi } from "@/services/api";
+import { projectRoleLabel } from "@/lib/utils/format";
 import styles from "../../team/styles/team.module.css";
 import type { UserProfile } from "@/types";
 
@@ -42,7 +43,7 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
 
   const [isAdding, setIsAdding] = useState(false);
   const [newUserId, setNewUserId] = useState<string>("");
-  const [newUserRoleId, setNewUserRoleId] = useState<number>(2); // Default to Developer
+  const [newUserRoleId, setNewUserRoleId] = useState<number>(0);
 
   const extractErrorMessage = (error: unknown, fallback: string) => {
     return error instanceof Error ? error.message : fallback;
@@ -53,6 +54,9 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
     setMembers(membersRes.data || []);
   };
 
+  const resolveMemberRoleId = (member: ProjectMemberItem) =>
+    roles.find((role) => role.name === member.roleName)?.id ?? member.roleId;
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -61,7 +65,13 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
           projectApi.listRoles()
         ]);
         setMembers(membersRes.data || []);
-        setRoles(rolesRes.data || []);
+        const loadedRoles = rolesRes.data || [];
+        setRoles(loadedRoles);
+        const defaultRole =
+          loadedRoles.find((role: ProjectRoleItem) => role.name === "DEVELOPER") ??
+          loadedRoles.find((role: ProjectRoleItem) => role.name !== "PROJECT_MANAGER") ??
+          loadedRoles[0];
+        setNewUserRoleId(defaultRole?.id ?? 0);
       } catch {
         setError("Không thể tải danh sách thành viên.");
       } finally {
@@ -72,7 +82,7 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
   }, [projectId]);
 
   const handleAddMember = async () => {
-    if (!newUserId) return;
+    if (!newUserId || !newUserRoleId) return;
     try {
       await projectApi.addMember(projectId, newUserId, newUserRoleId);
       setIsAdding(false);
@@ -104,7 +114,7 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
 
   const handleRestoreMember = async (member: ProjectMemberItem) => {
     try {
-      await projectApi.addMember(projectId, `usr-${member.userId}`, member.roleId);
+      await projectApi.addMember(projectId, `usr-${member.userId}`, resolveMemberRoleId(member));
       await reloadMembers();
     } catch (err: unknown) {
       alert(extractErrorMessage(err, "Lỗi khi khôi phục thành viên"));
@@ -169,7 +179,7 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
                 style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface)", width: "200px" }}
               >
                 {roles.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>{projectRoleLabel(r.name)}</option>
                 ))}
               </select>
               <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -241,7 +251,7 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
                     >
                       <option value="ALL">Tất cả</option>
                       {roles.map(r => (
-                        <option key={r.id} value={r.id.toString()}>{r.name}</option>
+                        <option key={r.id} value={r.id.toString()}>{projectRoleLabel(r.name)}</option>
                       ))}
                     </select>
                   </div>
@@ -285,16 +295,16 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
                 <td style={{ textAlign: "center" }}>
                   {canManage && member.userId.toString() !== viewerId.replace("usr-", "") ? (
                     <select
-                      value={member.roleId}
+                      value={resolveMemberRoleId(member)}
                       onChange={e => handleUpdateRole(member.id, Number(e.target.value))}
                       style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
                     >
                       {roles.map(r => (
-                        <option key={r.id} value={r.id}>{r.name}</option>
+                        <option key={r.id} value={r.id}>{projectRoleLabel(r.name)}</option>
                       ))}
                     </select>
                   ) : (
-                    <StatusPill label={member.roleName} tone={member.roleName === "PROJECT_MANAGER" ? "accent" : "neutral"} />
+                    <StatusPill label={projectRoleLabel(member.roleName)} tone={member.roleName === "PROJECT_MANAGER" ? "accent" : "neutral"} />
                   )}
                 </td>
                 <td>{new Date(member.joinedAt).toLocaleDateString("vi-VN")}</td>

@@ -283,6 +283,7 @@ export const apiEndpoints = {
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
   },
   ai: {
+    quickResponse: { method: "POST" as EndpointMethod, path: "/api/ai/quick-response" },
     quickQuery: { method: "POST" as EndpointMethod, path: "/api/ai/query" },
     reports: { method: "GET" as EndpointMethod, path: "/api/ai/reports" },
     memory: { method: "GET" as EndpointMethod, path: "/api/ai/memory" },

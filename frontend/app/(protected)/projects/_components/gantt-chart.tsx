@@ -1,6 +1,11 @@
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { differenceInDays, generateDateRange } from "@/lib/utils/format";
+import {
+  differenceInDays,
+  generateDateRange,
+  taskPriorityLabel,
+  taskStatusLabel,
+} from "@/lib/utils/format";
 import type { EnrichedTask } from "@/types";
 import styles from "../styles/gantt.module.css";
 
@@ -18,12 +23,48 @@ interface WbsNode {
 
 const NAME_COL_WIDTH = 260;
 const STATUS_COL_WIDTH = 130;
+const PRIORITY_COL_WIDTH = 140;
 const ASSIGNEE_COL_WIDTH = 140;
 const START_COL_WIDTH = 110;
 const END_COL_WIDTH = 110;
 const DAY_COLUMN_WIDTH = 18;
 const LEFT_PANE_WIDTH =
-  NAME_COL_WIDTH + STATUS_COL_WIDTH + ASSIGNEE_COL_WIDTH + START_COL_WIDTH + END_COL_WIDTH;
+  NAME_COL_WIDTH +
+  STATUS_COL_WIDTH +
+  PRIORITY_COL_WIDTH +
+  ASSIGNEE_COL_WIDTH +
+  START_COL_WIDTH +
+  END_COL_WIDTH;
+
+function getPriorityPresentation(priority: EnrichedTask["priority"]) {
+  switch (priority) {
+    case "LOW":
+      return {
+        label: taskPriorityLabel(priority),
+        badgeClass: styles.priorityLow,
+        barClass: styles.ganttBarLow,
+      };
+    case "HIGH":
+      return {
+        label: taskPriorityLabel(priority),
+        badgeClass: styles.priorityHigh,
+        barClass: styles.ganttBarHigh,
+      };
+    case "CRITICAL":
+      return {
+        label: taskPriorityLabel(priority),
+        badgeClass: styles.priorityCritical,
+        barClass: styles.ganttBarCritical,
+      };
+    case "MEDIUM":
+    default:
+      return {
+        label: taskPriorityLabel(priority),
+        badgeClass: styles.priorityMedium,
+        barClass: styles.ganttBarMedium,
+      };
+  }
+}
 
 export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps) {
   const router = useRouter();
@@ -86,7 +127,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
     // Group by month
     const monthsMap = new Map<string, number>();
     dates.forEach(d => {
-      const key = d.toLocaleDateString("en-US", { month: "long" });
+      const key = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
       monthsMap.set(key, (monthsMap.get(key) || 0) + 1);
     });
 
@@ -94,6 +135,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
 
     return { dates, minDateStr, months };
   }, [tasks]);
+  const timelineWidth = dates.length * DAY_COLUMN_WIDTH;
 
   const toggleExpand = (taskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -111,7 +153,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
     }
   };
 
-  const renderTree = (nodes: WbsNode[], indexCounter = { count: 1 }): React.ReactNode => {
+  const renderTree = (nodes: WbsNode[]): React.ReactNode => {
     return nodes.map((node) => {
       const isExpanded = expanded[node.task.id] !== false;
       const hasChildren = node.children.length > 0;
@@ -120,18 +162,16 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
       const effectiveDueDate = node.task.dueDate || node.task.startDate;
       const startCol = differenceInDays(minDateStr, node.task.startDate) + 1;
       const endCol = differenceInDays(minDateStr, effectiveDueDate) + 2;
+      const priorityPresentation = getPriorityPresentation(node.task.priority);
 
       let circleClass = styles.circleYellow;
-      let stateText = "To do";
+      const stateText = taskStatusLabel(node.task.status);
       if (node.task.status === "DONE") {
         circleClass = styles.circleGreen;
-        stateText = "Done";
       } else if (node.task.status === "IN_PROGRESS") {
         circleClass = styles.circleBlue;
-        stateText = "In Progress";
       }
 
-      // Root tasks get teal background
       const rowClass = `${styles.ganttRow} ${isRoot ? styles.ganttRowRoot : ""}`;
 
       // Triangle icon
@@ -187,18 +227,26 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
                   <span className={styles.statusText}>{stateText}</span>
                 </div>
               </div>
+              <div
+                className={`${styles.ganttLeftCol} ${styles.priorityCol}`}
+                style={{ width: `${PRIORITY_COL_WIDTH}px` }}
+              >
+                <span className={`${styles.priorityBadge} ${priorityPresentation.badgeClass}`}>
+                  {priorityPresentation.label}
+                </span>
+              </div>
               <div className={styles.ganttLeftCol} style={{ width: `${ASSIGNEE_COL_WIDTH}px` }}>
-                <span style={{ color: "#555", fontSize: "12px" }}>
+                <span className={styles.ganttMetaText}>
                   {node.task.assignee?.name || "Chưa giao"}
                 </span>
               </div>
               <div className={styles.ganttLeftCol} style={{ width: `${START_COL_WIDTH}px` }}>
-                <span style={{ color: "#555", fontSize: "12px" }}>
+                <span className={styles.ganttMetaText}>
                   {new Date(node.task.startDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
               <div className={styles.ganttLeftCol} style={{ width: `${END_COL_WIDTH}px` }}>
-                <span style={{ color: "#555", fontSize: "12px" }}>
+                <span className={styles.ganttMetaText}>
                   {new Date(effectiveDueDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
@@ -207,21 +255,25 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
             {/* Right Cell */}
             <div
               className={styles.ganttRightCell}
-              style={{ gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`, cursor: "pointer" }}
+              style={{
+                width: `${timelineWidth}px`,
+                minWidth: `${timelineWidth}px`,
+                gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`,
+                cursor: "pointer",
+              }}
               onClick={() => handleRowClick(node.task.id)}
             >
               <div
-                className={hasChildren ? styles.ganttBarParent : styles.ganttBarChild}
+                className={`${styles.ganttBar} ${priorityPresentation.barClass}`}
                 style={{
                   gridColumnStart: startCol,
                   gridColumnEnd: endCol,
                 }}
-              >
-                {!hasChildren && <div className={styles.ganttBarProgress} />}
-              </div>
+                title={`Mức độ cấp thiết: ${priorityPresentation.label}`}
+              />
             </div>
           </div>
-          {isExpanded && hasChildren && renderTree(node.children, indexCounter)}
+          {isExpanded && hasChildren && renderTree(node.children)}
         </React.Fragment>
       );
     });
@@ -244,11 +296,15 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
             <div className={styles.ganttLeftHeader}>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${NAME_COL_WIDTH}px` }}>Tên công việc</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${STATUS_COL_WIDTH}px` }}>Trạng thái</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${PRIORITY_COL_WIDTH}px` }}>Cấp thiết</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${ASSIGNEE_COL_WIDTH}px` }}>Người thực hiện</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${START_COL_WIDTH}px` }}>Bắt đầu</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${END_COL_WIDTH}px` }}>Kết thúc</div>
             </div>
-            <div className={styles.ganttRightHeader}>
+            <div
+              className={styles.ganttRightHeader}
+              style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px` }}
+            >
               <div className={styles.ganttRightHeaderTop}>
                 {months.map((m, i) => (
                   <div key={i} className={styles.ganttMonthHeader} style={{ width: `${m.days * DAY_COLUMN_WIDTH}px` }}>
@@ -277,6 +333,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               className={styles.ganttGridLines}
               style={{
                 left: `${LEFT_PANE_WIDTH}px`,
+                width: `${timelineWidth}px`,
                 gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`,
               }}
             >

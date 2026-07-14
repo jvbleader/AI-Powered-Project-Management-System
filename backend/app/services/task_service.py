@@ -90,6 +90,25 @@ def _validate_parent_task(db: Session, project_id: int, parent_task_id: Optional
         )
 
 
+def _ensure_no_parent_cycle(db: Session, task_id: int, parent_task_id: Optional[int]):
+    current_parent_id = parent_task_id
+    visited = {task_id}
+
+    while current_parent_id is not None:
+        if current_parent_id in visited:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Không thể tạo vòng lặp trong cây task.",
+            )
+
+        visited.add(current_parent_id)
+        parent = task_repository.get_task_by_id(db, current_parent_id)
+        if not parent:
+            return
+
+        current_parent_id = parent.parent_task_id
+
+
 def _get_or_create_actor_member(db: Session, project_id: int, user_id: int) -> ProjectMember:
     member = project_repository.get_project_member(db, project_id, user_id, include_inactive=True)
     if member:
@@ -237,6 +256,7 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 
     if _can_manage_project_tasks(db, task.project_id, current_user_id):
         _validate_parent_task(db, task.project_id, parent_task_id)
+        _ensure_no_parent_cycle(db, task.id, parent_task_id)
 
         start_date = update_data.get("start_date", task.start_date)
         deadline = update_data.get("deadline", task.deadline)

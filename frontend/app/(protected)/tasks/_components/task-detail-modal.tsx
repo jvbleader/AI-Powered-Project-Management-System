@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import { taskApi } from "@/services/api";
-import type { EnrichedTask, Task, UserProfile } from "@/types";
+import { formatDate, formatDateTime } from "@/lib/utils/format";
+import type { EnrichedTask, Task, TaskLogworkEntry, UserProfile } from "@/types";
+import { LogworkModal } from "./logwork-modal";
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -29,28 +31,57 @@ export function TaskDetailModal({
   const [editTitle, setEditTitle] = useState("");
   const [isEditingDesc, setIsEditingDesc] = useState(false);
   const [editDesc, setEditDesc] = useState("");
-
-  useEffect(() => {
-    if (isOpen && taskId) {
-      void loadTask(taskId);
-    } else {
-      setTask(null);
-      setIsEditingTitle(false);
-      setIsEditingDesc(false);
-    }
-  }, [isOpen, taskId]);
+  const [isLogworkModalOpen, setIsLogworkModalOpen] = useState(false);
+  const [logworks, setLogworks] = useState<TaskLogworkEntry[]>([]);
 
   const isAssignee = Boolean(task?.assigneeId && task.assigneeId === viewerId);
   const canEditTask = canManage;
   const canUpdateStatus = canManage || isAssignee;
+  const canLogwork = canManage || isAssignee;
 
-  async function loadTask(nextTaskId: string) {
+  const resolvedAssignee =
+    task && "assignee" in task && task.assignee
+      ? task.assignee
+      : task?.assigneeId
+        ? users.find((user) => user.id === task.assigneeId) ??
+          ({
+            id: task.assigneeId,
+            name: task.assigneeName || "Người dùng",
+            email: task.assigneeEmail || "",
+            role: "MEMBER",
+            roles: ["MEMBER"],
+            title: task.assigneeEmail || "Thành viên dự án",
+            initials: (task.assigneeName || "ND")
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((part) => part[0]?.toUpperCase() ?? "")
+              .join(""),
+            presence: "online",
+            capacityHours: 40,
+            workloadHours: 0,
+            focusScore: 0,
+            isActive: true,
+            status: "ACTIVE",
+          } satisfies UserProfile)
+        : null;
+
+  const assigneeOptions =
+    resolvedAssignee && !users.some((user) => user.id === resolvedAssignee.id)
+      ? [resolvedAssignee, ...users]
+      : users;
+
+  const loadTask = useEffectEvent(async (nextTaskId: string) => {
     setIsLoading(true);
     try {
-      const response = await taskApi.getEnrichedTask(nextTaskId, undefined, { users });
-      setTask(response.data);
-      setEditTitle(response.data.title);
-      setEditDesc(response.data.description);
+      const [taskResponse, logworkResponse] = await Promise.all([
+        taskApi.getEnrichedTask(nextTaskId, undefined, { users }),
+        taskApi.listLogworks(nextTaskId),
+      ]);
+      setTask(taskResponse.data);
+      setEditTitle(taskResponse.data.title);
+      setEditDesc(taskResponse.data.description);
+      setLogworks(logworkResponse.data);
     } catch (error: unknown) {
       alert(
         `Không thể tải thông tin công việc: ${
@@ -61,7 +92,15 @@ export function TaskDetailModal({
     } finally {
       setIsLoading(false);
     }
-  }
+  });
+
+  useEffect(() => {
+    if (isOpen && taskId) {
+      queueMicrotask(() => {
+        void loadTask(taskId);
+      });
+    }
+  }, [isOpen, taskId]);
 
   async function handleUpdate(updates: Partial<Task>) {
     if (!task) return;
@@ -139,18 +178,22 @@ export function TaskDetailModal({
         justifyContent: "center",
         zIndex: 1000,
       }}
+      role="presentation"
+      onMouseDown={onClose}
     >
       <div
+        className="task-detail-modal"
         style={{
-          background: "var(--surface)",
-          borderRadius: "8px",
           width: "100%",
           maxWidth: "800px",
           maxHeight: "90vh",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
         }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-detail-title"
+        onMouseDown={(event) => event.stopPropagation()}
       >
         <div
           style={{
@@ -187,6 +230,7 @@ export function TaskDetailModal({
               />
             ) : (
               <h2
+                id="task-detail-title"
                 style={{
                   margin: 0,
                   fontSize: "1.25rem",
@@ -202,21 +246,33 @@ export function TaskDetailModal({
               </h2>
             )}
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              fontSize: "1.5rem",
-              cursor: "pointer",
-              color: "var(--foreground-muted)",
-            }}
-          >
-            &times;
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            {canLogwork ? (
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => setIsLogworkModalOpen(true)}
+                disabled={isLoading}
+              >
+                + Logwork
+              </button>
+            ) : null}
+            <button
+              onClick={onClose}
+              style={{
+                background: "none",
+                border: "none",
+                fontSize: "1.5rem",
+                cursor: "pointer",
+                color: "var(--foreground-muted)",
+              }}
+            >
+              &times;
+            </button>
+          </div>
         </div>
 
-        <div style={{ padding: "1.5rem", overflowY: "auto", flex: 1, display: "flex", gap: "2rem" }}>
+        <div className="task-detail-layout" style={{ padding: "1.5rem", overflowY: "auto", flex: 1 }}>
           <div style={{ flex: 2 }}>
             <h3 style={{ fontSize: "1rem", marginBottom: "1rem", color: "var(--foreground-muted)" }}>
               Mô tả công việc
@@ -273,169 +329,188 @@ export function TaskDetailModal({
                 )}
               </div>
             )}
-          </div>
 
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            <div>
-              <label
+            <div style={{ marginTop: "1.5rem" }}>
+              <h3
                 style={{
-                  display: "block",
-                  fontSize: "0.875rem",
+                  fontSize: "1rem",
+                  marginBottom: "1rem",
                   color: "var(--foreground-muted)",
-                  marginBottom: "0.5rem",
                 }}
               >
-                Trạng thái
-              </label>
+                Logwork đã ghi nhận
+              </h3>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.85rem",
+                }}
+              >
+                {isLoading ? (
+                  <div
+                    style={{
+                      padding: "1rem",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-sunken)",
+                      color: "var(--foreground-muted)",
+                    }}
+                  >
+                    Đang tải logwork...
+                  </div>
+                ) : logworks.length ? (
+                  logworks.map((entry) => (
+                    <article
+                      key={entry.id}
+                      style={{
+                        padding: "1rem",
+                        borderRadius: "10px",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface-sunken)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.55rem",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "1rem",
+                          flexWrap: "wrap",
+                          alignItems: "baseline",
+                        }}
+                      >
+                        <div>
+                          <strong style={{ display: "block", marginBottom: "0.15rem" }}>
+                            {entry.userName}
+                          </strong>
+                          <span style={{ color: "var(--foreground-muted)", fontSize: "0.88rem" }}>
+                            Ngày logwork: {formatDate(entry.workDate)}
+                          </span>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <strong style={{ display: "block" }}>{entry.hoursSpent}h</strong>
+                          <span style={{ color: "var(--foreground-muted)", fontSize: "0.8rem" }}>
+                            {formatDateTime(entry.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
+                        {entry.workContent}
+                      </div>
+                      {entry.comment ? (
+                        <div
+                          style={{
+                            paddingTop: "0.55rem",
+                            borderTop: "1px dashed var(--border)",
+                            color: "var(--foreground-muted)",
+                            fontSize: "0.92rem",
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          Ghi chú: {entry.comment}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))
+                ) : (
+                  <div
+                    style={{
+                      padding: "1rem",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-sunken)",
+                      color: "var(--foreground-muted)",
+                    }}
+                  >
+                    Task này chưa có logwork nào.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <aside className="task-detail-side">
+            <div className="task-detail-assignee-card">
+              <div className="task-detail-assignee-kicker">Người đang được giao</div>
+              <strong>{resolvedAssignee?.name || task?.assigneeName || "Chưa phân công"}</strong>
+              <span>{resolvedAssignee?.email || task?.assigneeEmail || "Chưa có thông tin email"}</span>
+            </div>
+
+            <label className="task-detail-field">
+              <span className="task-detail-field-label">Trạng thái</span>
               <select
+                className="task-detail-control task-detail-select"
                 value={task?.status || "TODO"}
                 onChange={(event) => void handleUpdate({ status: event.target.value as Task["status"] })}
                 disabled={isLoading || isSaving || !canUpdateStatus}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-sunken)",
-                  color: "var(--foreground)",
-                }}
               >
                 <option value="TODO">Cần làm</option>
                 <option value="IN_PROGRESS">Đang tiến hành</option>
                 <option value="DONE">Hoàn thành</option>
               </select>
-            </div>
+            </label>
 
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "0.875rem",
-                  color: "var(--foreground-muted)",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                Người thực hiện
-              </label>
+            <label className="task-detail-field">
+              <span className="task-detail-field-label">Người thực hiện</span>
               <select
+                className="task-detail-control task-detail-select"
                 value={task?.assigneeId || ""}
                 onChange={(event) => void handleAssigneeChange(event.target.value)}
                 disabled={isLoading || isSaving || !canEditTask}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-sunken)",
-                  color: "var(--foreground)",
-                }}
               >
                 <option value="">-- Chưa phân công --</option>
-                {users.map((user) => (
+                {assigneeOptions.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.name}
                   </option>
                 ))}
               </select>
-            </div>
+            </label>
 
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "0.875rem",
-                  color: "var(--foreground-muted)",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                Ưu tiên
-              </label>
+            <label className="task-detail-field">
+              <span className="task-detail-field-label">Ưu tiên</span>
               <select
+                className="task-detail-control task-detail-select"
                 value={task?.priority || "MEDIUM"}
                 onChange={(event) => void handleUpdate({ priority: event.target.value as Task["priority"] })}
                 disabled={isLoading || isSaving || !canEditTask}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-sunken)",
-                  color: "var(--foreground)",
-                }}
               >
                 <option value="LOW">Thấp</option>
                 <option value="MEDIUM">Trung bình</option>
                 <option value="HIGH">Cao</option>
                 <option value="CRITICAL">Khẩn cấp</option>
               </select>
-            </div>
+            </label>
 
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "0.875rem",
-                  color: "var(--foreground-muted)",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                Ngày bắt đầu
-              </label>
+            <label className="task-detail-field">
+              <span className="task-detail-field-label">Ngày bắt đầu</span>
               <input
+                className="task-detail-control"
                 type="date"
                 value={task?.startDate || ""}
                 onChange={(event) => void handleUpdate({ startDate: event.target.value })}
                 disabled={isLoading || isSaving || !canEditTask}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-sunken)",
-                  color: "var(--foreground)",
-                }}
               />
-            </div>
+            </label>
 
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "0.875rem",
-                  color: "var(--foreground-muted)",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                Hạn chót
-              </label>
+            <label className="task-detail-field">
+              <span className="task-detail-field-label">Hạn chót</span>
               <input
+                className="task-detail-control"
                 type="date"
                 value={task?.dueDate || ""}
                 onChange={(event) => void handleUpdate({ dueDate: event.target.value })}
                 disabled={isLoading || isSaving || !canEditTask}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-sunken)",
-                  color: "var(--foreground)",
-                }}
               />
-            </div>
+            </label>
 
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "0.875rem",
-                  color: "var(--foreground-muted)",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                Thời gian ước tính (giờ)
-              </label>
+            <label className="task-detail-field">
+              <span className="task-detail-field-label">Thời gian ước tính (giờ)</span>
               <input
+                className="task-detail-control"
                 type="number"
                 min="0"
                 step="0.5"
@@ -444,19 +519,24 @@ export function TaskDetailModal({
                   void handleUpdate({ estimateHours: parseFloat(event.target.value) || 0 })
                 }
                 disabled={isLoading || isSaving || !canEditTask}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  borderRadius: "4px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-sunken)",
-                  color: "var(--foreground)",
-                }}
               />
-            </div>
-          </div>
+            </label>
+          </aside>
         </div>
       </div>
+
+      {task ? (
+        <LogworkModal
+          isOpen={isLogworkModalOpen}
+          onClose={() => setIsLogworkModalOpen(false)}
+          taskId={task.id}
+          userId={viewerId}
+          onSuccess={async () => {
+            const response = await taskApi.listLogworks(task.id);
+            setLogworks(response.data);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

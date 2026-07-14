@@ -2,6 +2,7 @@ import {
   Task,
   TaskComment,
   TaskFilters,
+  TaskLogworkEntry,
   UserProfile,
   ApiResponse,
   EnrichedTask,
@@ -341,6 +342,74 @@ export const taskApi = {
         content: c.content,
         createdAt: c.created_at,
         updatedAt: c.updated_at,
+      },
+      meta: response.meta,
+    };
+  },
+
+  async listLogworks(
+    taskId: string,
+    viewer?: UserProfile | null,
+  ): Promise<ApiResponse<TaskLogworkEntry[]>> {
+    void viewer;
+    const endpoint = {
+      method: "GET" as const,
+      path: `/api/tasks/${taskId}/logworks`,
+    };
+    const response = await requestApi<any[]>(endpoint);
+    const logworks: TaskLogworkEntry[] = response.data.map((item) => ({
+      id: item.id.toString(),
+      taskId: item.task_id.toString(),
+      userId: `usr-${item.project_member_id}`,
+      userName: item.user_name || "Chưa rõ",
+      workDate: item.work_date,
+      hoursSpent: Number(item.hours_spent || 0),
+      workContent: item.work_content || "",
+      comment: item.comment || "",
+      progressPercent: Number(item.progress_percent || 0),
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+    }));
+    return { data: logworks, meta: response.meta };
+  },
+
+  async addLogwork(
+    taskId: string,
+    payload: {
+      workDate: string;
+      hoursSpent: number;
+      workContent: string;
+      comment?: string | null;
+      progressPercent?: number;
+    },
+  ): Promise<ApiResponse<TaskLogworkEntry>> {
+    const endpoint = {
+      method: "POST" as const,
+      path: `/api/tasks/${taskId}/logworks`,
+    };
+    const response = await requestApi<any>(endpoint, {
+      body: JSON.stringify({
+        work_date: payload.workDate,
+        hours_spent: payload.hoursSpent,
+        work_content: payload.workContent,
+        comment: payload.comment ?? null,
+        progress_percent: payload.progressPercent ?? 0,
+      }),
+    });
+    const item = response.data;
+    return {
+      data: {
+        id: item.id.toString(),
+        taskId: item.task_id.toString(),
+        userId: `usr-${item.project_member_id}`,
+        userName: item.user_name || "Chưa rõ",
+        workDate: item.work_date,
+        hoursSpent: Number(item.hours_spent || 0),
+        workContent: item.work_content || "",
+        comment: item.comment || "",
+        progressPercent: Number(item.progress_percent || 0),
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
       },
       meta: response.meta,
     };

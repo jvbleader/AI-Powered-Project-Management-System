@@ -73,8 +73,7 @@ def list_projects(
     db_status: Optional[str] = None,
     start_date_from: Optional[date] = None,
     start_date_to: Optional[date] = None,
-    manager_id: Optional[int] = None,
-    pm_role_id: Optional[int] = None,
+    manager_project_ids: Optional[List[int]] = None,
     page: int = 1,
     page_size: int = 10
 ) -> Tuple[List[Project], int]:
@@ -102,8 +101,9 @@ def list_projects(
     if start_date_to:
         query = query.filter(Project.start_date <= start_date_to)
 
-    if manager_id and pm_role_id:
-        manager_project_ids = get_manager_project_ids_subquery(db, manager_id, pm_role_id)
+    if manager_project_ids is not None:
+        if not manager_project_ids:
+            return [], 0
         query = query.filter(Project.id.in_(manager_project_ids))
 
     total = query.count()

@@ -1,3 +1,4 @@
+import re
 from types import SimpleNamespace
 import math
 from datetime import date, datetime, timezone
@@ -27,6 +28,36 @@ from app.utils.dashboard_helpers import (
 PM_ROLE_NAME = "PROJECT_MANAGER"
 DEVELOPER_ROLE_NAME = "DEVELOPER"
 SYSTEM_PROJECT_MANAGEMENT_ROLES = {"MANAGER", "LEADER"}
+PROJECT_ROLE_ORDER = (PM_ROLE_NAME, DEVELOPER_ROLE_NAME, "QA", "VIEWER")
+PROJECT_ROLE_ALIASES = {
+    PM_ROLE_NAME: {PM_ROLE_NAME, "PROJECT MANAGER", "MANAGER", "PM"},
+    DEVELOPER_ROLE_NAME: {DEVELOPER_ROLE_NAME, "MEMBER", "DEV"},
+    "QA": {"QA", "TESTER"},
+    "VIEWER": {"VIEWER", "READ ONLY", "READ_ONLY"},
+}
+
+
+def _normalize_role_token(name: str | None) -> str:
+    if not name:
+        return ""
+    return re.sub(r"[^A-Z0-9]+", "_", name.strip().upper()).strip("_")
+
+
+def normalize_project_role_name(name: str | None) -> str:
+    normalized_name = _normalize_role_token(name)
+    for canonical_name, aliases in PROJECT_ROLE_ALIASES.items():
+        normalized_aliases = {_normalize_role_token(alias) for alias in aliases}
+        if normalized_name in normalized_aliases:
+            return canonical_name
+    return normalized_name
+
+
+def is_supported_project_role_name(name: str | None) -> bool:
+    return normalize_project_role_name(name) in PROJECT_ROLE_ORDER
+
+
+def list_project_role_names() -> list[str]:
+    return list(PROJECT_ROLE_ORDER)
 
 def build_project_code(name: str) -> str:
     words = (
@@ -66,7 +97,7 @@ def to_db_status(frontend_status: str) -> str:
 
 
 def ensure_default_roles(db: Session) -> dict[str, int]:
-    role_names = [PM_ROLE_NAME, DEVELOPER_ROLE_NAME, "QA", "VIEWER"]
+    role_names = list_project_role_names()
     role_map: dict[str, int] = {}
 
     for role_name in role_names:
@@ -107,7 +138,7 @@ def compute_project_metrics(db: Session, project_id: int) -> ProjectMetricsRespo
 
     leaf_tasks = list_leaf_tasks(tasks)
     counts = count_task_statuses(tasks)
-    overdue = count_overdue_tasks(tasks)
+    overdue = count_overdue_tasks(tasks, include_parent_tasks=True)
     progress = calculate_progress_percent(tasks, progress_by_task)
     members = project_repository.list_project_members(db, project_id, include_inactive=False)
     member_user_ids = [user.id for _, user, _ in members]
@@ -133,13 +164,14 @@ def compute_project_metrics(db: Session, project_id: int) -> ProjectMetricsRespo
 
 
 def build_member_response(member: ProjectMember, user: User, role: Role) -> ProjectMemberResponse:
+    normalized_role_name = normalize_project_role_name(role.name)
     return ProjectMemberResponse(
         id=member.id,
         userId=user.id,
         userName=user.full_name,
         userEmail=user.email,
         roleId=role.id,
-        roleName=role.name,
+        roleName=normalized_role_name if is_supported_project_role_name(role.name) else role.name,
         joinedAt=member.joined_at,
         isActive=getattr(member, 'is_active', True)
     )
@@ -154,7 +186,11 @@ def build_project_response(
 
     pm_role = get_pm_role(db)
     manager_member = next(
-        (entry for entry in members if entry[2].id == pm_role.id),
+        (
+            entry
+            for entry in members
+            if normalize_project_role_name(entry[2].name) == PM_ROLE_NAME
+        ),
         None,
     )
     manager_id = manager_member[1].id if manager_member else None
@@ -193,14 +229,15 @@ def build_project_response(
 
 
 def user_is_project_manager(db: Session, project_id: int, user_id: int) -> bool:
-    pm_role = get_pm_role(db)
-    membership = project_repository.get_project_member_with_role(db, project_id, user_id, pm_role.id)
-    return membership is not None
+    memberships = project_repository.list_project_members(db, project_id, include_inactive=False)
+    return any(
+        user.id == user_id and normalize_project_role_name(role.name) == PM_ROLE_NAME
+        for _, user, role in memberships
+    )
 
 
 def user_is_project_manager_any(db: Session, user_id: int) -> bool:
-    pm_role = get_pm_role(db)
-    return bool(project_repository.list_manager_project_ids(db, user_id, pm_role.id))
+    return bool(list_managed_project_ids(db, SimpleNamespace(id=user_id, role=None, is_admin=False)))
 
 
 def user_is_project_member(db: Session, project_id: int, user_id: int) -> bool:
@@ -224,9 +261,11 @@ def list_managed_project_ids(db: Session, user: User | None) -> list[int]:
     if user_has_system_project_management_role(user):
         return sorted(accessible_project_ids)
 
-    pm_role = get_pm_role(db)
-    project_manager_ids = set(project_repository.list_manager_project_ids(db, user.id, pm_role.id))
-    return sorted(accessible_project_ids.intersection(project_manager_ids))
+    return sorted(
+        project_id
+        for project_id in accessible_project_ids
+        if user_is_project_manager(db, project_id, user.id)
+    )
 
 
 def user_can_access_team_directory(db: Session, user: User | None) -> bool:

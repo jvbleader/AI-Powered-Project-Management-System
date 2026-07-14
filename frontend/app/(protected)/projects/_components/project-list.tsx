@@ -32,6 +32,10 @@ export function ProjectList({
   const router = useRouter();
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+
+  function openProjectOverview(projectId: string) {
+    router.push(`/projects/${projectId}?tab=overview`);
+  }
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -157,7 +161,7 @@ export function ProjectList({
                         <button
                           type="button"
                           className={styles.userCellButton}
-                          onClick={() => router.push(`/projects/${project.id}`)}
+                          onClick={() => openProjectOverview(project.id)}
                         >
                           <span className={styles.avatarToken}>
                             {project.name.charAt(0).toUpperCase()}
@@ -198,7 +202,7 @@ export function ProjectList({
                           <button
                             type="button"
                             className="secondary-button"
-                            onClick={() => router.push(`/projects/${project.id}`)}
+                            onClick={() => openProjectOverview(project.id)}
                           >
                             Xem
                           </button>
@@ -225,7 +229,7 @@ export function ProjectList({
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1rem" }}>
               {paginatedProjects.map((project) => (
-                <div key={project.id} style={{ border: "1px solid var(--border)", borderRadius: "8px", padding: "1.5rem", background: "var(--surface-sunken)", display: "flex", flexDirection: "column", gap: "1rem", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }} onClick={() => router.push(`/projects/${project.id}`)}>
+                <div key={project.id} style={{ border: "1px solid var(--border)", borderRadius: "8px", padding: "1.5rem", background: "var(--surface-sunken)", display: "flex", flexDirection: "column", gap: "1rem", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }} onClick={() => openProjectOverview(project.id)}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                       <span className={styles.avatarToken} style={{ width: "40px", height: "40px", fontSize: "1rem" }}>
