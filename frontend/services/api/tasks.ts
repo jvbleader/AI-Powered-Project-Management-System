@@ -212,6 +212,15 @@ export const taskApi = {
     return { data: mapBackendTask(response.data), meta: response.meta };
   },
 
+  async remove(taskId: string): Promise<ApiResponse<void>> {
+    const endpoint = {
+      method: "DELETE" as const,
+      path: `/api/tasks/${taskId}`,
+    };
+    const response = await requestApi<void>(endpoint);
+    return response;
+  },
+
   async updateStatus(taskId: string, status: Task["status"]): Promise<ApiResponse<Task>> {
     return this.update(taskId, { status });
   },

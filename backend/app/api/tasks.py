@@ -190,3 +190,12 @@ def create_logwork(
     current_user: User = Depends(get_current_user)
 ):
     return task_service.add_logwork(db, task_id, current_user.id, logwork_in)
+
+
+@router_root.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    task_service.delete_task(db, task_id, current_user.id)

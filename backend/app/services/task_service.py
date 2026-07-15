@@ -344,3 +344,10 @@ def add_logwork(db: Session, task_id: int, current_user_id: int, logwork_in: Log
     db.commit()
     db.refresh(logwork)
     return logwork
+
+
+def delete_task(db: Session, task_id: int, current_user_id: int):
+    task = get_task(db, task_id, current_user_id)
+    _require_manage_project_tasks(db, task.project_id, current_user_id)
+    task_repository.delete_task(db, task)
+    db.commit()

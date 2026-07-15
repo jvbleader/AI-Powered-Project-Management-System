@@ -11,14 +11,7 @@ type SuggestedPrompt = {
   prompt: string;
 };
 
-type PromptResolution =
-  | {
-      action: AiQuickResponseAction;
-      taskId?: string | null;
-    }
-  | {
-      helpText: string;
-    };
+
 
 type ChatMessage = {
   id: string;
@@ -30,23 +23,23 @@ type ChatMessage = {
 const suggestedPrompts: SuggestedPrompt[] = [
   {
     action: "daily_priority",
-    prompt: "Hom nay toi nen chu y viec gi truoc?",
+    prompt: "Hôm nay tôi nên chú ý việc gì trước?",
   },
   {
     action: "stalled_tasks",
-    prompt: "Task nao dang dung yen?",
+    prompt: "Task nào đang đứng yên?",
   },
   {
     action: "critical_overdue",
-    prompt: "Task nao dang tre han dang lo nhat?",
+    prompt: "Task nào đang trễ hạn đáng lo nhất?",
   },
   {
     action: "follow_up_members",
-    prompt: "Ai can duoc nhac hom nay?",
+    prompt: "Ai cần được nhắc hôm nay?",
   },
   {
     action: "leader_brief",
-    prompt: "Viet cho toi 4 dong cap nhat de bao leader.",
+    prompt: "Viết cho tôi 4 dòng cập nhật để báo leader.",
   },
 ];
 
@@ -57,7 +50,7 @@ function classNames(...values: Array<string | false | null | undefined>) {
 function formatGeneratedAt(value: string) {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) {
-    return "Moi cap nhat";
+    return "Mới cập nhật";
   }
 
   return new Intl.DateTimeFormat("vi-VN", {
@@ -82,85 +75,7 @@ function extractTaskId(prompt: string) {
   return match ? match[1] : null;
 }
 
-function resolvePrompt(prompt: string): PromptResolution {
-  const normalized = normalizePrompt(prompt);
-  const taskId = extractTaskId(normalized);
 
-  if (taskId) {
-    return {
-      action: "task_health",
-      taskId,
-    };
-  }
-
-  if (
-    normalized.includes("nhac ai") ||
-    normalized.includes("ai can nhac") ||
-    normalized.includes("follow up") ||
-    normalized.includes("theo ai")
-  ) {
-    return { action: "follow_up_members" };
-  }
-
-  if (
-    normalized.includes("tre han") ||
-    normalized.includes("qua han") ||
-    normalized.includes("dang lo nhat")
-  ) {
-    return { action: "critical_overdue" };
-  }
-
-  if (
-    normalized.includes("dung yen") ||
-    normalized.includes("khong cap nhat") ||
-    normalized.includes("canh bao som")
-  ) {
-    return { action: "stalled_tasks" };
-  }
-
-  if (
-    (normalized.includes("tom tat") ||
-      normalized.includes("bao leader") ||
-      normalized.includes("gui leader") ||
-      normalized.includes("cap nhat leader")) &&
-    (normalized.includes("leader") ||
-      normalized.includes("quan ly") ||
-      normalized.includes("cap nhat"))
-  ) {
-    return { action: "leader_brief" };
-  }
-
-  if (
-    normalized.includes("hom nay") &&
-    (normalized.includes("chu y") ||
-      normalized.includes("theo sat") ||
-      normalized.includes("uu tien") ||
-      normalized.includes("tap trung") ||
-      normalized.includes("lam gi truoc"))
-  ) {
-    return { action: "daily_priority" };
-  }
-
-  if (
-    normalized.includes("uu tien") ||
-    normalized.includes("theo sat") ||
-    normalized.includes("viec gi truoc")
-  ) {
-    return { action: "daily_priority" };
-  }
-
-  if (normalized.includes("task")) {
-    return {
-      helpText:
-        "Neu ban muon kiem tra nhanh mot task cu the, hay ghi ro ma nhu TASK-104 de toi tra loi dung task.",
-    };
-  }
-
-  return {
-    helpText:
-      "Hien tai toi dang ho tro cac cau hoi ve viec can theo sat, task dung yen, task tre han, follow-up thanh vien, va tom tat ngan cho leader.",
-  };
-}
 
 function createAssistantMessage(content: string, response?: AiQuickResponse): ChatMessage {
   return {
@@ -182,7 +97,7 @@ function createUserMessage(content: string): ChatMessage {
 function initialMessages(): ChatMessage[] {
   return [
     createAssistantMessage(
-      "Toi san sang ho tro nhanh du an cua ban. Ban co the hoi theo kieu chatbot, vi du: hom nay nen chu y viec gi, ai can nhac, hoac task nao dang tre han dang lo nhat.",
+      "Tôi sẵn sàng hỗ trợ nhanh dự án của bạn. Bạn có thể hỏi theo kiểu chatbot, ví dụ: hôm nay nên chú ý việc gì, ai cần nhắc, hoặc task nào đang trễ hạn đáng lo nhất.",
     ),
   ];
 }
@@ -196,13 +111,11 @@ export function AssistantBubble({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPortalReady, setIsPortalReady] = useState(false);
-  const [fallbackProjectId, setFallbackProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => initialMessages());
   const [draft, setDraft] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messageStackRef = useRef<HTMLDivElement | null>(null);
   const scrollTargetMessageIdRef = useRef<string | null>(null);
-  const resolvedProjectId = projectId ?? fallbackProjectId;
 
   const promptChips = useMemo(() => suggestedPrompts.slice(0, 4), []);
 
@@ -234,22 +147,7 @@ export function AssistantBubble({
     }
   }, [isOpen, messages]);
 
-  async function resolveProjectScope() {
-    if (projectId) {
-      return projectId;
-    }
 
-    if (fallbackProjectId) {
-      return fallbackProjectId;
-    }
-
-    const { data: projects } = await projectApi.list();
-    const nextProjectId = projects[0]?.id ?? null;
-    if (nextProjectId) {
-      setFallbackProjectId(nextProjectId);
-    }
-    return nextProjectId;
-  }
 
   function pushAssistantText(content: string) {
     const message = createAssistantMessage(content);
@@ -267,14 +165,7 @@ export function AssistantBubble({
     setDraft("");
     setMessages((current) => [...current, createUserMessage(cleanPrompt)]);
 
-    const resolution = forcedAction
-      ? ({ action: forcedAction } satisfies PromptResolution)
-      : resolvePrompt(cleanPrompt);
-
-    if ("helpText" in resolution) {
-      pushAssistantText(resolution.helpText);
-      return;
-    }
+    const taskId = extractTaskId(cleanPrompt);
 
     const loadingMessageId = `assistant-loading-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     scrollTargetMessageIdRef.current = loadingMessageId;
@@ -284,32 +175,19 @@ export function AssistantBubble({
       {
         id: loadingMessageId,
         role: "assistant",
-        content: `Dang phan tich: ${cleanPrompt}`,
+        content: `Đang phân tích: ${cleanPrompt}`,
       },
     ]);
 
     try {
-      const scopeProjectId = await resolveProjectScope();
-      if (!scopeProjectId) {
-        setMessages((current) =>
-          current.map((message) =>
-            message.id === loadingMessageId
-              ? createAssistantMessage("Chua tim thay du an nao trong pham vi de phan tich.")
-              : message,
-          ),
-        );
-        return;
-      }
+      const scopeProjectId = projectId || null;
 
       const { data } = await aiApi.quickResponse({
-        action: resolution.action,
+        action: forcedAction || null,
+        prompt: cleanPrompt,
         projectId: scopeProjectId,
-        taskId: resolution.taskId ?? null,
+        taskId: taskId,
       });
-
-      if (!projectId) {
-        setFallbackProjectId(scopeProjectId);
-      }
 
       setMessages((current) =>
           current.map((message) =>
@@ -328,7 +206,7 @@ export function AssistantBubble({
             ? createAssistantMessage(
                 error instanceof Error
                   ? error.message
-                  : "Khong the lay phan tich nhanh tu tro ly AI.",
+                  : "Không thể lấy phân tích nhanh từ trợ lý AI.",
               )
             : message,
         ),
@@ -341,21 +219,21 @@ export function AssistantBubble({
   const panel = (
     <section
       className="assistant-panel"
-      aria-label="Tro ly AI"
+      aria-label="Trợ lý AI"
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <header className="assistant-panel-header">
         <div>
-          <span className="eyebrow">Tro ly AI</span>
+          <span className="eyebrow">Trợ lý AI</span>
           <h2>Quick Response Chat</h2>
-          <p>Hoi nhanh ve task, deadline, logwork va ai can duoc follow-up.</p>
+          <p>Hỏi nhanh về task, deadline, logwork và ai cần được follow-up.</p>
         </div>
         <button
           type="button"
           className="assistant-close"
-          aria-label="Dong tro ly AI"
+          aria-label="Đóng trợ lý AI"
           onClick={() => setIsOpen(false)}
         >
           ×
@@ -363,11 +241,11 @@ export function AssistantBubble({
       </header>
 
       <div className="assistant-memory-note">
-        <strong>Scope hien tai</strong>
+        <strong>Scope hiện tại</strong>
         <p className="assistant-scope-note">
-          {resolvedProjectId
-            ? `Dang phan tich project #${resolvedProjectId}.`
-            : "Chua co project scope co dinh, he thong se dung du an dau tien trong pham vi."}
+          {projectId
+            ? `Đang tập trung phân tích dự án #${projectId}.`
+            : "Đang phân tích tổng hợp trên TẤT CẢ các dự án bạn tham gia."}
         </p>
       </div>
 
@@ -383,7 +261,7 @@ export function AssistantBubble({
                 : "assistant-message-user",
             )}
           >
-            <span>{message.role === "assistant" ? "AI" : "Ban"}</span>
+            <span>{message.role === "assistant" ? "AI" : "Bạn"}</span>
 
             {message.response ? (
               <div className="assistant-message-content">
@@ -392,7 +270,7 @@ export function AssistantBubble({
 
                 {message.response.evidence.length ? (
                   <div className="assistant-detail-block">
-                    <strong className="assistant-section-heading">Du kien</strong>
+                    <strong className="assistant-section-heading">Dữ kiện</strong>
                     <ul className="assistant-detail-list">
                       {message.response.evidence.map((item) => (
                         <li key={item}>{item}</li>
@@ -403,7 +281,7 @@ export function AssistantBubble({
 
                 {message.response.recommendations.length ? (
                   <div className="assistant-detail-block">
-                    <strong className="assistant-section-heading">Goi y hanh dong</strong>
+                    <strong className="assistant-section-heading">Gợi ý hành động</strong>
                     <ul className="assistant-detail-list">
                       {message.response.recommendations.map((item) => (
                         <li key={item}>{item}</li>
@@ -414,7 +292,7 @@ export function AssistantBubble({
 
                 {message.response.entities.length ? (
                   <div className="assistant-detail-block">
-                    <strong className="assistant-section-heading">Lien quan</strong>
+                    <strong className="assistant-section-heading">Liên quan</strong>
                     <div className="assistant-entity-row">
                       {message.response.entities.map((entity) => (
                         <span key={`${entity.type}-${entity.id}`} className="assistant-entity-chip">
@@ -463,10 +341,10 @@ export function AssistantBubble({
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Dat cau hoi cho tro ly AI..."
+          placeholder="Đặt câu hỏi cho trợ lý AI..."
         />
         <button type="submit" disabled={isLoading}>
-          {isLoading ? "Dang xu ly..." : "Gui"}
+          {isLoading ? "Đang xử lý..." : "Gửi"}
         </button>
       </form>
     </section>
@@ -489,7 +367,7 @@ export function AssistantBubble({
           type="button"
           className="assistant-fab"
           aria-expanded={isOpen}
-          aria-label="Mo tro ly AI"
+          aria-label="Mở trợ lý AI"
           onClick={() => setIsOpen((current) => !current)}
         >
           <span className="assistant-fab-ring" />

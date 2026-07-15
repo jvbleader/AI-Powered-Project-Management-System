@@ -68,6 +68,10 @@ def update_task(db: Session, task: Task, update_data: dict) -> Task:
     return task
 
 def delete_task(db: Session, task: Task) -> None:
+    db.query(TaskAssignees).filter(TaskAssignees.task_id == task.id).delete()
+    db.query(TaskComment).filter(TaskComment.task_id == task.id).delete()
+    db.query(LogWork).filter(LogWork.task_id == task.id).delete()
+    db.query(Task).filter(Task.parent_task_id == task.id).update({"parent_task_id": None})
     db.delete(task)
     db.flush()
 
@@ -152,13 +156,21 @@ def list_project_logworks(db: Session, project_id: int) -> List[LogWork]:
         .all()
     )
 
-def list_project_logworks_with_context(db: Session, project_id: int):
-    return (
+def list_project_logworks_with_context(db: Session, project_id: Optional[int] = None, project_ids: Optional[List[int]] = None):
+    query = (
         db.query(LogWork, Task, ProjectMember, User)
         .join(Task, Task.id == LogWork.task_id)
         .join(ProjectMember, ProjectMember.id == LogWork.project_member_id)
         .join(User, User.id == ProjectMember.user_id)
-        .filter(Task.project_id == project_id)
+    )
+    if project_id:
+        query = query.filter(Task.project_id == project_id)
+    elif project_ids is not None:
+        if not project_ids:
+            return []
+        query = query.filter(Task.project_id.in_(project_ids))
+    return (
+        query
         .order_by(desc(LogWork.work_date), desc(LogWork.updated_at), desc(LogWork.id))
         .all()
     )

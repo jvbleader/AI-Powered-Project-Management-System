@@ -45,7 +45,8 @@ export const aiApi = {
     const response = await requestApi<BackendQuickResponse>(apiEndpoints.ai.quickResponse, {
       body: JSON.stringify({
         action: payload.action,
-        project_id: Number(payload.projectId),
+        prompt: payload.prompt,
+        project_id: payload.projectId ? Number(payload.projectId) : null,
         task_id: payload.taskId ? Number(payload.taskId) : null,
       }),
     });

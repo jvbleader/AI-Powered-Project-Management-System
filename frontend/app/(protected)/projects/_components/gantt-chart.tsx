@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   differenceInDays,
@@ -21,15 +21,15 @@ interface WbsNode {
   level: number;
 }
 
-const NAME_COL_WIDTH = 260;
+const MIN_NAME_COL_WIDTH = 160;
+const DEFAULT_NAME_COL_WIDTH = 260;
 const STATUS_COL_WIDTH = 130;
 const PRIORITY_COL_WIDTH = 140;
 const ASSIGNEE_COL_WIDTH = 140;
 const START_COL_WIDTH = 110;
 const END_COL_WIDTH = 110;
 const DAY_COLUMN_WIDTH = 18;
-const LEFT_PANE_WIDTH =
-  NAME_COL_WIDTH +
+const FIXED_PANE_WIDTH =
   STATUS_COL_WIDTH +
   PRIORITY_COL_WIDTH +
   ASSIGNEE_COL_WIDTH +
@@ -69,6 +69,51 @@ function getPriorityPresentation(priority: EnrichedTask["priority"]) {
 export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [nameColWidth, setNameColWidth] = useState(DEFAULT_NAME_COL_WIDTH);
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const leftPaneWidth = nameColWidth + FIXED_PANE_WIDTH;
+
+  // ── Resize handlers ────────────────────────────────────────────────────────
+  const onResizeMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragState.current) return;
+    const delta = e.clientX - dragState.current.startX;
+    setNameColWidth(Math.max(MIN_NAME_COL_WIDTH, dragState.current.startWidth + delta));
+  }, []);
+
+  const onResizeMouseUp = useCallback(() => {
+    dragState.current = null;
+    document.removeEventListener("mousemove", onResizeMouseMove);
+    document.removeEventListener("mouseup", onResizeMouseUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, [onResizeMouseMove]);
+
+  const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragState.current = { startX: e.clientX, startWidth: nameColWidth };
+    document.addEventListener("mousemove", onResizeMouseMove);
+    document.addEventListener("mouseup", onResizeMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [nameColWidth, onResizeMouseMove, onResizeMouseUp]);
+
+  // ── Double-click auto-fit: measure longest task title ──────────────────────
+  const onResizeDblClick = useCallback(() => {
+    if (tasks.length === 0) return;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.font = "13px Inter, system-ui, sans-serif";
+    let maxWidth = MIN_NAME_COL_WIDTH;
+    tasks.forEach((task) => {
+      // account for indent (approx 18px per level) + icon + padding
+      const measured = ctx.measureText(task.title).width + 72;
+      if (measured > maxWidth) maxWidth = measured;
+    });
+    setNameColWidth(Math.ceil(maxWidth));
+  }, [tasks]);
 
   const rootNodes = useMemo(() => {
     const taskMap = new Map<string, WbsNode>();
@@ -137,6 +182,14 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
   }, [tasks]);
   const timelineWidth = dates.length * DAY_COLUMN_WIDTH;
 
+  // Today line: pixel offset from the left of the timeline pane
+  const todayOffset = useMemo(() => {
+    if (!minDateStr) return null;
+    const diff = differenceInDays(minDateStr, todayStr);
+    if (diff < 0 || diff >= dates.length) return null;
+    return diff * DAY_COLUMN_WIDTH + DAY_COLUMN_WIDTH / 2;
+  }, [minDateStr, todayStr, dates.length]);
+
   const toggleExpand = (taskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpanded((prev) => ({
@@ -193,8 +246,8 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
         <React.Fragment key={node.task.id}>
           <div className={rowClass}>
             {/* Left Cell */}
-            <div className={styles.ganttLeftCell} onClick={() => handleRowClick(node.task.id)}>
-              <div className={styles.ganttLeftCol} style={{ width: `${NAME_COL_WIDTH}px`, paddingLeft: `${node.level * 18 + 8}px` }}>
+            <div className={styles.ganttLeftCell} style={{ width: `${leftPaneWidth}px` }} onClick={() => handleRowClick(node.task.id)}>
+              <div className={styles.ganttLeftCol} style={{ width: `${nameColWidth}px`, paddingLeft: `${node.level * 18 + 8}px` }}>
                 {hasChildren ? (
                   <button className={styles.expandBtn} onClick={(e) => toggleExpand(node.task.id, e)}>
                     {ToggleIcon}
@@ -289,12 +342,20 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
 
   return (
     <div className={styles.ganttContainer} style={{ flex: 1, width: "100%", height: "100%" }}>
-      <div className={styles.ganttLayout} style={{ height: "100%" }}>
-        <div className={styles.ganttBody}>
+      <div className={styles.ganttLayout} style={{ height: "100%", minWidth: `${leftPaneWidth + timelineWidth}px` }}>
+        <div className={styles.ganttBody} style={{ minWidth: `${leftPaneWidth + timelineWidth}px` }}>
           {/* Header */}
           <div className={styles.ganttHeaderRow}>
-            <div className={styles.ganttLeftHeader}>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${NAME_COL_WIDTH}px` }}>Tên công việc</div>
+            <div className={styles.ganttLeftHeader} style={{ width: `${leftPaneWidth}px` }}>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${nameColWidth}px`, position: "relative" }}>
+                Tên công việc
+                <div
+                  className={styles.colResizeHandle}
+                  onMouseDown={onResizeMouseDown}
+                  onDoubleClick={onResizeDblClick}
+                  title="Kéo để thay đổi kích thước. Double-click để tự khớp."
+                />
+              </div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${STATUS_COL_WIDTH}px` }}>Trạng thái</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${PRIORITY_COL_WIDTH}px` }}>Cấp thiết</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${ASSIGNEE_COL_WIDTH}px` }}>Người thực hiện</div>
@@ -332,7 +393,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
             <div
               className={styles.ganttGridLines}
               style={{
-                left: `${LEFT_PANE_WIDTH}px`,
+                left: `${leftPaneWidth}px`,
                 width: `${timelineWidth}px`,
                 gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`,
               }}
@@ -341,6 +402,17 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
                 <div key={i} className={styles.ganttGridLine} />
               ))}
             </div>
+
+            {/* Today Line */}
+            {todayOffset !== null && (
+              <div
+                className={styles.todayLine}
+                style={{ left: `${leftPaneWidth + todayOffset}px` }}
+                title={`Hôm nay: ${new Date().toLocaleDateString("vi-VN")}`}
+              >
+                <span className={styles.todayLabel}>Hôm nay</span>
+              </div>
+            )}
 
             {/* Task Rows */}
             {renderTree(rootNodes)}

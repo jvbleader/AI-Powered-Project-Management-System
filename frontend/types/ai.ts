@@ -36,7 +36,8 @@ export type AiQuickResponseAction =
   | "critical_overdue"
   | "follow_up_members"
   | "leader_brief"
-  | "task_health";
+  | "task_health"
+  | "general_qna";
 
 export interface AiQuickResponseEntity {
   type: "task" | "user" | "project";
@@ -46,8 +47,9 @@ export interface AiQuickResponseEntity {
 }
 
 export interface AiQuickResponseRequest {
-  action: AiQuickResponseAction;
-  projectId: string;
+  action?: AiQuickResponseAction | null;
+  prompt?: string | null;
+  projectId?: string | null;
   taskId?: string | null;
 }
 

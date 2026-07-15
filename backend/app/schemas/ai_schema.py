@@ -12,11 +12,14 @@ class QuickResponseAction(str, Enum):
     FOLLOW_UP_MEMBERS = "follow_up_members"
     LEADER_BRIEF = "leader_brief"
     TASK_HEALTH = "task_health"
+    GENERAL_QNA = "general_qna"
+    OUT_OF_SCOPE = "out_of_scope"
 
 
 class QuickResponseRequest(BaseModel):
-    action: QuickResponseAction
-    project_id: int
+    action: Optional[QuickResponseAction] = None
+    prompt: Optional[str] = None
+    project_id: Optional[int] = None
     task_id: Optional[int] = None
 
 

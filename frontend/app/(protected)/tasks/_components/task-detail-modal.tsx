@@ -247,6 +247,28 @@ export function TaskDetailModal({
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            {canEditTask ? (
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ color: "var(--critical-fg)", borderColor: "var(--critical-border)" }}
+                onClick={async () => {
+                  if (confirm("Bạn có chắc chắn muốn xoá task này không?")) {
+                    try {
+                      if (task) {
+                        await taskApi.remove(task.id);
+                        window.location.reload();
+                      }
+                    } catch (e) {
+                      alert("Lỗi khi xoá task");
+                    }
+                  }
+                }}
+                disabled={isLoading}
+              >
+                Xoá task
+              </button>
+            ) : null}
             {canLogwork ? (
               <button
                 type="button"

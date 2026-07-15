@@ -106,8 +106,8 @@ class TaskBase(BaseModel):
     @field_validator("estimated_hours")
     @classmethod
     def validate_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
-        if value is not None and value <= 0:
-            raise ValueError("Thời gian ước tính phải lớn hơn 0.")
+        if value is not None and value < 0:
+            raise ValueError("Thời gian ước tính không được âm.")
         return value
 
 class TaskCreate(TaskBase):
@@ -159,8 +159,8 @@ class TaskUpdate(BaseModel):
     @field_validator("estimated_hours")
     @classmethod
     def validate_optional_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
-        if value is not None and value <= 0:
-            raise ValueError("Thời gian ước tính phải lớn hơn 0.")
+        if value is not None and value < 0:
+            raise ValueError("Thời gian ước tính không được âm.")
         return value
 
 class TaskResponse(TaskBase):

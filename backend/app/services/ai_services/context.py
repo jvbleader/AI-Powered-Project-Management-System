@@ -49,7 +49,7 @@ class ProjectMemberSnapshot:
 
 @dataclass
 class QuickResponseContext:
-    project: Project
+    projects: list[Project]
     today: date
     now: datetime
     all_tasks: list[Task]
@@ -87,13 +87,23 @@ class QuickResponseContext:
 def load_quick_response_context(
     db: Session,
     current_user: User,
-    project_id: int,
+    project_id: int | None,
 ) -> QuickResponseContext:
-    project = project_service.require_project_access(db, project_id, current_user)
+    if project_id is not None:
+        project = project_service.require_project_access(db, project_id, current_user)
+        projects = [project]
+    else:
+        projects, _, _ = project_service.list_projects(
+            db, current_user, status="ACTIVE", page_size=10
+        )
+        if not projects:
+            raise ValueError("Người dùng chưa tham gia dự án nào đang mở.")
+
     today = get_business_today()
     now = get_business_now()
 
-    all_tasks = task_repository.list_tasks(db, project_id=project.id)
+    project_ids = [p.id for p in projects]
+    all_tasks = task_repository.list_tasks(db, project_ids=project_ids)
     leaf_tasks = list_leaf_tasks(all_tasks)
     task_by_id = {task.id: task for task in all_tasks}
 
@@ -112,24 +122,25 @@ def load_quick_response_context(
         if primary_assignee_by_task_id.get(task_id) is None:
             primary_assignee_by_task_id[task_id] = snapshot
 
-    project_members_rows = project_repository.list_project_members(
-        db,
-        project.id,
-        include_inactive=False,
-    )
-    project_members = [
-        ProjectMemberSnapshot(
-            member_id=member.id,
-            user_id=user.id,
-            name=(user.full_name or user.email).strip(),
-            email=user.email,
-            role_name=role.name,
-        )
-        for member, user, role in project_members_rows
-    ]
-    member_by_user_id = {member.user_id: member for member in project_members}
+    member_rows = []
+    for pid in project_ids:
+        member_rows.extend(project_repository.list_project_members(db, pid))
+        
+    project_members: list[ProjectMemberSnapshot] = []
+    member_by_user_id: dict[int, ProjectMemberSnapshot] = {}
+    for pm, user, role in member_rows:
+        if pm.user_id not in member_by_user_id:
+            snapshot = ProjectMemberSnapshot(
+                member_id=pm.id,
+                user_id=user.id,
+                name=(user.full_name or user.email).strip(),
+                email=user.email,
+                role_name=role.name,
+            )
+            project_members.append(snapshot)
+            member_by_user_id[user.id] = snapshot
 
-    recent_logwork_rows = task_repository.list_project_logworks_with_context(db, project.id)
+    recent_logwork_rows = task_repository.list_project_logworks_with_context(db, project_ids=project_ids)
     latest_logwork_by_task_id: dict[int, LogWork] = {}
     member_logwork_today = set()
     coverage_logworks = []
@@ -145,12 +156,16 @@ def load_quick_response_context(
     }
 
     task_progress_map = build_task_progress_map([row[0] for row in recent_logwork_rows])
-    project_progress = calculate_progress_percent(all_tasks, task_progress_map)
-    logwork_coverage = calculate_logwork_coverage(
-        [member.user_id for member in project_members],
-        coverage_logworks,
-        today=today,
-    )
+    
+    logwork_coverage = 0
+    project_progress = 0
+    if projects:
+        project_progress = calculate_progress_percent(all_tasks, task_progress_map)
+        logwork_coverage = calculate_logwork_coverage(
+            [member.user_id for member in project_members],
+            coverage_logworks,
+            today=today,
+        )
 
     last_signal_by_task_id = {}
     for task in all_tasks:
@@ -179,7 +194,7 @@ def load_quick_response_context(
     }
 
     return QuickResponseContext(
-        project=project,
+        projects=projects,
         today=today,
         now=now,
         all_tasks=all_tasks,

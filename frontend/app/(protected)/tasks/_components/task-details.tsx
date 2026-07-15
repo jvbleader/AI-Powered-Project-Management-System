@@ -5,6 +5,7 @@ import { formatHours, taskPriorityLabel, taskStatusLabel, taskStatusTone } from 
 import type { EnrichedTask } from "@/types";
 import { LogworkModal } from "./logwork-modal";
 import { useRouter } from "next/navigation";
+import { taskApi } from "@/services/api";
 
 interface TaskDetailsProps {
   task: EnrichedTask;
@@ -30,6 +31,24 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
               onClick={() => router.push("/tasks")}
             >
               Quay lại
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              style={{ color: "var(--critical-fg)", borderColor: "var(--critical-border)" }}
+              onClick={async () => {
+                if (confirm("Bạn có chắc chắn muốn xoá task này không?")) {
+                  try {
+                    await taskApi.remove(task.id);
+                    router.push("/tasks");
+                    router.refresh();
+                  } catch (e) {
+                    alert("Lỗi khi xoá task");
+                  }
+                }
+              }}
+            >
+              Xoá task
             </button>
             <button
               type="button"
