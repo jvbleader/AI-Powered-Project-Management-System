@@ -1,17 +1,21 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { taskApi } from "@/services/api";
 import { EnrichedTask, Project } from "@/types";
-import { Surface, StatusPill } from "@/components/ui";
-import { taskPriorityLabel } from "@/lib/utils/format";
+import { EmptyState, Surface, StatusPill } from "@/components/ui";
+import { formatDate, taskPriorityLabel, toWorkflowTaskStatus } from "@/lib/utils/format";
 
-const getTaskBgColor = (status: string) => {
-  switch (status) {
-    case "TODO": return "#fef08a"; // Vàng (Yellow)
-    case "IN_PROGRESS": return "#bfdbfe"; // Xanh dương (Blue)
-    case "DONE": return "#bbf7d0"; // Xanh lá (Green)
-    default: return "var(--surface)";
+const getTaskBgColor = (status: EnrichedTask["status"]) => {
+  switch (toWorkflowTaskStatus(status)) {
+    case "TODO":
+      return "#fef08a"; // Vàng (Yellow)
+    case "IN_PROGRESS":
+      return "#bfdbfe"; // Xanh dương (Blue)
+    case "DONE":
+      return "#bbf7d0"; // Xanh lá (Green)
+    default:
+      return "var(--surface)";
   }
 };
 
@@ -20,15 +24,26 @@ interface GroupedKanbanBoardProps {
   tasks: EnrichedTask[];
   onTaskUpdated: () => void;
   selectedProjectId: string;
+  onTaskClick?: (taskId: string) => void;
 }
 
 const COLUMNS = [
   { id: "TODO", label: "Cần làm" },
   { id: "IN_PROGRESS", label: "Đang tiến hành" },
-  { id: "DONE", label: "Đã hoàn thành" }
+  { id: "DONE", label: "Đã hoàn thành" },
 ];
 
-export function GroupedKanbanBoard({ projects, tasks, onTaskUpdated, selectedProjectId }: GroupedKanbanBoardProps) {
+function projectTaskCount(projectTasks: EnrichedTask[], statusId: (typeof COLUMNS)[number]["id"]) {
+  return projectTasks.filter((task) => toWorkflowTaskStatus(task.status) === statusId).length;
+}
+
+export function GroupedKanbanBoard({
+  projects,
+  tasks,
+  onTaskUpdated,
+  selectedProjectId,
+  onTaskClick,
+}: GroupedKanbanBoardProps) {
   const router = useRouter();
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
 
@@ -46,182 +61,161 @@ export function GroupedKanbanBoard({ projects, tasks, onTaskUpdated, selectedPro
     e.preventDefault();
     if (!draggedTaskId) return;
 
-    const task = tasks.find(t => t.id === draggedTaskId);
-    if (task && task.status !== statusId) {
+    const task = tasks.find((t) => t.id === draggedTaskId);
+    if (task && toWorkflowTaskStatus(task.status) !== statusId) {
       try {
         await taskApi.updateStatus(draggedTaskId, statusId as EnrichedTask["status"]);
         onTaskUpdated();
-      } catch (err: any) {
-        alert(err.message || "Lỗi khi cập nhật trạng thái");
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Lỗi khi cập nhật trạng thái");
       }
     }
     setDraggedTaskId(null);
   };
 
-  const visibleProjects = projects.filter(p => selectedProjectId === "ALL" || p.id === selectedProjectId);
+  const selectedProject =
+    selectedProjectId === "ALL"
+      ? null
+      : projects.find((project) => project.id === selectedProjectId);
+  const boardTitle = selectedProject ? `Kanban - ${selectedProject.name}` : "Kanban theo dự án";
+  const boardKicker = selectedProject?.code ?? "Task workflow";
+
+  const projectBoards = useMemo(() => {
+    if (selectedProject) {
+      return [
+        {
+          project: selectedProject,
+          tasks: tasks.filter((task) => task.projectId === selectedProject.id),
+        },
+      ];
+    }
+
+    return projects
+      .map((project) => ({
+        project,
+        tasks: tasks.filter((task) => task.projectId === project.id),
+      }))
+      .filter((entry) => entry.tasks.length > 0)
+      .sort((left, right) => right.tasks.length - left.tasks.length);
+  }, [projects, selectedProject, tasks]);
+
+  const renderTaskCard = (task: EnrichedTask) => (
+    <article
+      key={task.id}
+      draggable
+      onDragStart={(e) => handleDragStart(e, task.id)}
+      onClick={() => (onTaskClick ? onTaskClick(task.id) : router.push(`/tasks?taskId=${task.id}`))}
+      className="task-kanban-card"
+      style={{
+        background: getTaskBgColor(task.status),
+        opacity: draggedTaskId === task.id ? 0.5 : 1,
+      }}
+    >
+      <div className="task-kanban-card-head">
+        <strong>{task.key}</strong>
+        <StatusPill
+          label={taskPriorityLabel(task.priority)}
+          tone={
+            task.priority === "CRITICAL"
+              ? "critical"
+              : task.priority === "HIGH"
+                ? "watch"
+                : "neutral"
+          }
+        />
+      </div>
+
+      <div className="task-kanban-card-body">
+        <strong className="task-kanban-card-title">{task.title}</strong>
+        {task.description ? (
+          <p className="task-kanban-card-description">{task.description}</p>
+        ) : (
+          <p className="task-kanban-card-description">Chưa có mô tả chi tiết.</p>
+        )}
+      </div>
+
+      <div className="task-kanban-card-meta">
+        <span>
+          <strong>Người phụ trách:</strong> {task.assignee?.name || "Chưa phân công"}
+        </span>
+        <span>
+          <strong>Bắt đầu:</strong> {formatDate(task.startDate)}
+        </span>
+        <span>
+          <strong>Hạn chót:</strong> {formatDate(task.dueDate)}
+        </span>
+      </div>
+    </article>
+  );
+
+  const renderProjectBoard = (project: Project, projectTasks: EnrichedTask[]) => (
+    <section key={project.id} className="project-task-section">
+      <div className="project-task-section-head">
+        <div className="project-task-section-copy">
+          <span className="project-task-section-kicker">{project.code}</span>
+          <h3>{project.name}</h3>
+          <p>
+            {project.managerName
+              ? `Quản lý: ${project.managerName}. ${projectTasks.length} task đang hiển thị trong phạm vi của bạn.`
+              : `${projectTasks.length} task đang hiển thị trong phạm vi của bạn.`}
+          </p>
+        </div>
+
+        <div className="project-task-summary">
+          {COLUMNS.map((column) => (
+            <div key={column.id} className={`project-task-summary-item ${column.id.toLowerCase()}`}>
+              <strong>{projectTaskCount(projectTasks, column.id)}</strong>
+              <span>{column.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="project-task-section-board">
+        {COLUMNS.map((col) => {
+          const colTasks = projectTasks.filter((task) => toWorkflowTaskStatus(task.status) === col.id);
+
+          return (
+            <div
+              key={`${project.id}-${col.id}`}
+              className="kanban-column"
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, col.id)}
+              style={{ minWidth: 0 }}
+            >
+              <div className="kanban-column-header">
+                <strong>{col.label}</strong>
+                <span>{colTasks.length}</span>
+              </div>
+
+              <div className="task-kanban-stack">
+                {colTasks.map((task) => renderTaskCard(task))}
+
+                {colTasks.length === 0 ? (
+                  <div className="task-kanban-empty">Chưa có task trong cột này</div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-      {visibleProjects.map(project => {
-        const projectTasks = tasks.filter(t => t.projectId === project.id);
-        if (projectTasks.length === 0 && selectedProjectId === "ALL") return null;
-
-        // Group by assignee
-        const tasksByAssignee: Record<string, EnrichedTask[]> = {};
-        const unassignedTasks: EnrichedTask[] = [];
-
-        projectTasks.forEach(task => {
-          if (task.assignee) {
-            if (!tasksByAssignee[task.assignee.id]) {
-              tasksByAssignee[task.assignee.id] = [];
-            }
-            tasksByAssignee[task.assignee.id].push(task);
-          } else {
-            unassignedTasks.push(task);
-          }
-        });
-
-        return (
-          <Surface key={project.id} title={project.name} kicker={project.code}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-              {Object.entries(tasksByAssignee).map(([assigneeId, userTasks]) => {
-                const assigneeName = userTasks[0]?.assignee?.name || "Người dùng";
-                return (
-                  <div key={assigneeId} style={{ border: "1px solid var(--border)", padding: "1rem", borderRadius: "8px", background: "var(--surface)" }}>
-                    <h4 style={{ margin: "0 0 1rem 0", paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" }}>
-                      Người thực hiện: {assigneeName}
-                    </h4>
-                    
-                    <div style={{ display: "flex", gap: "1rem", overflowX: "auto" }}>
-                      {COLUMNS.map(col => {
-                        const colTasks = userTasks.filter(t => t.status === col.id || (col.id === "IN_PROGRESS" && (t.status === "REVIEW" || t.status === "BLOCKED")));
-                        return (
-                          <div 
-                            key={col.id} 
-                            style={{ 
-                              flex: "1", 
-                              minWidth: "280px", 
-                              background: "var(--surface-sunken)", 
-                              borderRadius: "6px",
-                              padding: "0.75rem",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "0.75rem"
-                            }}
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleDrop(e, col.id)}
-                          >
-                            <h5 style={{ margin: 0, fontSize: "0.875rem", display: "flex", justifyContent: "space-between" }}>
-                              {col.label}
-                              <span style={{ color: "var(--foreground-muted)" }}>{colTasks.length}</span>
-                            </h5>
-                            
-                            {colTasks.map(task => (
-                              <div
-                                key={task.id}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, task.id)}
-                                onClick={() => router.push(`/tasks?taskId=${task.id}`)}
-                                style={{
-                                  background: getTaskBgColor(task.status),
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "6px",
-                                  padding: "0.75rem",
-                                  cursor: "grab",
-                                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: "0.5rem",
-                                  opacity: draggedTaskId === task.id ? 0.5 : 1
-                                }}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                  <strong style={{ fontSize: "0.875rem" }}>{task.key}</strong>
-                                  <StatusPill
-                                    label={taskPriorityLabel(task.priority)}
-                                    tone={task.priority === "CRITICAL" ? "critical" : task.priority === "HIGH" ? "watch" : "neutral"}
-                                  />
-                                </div>
-                                <div style={{ fontSize: "0.875rem" }}>{task.title}</div>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {unassignedTasks.length > 0 && (
-                <div style={{ border: "1px dashed var(--border)", padding: "1rem", borderRadius: "8px", background: "var(--surface)" }}>
-                  <h4 style={{ margin: "0 0 1rem 0", paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" }}>
-                    Chưa phân công
-                  </h4>
-                  
-                  <div style={{ display: "flex", gap: "1rem", overflowX: "auto" }}>
-                    {COLUMNS.map(col => {
-                      const colTasks = unassignedTasks.filter(t => t.status === col.id || (col.id === "IN_PROGRESS" && (t.status === "REVIEW" || t.status === "BLOCKED")));
-                      return (
-                        <div 
-                          key={col.id} 
-                          style={{ 
-                            flex: "1", 
-                            minWidth: "280px", 
-                            background: "var(--surface-sunken)", 
-                            borderRadius: "6px",
-                            padding: "0.75rem",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "0.75rem"
-                          }}
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(e, col.id)}
-                        >
-                          <h5 style={{ margin: 0, fontSize: "0.875rem", display: "flex", justifyContent: "space-between" }}>
-                            {col.label}
-                            <span style={{ color: "var(--foreground-muted)" }}>{colTasks.length}</span>
-                          </h5>
-                          
-                          {colTasks.map(task => (
-                            <div
-                              key={task.id}
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, task.id)}
-                              onClick={() => router.push(`/tasks?taskId=${task.id}`)}
-                              style={{
-                                background: getTaskBgColor(task.status),
-                                border: "1px solid var(--border)",
-                                borderRadius: "6px",
-                                padding: "0.75rem",
-                                cursor: "grab",
-                                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: "0.5rem",
-                                opacity: draggedTaskId === task.id ? 0.5 : 1
-                              }}
-                            >
-                              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                <strong style={{ fontSize: "0.875rem" }}>{task.key}</strong>
-                                <StatusPill
-                                  label={taskPriorityLabel(task.priority)}
-                                  tone={task.priority === "CRITICAL" ? "critical" : task.priority === "HIGH" ? "watch" : "neutral"}
-                                />
-                              </div>
-                              <div style={{ fontSize: "0.875rem" }}>{task.title}</div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </Surface>
-        );
-      })}
-    </div>
+    <Surface title={boardTitle} kicker={boardKicker}>
+      {projectBoards.length ? (
+        <div className="project-task-board-list">
+          {projectBoards.map(({ project, tasks: projectTasks }) =>
+            renderProjectBoard(project, projectTasks),
+          )}
+        </div>
+      ) : (
+        <EmptyState
+          title="Chưa có task trong phạm vi hiện tại"
+          description="Khi có nhiệm vụ thuộc các dự án bạn tham gia, từng dự án sẽ được tách thành một khu riêng ở đây."
+        />
+      )}
+    </Surface>
   );
 }

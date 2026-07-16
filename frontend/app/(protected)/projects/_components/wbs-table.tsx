@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusPill } from "@/components/ui";
-import { taskStatusLabel } from "@/lib/utils/format";
+import { taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
 import type { EnrichedTask } from "@/types";
 import styles from "../../team/styles/team.module.css";
 import Image from "next/image";
@@ -117,16 +117,10 @@ export function WbsTable({ tasks }: WbsTableProps) {
             <td>
               <StatusPill
                 label={taskStatusLabel(node.task.status)}
-                tone={
-                  node.task.status === "DONE"
-                    ? "on-track"
-                    : node.task.status === "BLOCKED"
-                      ? "critical"
-                      : "neutral"
-                }
+                tone={taskStatusTone(node.task.status)}
               />
             </td>
-            <td>{node.task.dueDate}</td>
+            <td>{node.task.startDate}</td>
             <td>{node.task.dueDate}</td>
             <td>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>

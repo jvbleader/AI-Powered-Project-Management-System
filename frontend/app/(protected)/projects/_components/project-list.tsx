@@ -16,7 +16,7 @@ interface ProjectListProps {
   onEditProjectClick?: (project: Project) => void;
 }
 
-const PROJECTS_PER_PAGE = 5;
+const PROJECTS_PER_PAGE = 10;
 
 export function ProjectList({
   projects,
@@ -28,9 +28,14 @@ export function ProjectList({
   onAddProjectClick,
   onEditProjectClick,
 }: ProjectListProps) {
+  void onSelectProject;
   const router = useRouter();
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+
+  function openProjectOverview(projectId: string) {
+    router.push(`/projects/${projectId}?tab=overview`);
+  }
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -47,6 +52,16 @@ export function ProjectList({
 
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PROJECTS_PER_PAGE));
   const validPage = Math.min(page, totalPages);
+  const canEditProject = (project: Project) => {
+    if (viewerRole === "ADMIN" || project.managerId === viewerId) {
+      return true;
+    }
+
+    return (
+      (viewerRole === "MANAGER" || viewerRole === "LEADER") &&
+      project.memberIds.includes(viewerId)
+    );
+  };
   
   const paginatedProjects = filteredProjects.slice(
     (validPage - 1) * PROJECTS_PER_PAGE,
@@ -146,7 +161,7 @@ export function ProjectList({
                         <button
                           type="button"
                           className={styles.userCellButton}
-                          onClick={() => router.push(`/projects/${project.id}`)}
+                          onClick={() => openProjectOverview(project.id)}
                         >
                           <span className={styles.avatarToken}>
                             {project.name.charAt(0).toUpperCase()}
@@ -187,11 +202,11 @@ export function ProjectList({
                           <button
                             type="button"
                             className="secondary-button"
-                            onClick={() => router.push(`/projects/${project.id}`)}
+                            onClick={() => openProjectOverview(project.id)}
                           >
                             Xem
                           </button>
-                          {onEditProjectClick && (viewerRole === "ADMIN" || project.managerId === viewerId) && (
+                          {onEditProjectClick && canEditProject(project) && (
                             <button
                               type="button"
                               className="icon-button"
@@ -214,7 +229,7 @@ export function ProjectList({
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1rem" }}>
               {paginatedProjects.map((project) => (
-                <div key={project.id} style={{ border: "1px solid var(--border)", borderRadius: "8px", padding: "1.5rem", background: "var(--surface-sunken)", display: "flex", flexDirection: "column", gap: "1rem", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }} onClick={() => router.push(`/projects/${project.id}`)}>
+                <div key={project.id} style={{ border: "1px solid var(--border)", borderRadius: "8px", padding: "1.5rem", background: "var(--surface-sunken)", display: "flex", flexDirection: "column", gap: "1rem", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }} onClick={() => openProjectOverview(project.id)}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                       <span className={styles.avatarToken} style={{ width: "40px", height: "40px", fontSize: "1rem" }}>
@@ -225,7 +240,7 @@ export function ProjectList({
                         <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--foreground-muted)" }}>{project.code}</p>
                       </div>
                     </div>
-                    {onEditProjectClick && (viewerRole === "ADMIN" || project.managerId === viewerId) && (
+                    {onEditProjectClick && canEditProject(project) && (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onEditProjectClick(project); }}
@@ -293,4 +308,3 @@ export function ProjectList({
     </Surface>
   );
 }
-

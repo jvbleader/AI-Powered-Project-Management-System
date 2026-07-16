@@ -20,6 +20,7 @@ class ProjectMemberResponse(BaseModel):
     roleId: int
     roleName: str
     joinedAt: datetime
+    isActive: bool = True
 
     class Config:
         from_attributes = True

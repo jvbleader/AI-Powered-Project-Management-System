@@ -77,7 +77,9 @@
   border: 1px solid #cbd5e1;
   border-radius: 12px;
   box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
-  transition: border-color 0.2s, background-color 0.2s;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
   cursor: pointer;
 }
 
@@ -161,22 +163,14 @@
 }
 
 .statusTODO {
-  background: #f1f5f9;
-  color: #475569;
+  background: rgba(250, 204, 21, 0.18);
+  color: #a16207;
 }
 .statusIN_PROGRESS {
-  background: #eff6ff;
+  background: rgba(37, 99, 235, 0.14);
   color: #2563eb;
 }
-.statusREVIEW {
-  background: #fef3c7;
-  color: #d97706;
-}
 .statusDONE {
-  background: #ecfdf5;
-  color: #059669;
-}
-.statusBLOCKED {
-  background: #fef2f2;
-  color: #dc2626;
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
 }

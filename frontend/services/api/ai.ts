@@ -1,53 +1,59 @@
-import { AiMessage, AiReport, AiWorkspaceBrief } from "@/types";
-import { aiMessages, aiReports, suggestedPrompts } from "@/lib/mock/data";
-import { respond } from "./core";
+import { AiQuickResponse, AiQuickResponseRequest } from "@/types";
 
-function quickAnswer(prompt: string) {
-  const text = prompt.toLowerCase();
+import { apiEndpoints, requestApi } from "./core";
 
-  if (text.includes("block")) {
-    return "Current blockers are FP-105 for sprint analytics schema and FP-104 for worklog validation rules.";
-  }
+type BackendQuickResponseEntity = {
+  type: AiQuickResponse["entities"][number]["type"];
+  id: string | number;
+  label?: string | null;
+  meta?: string | null;
+};
 
-  if (text.includes("logwork")) {
-    return "One teammate is missing a June 29 worklog entry, and overall coverage is 86%.";
-  }
+type BackendQuickResponse = {
+  action: AiQuickResponse["action"];
+  title?: string | null;
+  summary?: string | null;
+  evidence?: string[] | null;
+  recommendations?: string[] | null;
+  entities?: BackendQuickResponseEntity[] | null;
+  generated_at?: string | null;
+  data_freshness_note?: string | null;
+};
 
-  if (text.includes("overdue")) {
-    return "There are 3 overdue tasks across the portfolio, with FP-104 and FP-105 driving the highest risk.";
-  }
-
-  return "Sprint 06 is 68% complete. Delivery is healthy on UI, but backend contracts are the main dependency.";
+function mapQuickResponse(data: BackendQuickResponse): AiQuickResponse {
+  return {
+    action: data.action,
+    title: data.title ?? "",
+    summary: data.summary ?? "",
+    evidence: Array.isArray(data.evidence) ? data.evidence : [],
+    recommendations: Array.isArray(data.recommendations) ? data.recommendations : [],
+    entities: Array.isArray(data.entities)
+      ? data.entities.map((entity) => ({
+          type: entity.type,
+          id: String(entity.id),
+          label: entity.label ?? "",
+          meta: entity.meta ?? null,
+        }))
+      : [],
+    generatedAt: data.generated_at ?? new Date().toISOString(),
+    dataFreshnessNote: data.data_freshness_note ?? "",
+  };
 }
 
 export const aiApi = {
-  async quickQuery(prompt: string) {
-    return respond<AiMessage>(
-      {
-        id: `msg-${Date.now()}`,
-        role: "assistant",
-        content: quickAnswer(prompt),
-      },
-      200,
-    );
-  },
+  async quickResponse(payload: AiQuickResponseRequest) {
+    const response = await requestApi<BackendQuickResponse>(apiEndpoints.ai.quickResponse, {
+      body: JSON.stringify({
+        action: payload.action,
+        prompt: payload.prompt,
+        project_id: payload.projectId ? Number(payload.projectId) : null,
+        task_id: payload.taskId ? Number(payload.taskId) : null,
+      }),
+    });
 
-  async getWorkspaceBrief() {
-    const data: AiWorkspaceBrief = {
-      messages: aiMessages,
-      reports: aiReports,
-      prompts: suggestedPrompts,
-      memoryModes: [
-        "Tra cứu nhanh -> công cụ truy xuất xác định -> phản hồi ngắn gọn",
-        "Chế độ báo cáo -> số liệu + ngữ cảnh truy xuất -> tường thuật + gợi ý biểu đồ",
-        "Bộ nhớ dài hạn -> bộ đệm hội thoại gần nhất -> tóm tắt ngữ cảnh tích lũy",
-      ],
+    return {
+      data: mapQuickResponse(response.data),
+      meta: response.meta,
     };
-
-    return respond(data, 120);
-  },
-
-  async getReports() {
-    return respond<AiReport[]>(aiReports, 110);
   },
 };

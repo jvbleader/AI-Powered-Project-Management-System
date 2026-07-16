@@ -25,6 +25,14 @@ export function CreateProjectModal({
   const [newProjectEnd, setNewProjectEnd] = useState("2026-08-15");
   const [newProjectManagerId, setNewProjectManagerId] = useState(viewerId);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const extractErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error ? error.message : fallback;
+  const handleClose = () => {
+    setFormError(null);
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -48,25 +56,36 @@ export function CreateProjectModal({
     }
 
     const parsedManagerId = parseInt(newProjectManagerId.replace("usr-", ""), 10);
-    const created = await projectApi.create({
-      name: newProjectName.trim(),
-      description: newProjectDescription.trim(),
-      start_date: newProjectStart,
-      end_date: newProjectEnd,
-      manager_id: isNaN(parsedManagerId) ? 1 : parsedManagerId,
-    });
+    setIsSubmitting(true);
 
-    setNewProjectName("");
-    setNewProjectDescription("");
-    setNewProjectStart("2026-07-01");
-    setNewProjectEnd("2026-08-15");
+    try {
+      const created = await projectApi.create({
+        name: newProjectName.trim(),
+        description: newProjectDescription.trim(),
+        start_date: newProjectStart,
+        end_date: newProjectEnd,
+        manager_id: isNaN(parsedManagerId) ? 1 : parsedManagerId,
+      });
 
-    onProjectCreated(created.data.id);
-    onClose();
+      setNewProjectName("");
+      setNewProjectDescription("");
+      setNewProjectStart("2026-07-01");
+      setNewProjectEnd("2026-08-15");
+      setNewProjectManagerId(viewerId);
+
+      onProjectCreated(created.data.id);
+      handleClose();
+    } catch (error: unknown) {
+      setFormError(
+        extractErrorMessage(error, "Không thể tạo dự án. Vui lòng thử lại."),
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
-    <div className={styles.modalBackdrop} role="presentation" onMouseDown={onClose}>
+    <div className={styles.modalBackdrop} role="presentation" onMouseDown={handleClose}>
       <div
         className={styles.modalSurface}
         role="dialog"
@@ -76,7 +95,7 @@ export function CreateProjectModal({
       >
         <div className={styles.modalHeader}>
           <h2 id="add-project-title">Tạo dự án mới</h2>
-          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Đóng popup">
+          <button type="button" className={styles.closeBtn} onClick={handleClose} aria-label="Đóng popup">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -146,11 +165,11 @@ export function CreateProjectModal({
           </div>
 
           <div className={styles.modalFooter}>
-            <button type="button" className={styles.btnSecondary} onClick={onClose}>
+            <button type="button" className={styles.btnSecondary} onClick={handleClose}>
               Hủy
             </button>
-            <button type="submit" className={styles.btnPrimary}>
-              Tạo dự án
+            <button type="submit" className={styles.btnPrimary} disabled={isSubmitting}>
+              {isSubmitting ? "Đang tạo..." : "Tạo dự án"}
             </button>
           </div>
         </form>

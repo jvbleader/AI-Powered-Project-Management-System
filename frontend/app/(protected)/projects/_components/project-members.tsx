@@ -1,8 +1,25 @@
 import { useState, useEffect } from "react";
 import { Surface, StatusPill } from "@/components/ui";
 import { projectApi } from "@/services/api";
+import { projectRoleLabel } from "@/lib/utils/format";
 import styles from "../../team/styles/team.module.css";
 import type { UserProfile } from "@/types";
+
+type ProjectMemberItem = {
+  id: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  roleId: number;
+  roleName: string;
+  joinedAt: string;
+  isActive: boolean;
+};
+
+type ProjectRoleItem = {
+  id: number;
+  name: string;
+};
 
 interface ProjectMembersProps {
   projectId: string;
@@ -12,14 +29,33 @@ interface ProjectMembersProps {
 }
 
 export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers }: ProjectMembersProps) {
-  const [members, setMembers] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
+  const [members, setMembers] = useState<ProjectMemberItem[]>([]);
+  const [roles, setRoles] = useState<ProjectRoleItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const [page, setPage] = useState(1);
+  const MEMBERS_PER_PAGE = 10;
+  
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
   const [isAdding, setIsAdding] = useState(false);
   const [newUserId, setNewUserId] = useState<string>("");
-  const [newUserRoleId, setNewUserRoleId] = useState<number>(2); // Default to Developer
+  const [newUserRoleId, setNewUserRoleId] = useState<number>(0);
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    return error instanceof Error ? error.message : fallback;
+  };
+
+  const reloadMembers = async () => {
+    const membersRes = await projectApi.listMembers(projectId);
+    setMembers(membersRes.data || []);
+  };
+
+  const resolveMemberRoleId = (member: ProjectMemberItem) =>
+    roles.find((role) => role.name === member.roleName)?.id ?? member.roleId;
 
   useEffect(() => {
     async function loadData() {
@@ -29,8 +65,14 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
           projectApi.listRoles()
         ]);
         setMembers(membersRes.data || []);
-        setRoles(rolesRes.data || []);
-      } catch (err) {
+        const loadedRoles = rolesRes.data || [];
+        setRoles(loadedRoles);
+        const defaultRole =
+          loadedRoles.find((role: ProjectRoleItem) => role.name === "DEVELOPER") ??
+          loadedRoles.find((role: ProjectRoleItem) => role.name !== "PROJECT_MANAGER") ??
+          loadedRoles[0];
+        setNewUserRoleId(defaultRole?.id ?? 0);
+      } catch {
         setError("Không thể tải danh sách thành viên.");
       } finally {
         setIsLoading(false);
@@ -40,44 +82,76 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
   }, [projectId]);
 
   const handleAddMember = async () => {
-    if (!newUserId) return;
+    if (!newUserId || !newUserRoleId) return;
     try {
       await projectApi.addMember(projectId, newUserId, newUserRoleId);
       setIsAdding(false);
       setNewUserId("");
-      // Reload members
-      const membersRes = await projectApi.listMembers(projectId);
-      setMembers(membersRes.data || []);
-    } catch (err: any) {
-      alert(err.message || "Lỗi khi thêm thành viên");
+      await reloadMembers();
+    } catch (err: unknown) {
+      alert(extractErrorMessage(err, "Lỗi khi thêm thành viên"));
     }
   };
 
   const handleUpdateRole = async (memberId: number, roleId: number) => {
     try {
       await projectApi.updateMemberRole(projectId, memberId, roleId);
-      const membersRes = await projectApi.listMembers(projectId);
-      setMembers(membersRes.data || []);
-    } catch (err: any) {
-      alert(err.message || "Lỗi khi cập nhật vai trò");
+      await reloadMembers();
+    } catch (err: unknown) {
+      alert(extractErrorMessage(err, "Lỗi khi cập nhật vai trò"));
     }
   };
 
   const handleRemoveMember = async (memberId: number) => {
-    if (!confirm("Bạn có chắc muốn gỡ thành viên này khỏi dự án?")) return;
+    if (!confirm("Bạn có chắc muốn tạm dừng thành viên này khỏi dự án?")) return;
     try {
       await projectApi.removeMember(projectId, memberId);
-      const membersRes = await projectApi.listMembers(projectId);
-      setMembers(membersRes.data || []);
-    } catch (err: any) {
-      alert(err.message || "Lỗi khi gỡ thành viên");
+      await reloadMembers();
+    } catch (err: unknown) {
+      alert(extractErrorMessage(err, "Lỗi khi gỡ thành viên"));
+    }
+  };
+
+  const handleRestoreMember = async (member: ProjectMemberItem) => {
+    try {
+      await projectApi.addMember(projectId, `usr-${member.userId}`, resolveMemberRoleId(member));
+      await reloadMembers();
+    } catch (err: unknown) {
+      alert(extractErrorMessage(err, "Lỗi khi khôi phục thành viên"));
     }
   };
 
   if (isLoading) return <div>Đang tải thành viên...</div>;
   if (error) return <div style={{ color: "var(--status-critical)" }}>{error}</div>;
 
-  const availableUsersToAdd = accessibleUsers.filter(u => !members.some(m => m.userId.toString() === u.id.replace("usr-", "")));
+  const availableUsersToAdd = accessibleUsers.filter(u => !members.some(m => m.isActive && m.userId.toString() === u.id.replace("usr-", "")));
+  
+  const activePMCount = members.filter(m => m.isActive && m.roleName === "PROJECT_MANAGER").length;
+
+  const filteredMembers = members.filter(m => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (
+      normalizedQuery &&
+      !m.userName.toLowerCase().includes(normalizedQuery) &&
+      !m.userEmail.toLowerCase().includes(normalizedQuery)
+    ) {
+      return false;
+    }
+    if (roleFilter !== "ALL" && m.roleId.toString() !== roleFilter) return false;
+    if (statusFilter !== "ALL") {
+      const isStatusActive = statusFilter === "ACTIVE";
+      if (m.isActive !== isStatusActive) return false;
+    }
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE));
+  const validPage = Math.min(page, totalPages);
+  
+  const paginatedMembers = filteredMembers.slice(
+    (validPage - 1) * MEMBERS_PER_PAGE,
+    validPage * MEMBERS_PER_PAGE,
+  );
 
   return (
     <Surface title="Danh sách thành viên">
@@ -105,7 +179,7 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
                 style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface)", width: "200px" }}
               >
                 {roles.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>{projectRoleLabel(r.name)}</option>
                 ))}
               </select>
               <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -121,19 +195,93 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
         </div>
       )}
 
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+          marginBottom: "1rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", flex: "1 1 280px" }}>
+          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Tìm kiếm thành viên
+          </span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Nhập tên hoặc email người dùng..."
+            style={{
+              padding: "0.75rem 1rem",
+              borderRadius: "999px",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              color: "var(--foreground)",
+            }}
+          />
+        </label>
+        <div style={{ color: "var(--foreground-muted)", fontSize: "0.9rem" }}>
+          {filteredMembers.length} thành viên phù hợp
+        </div>
+      </div>
+
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
             <tr>
               <th>Thành viên</th>
               <th>Email</th>
-              <th>Vai trò</th>
+              <th>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}>
+                  Vai trò
+                  <div style={{ position: "relative", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--foreground-muted)" }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ position: "absolute", pointerEvents: "none" }}>
+                      <path d="M7 10l5 5 5-5z" />
+                    </svg>
+                    <select
+                      value={roleFilter}
+                      onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
+                      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", appearance: "none" }}
+                    >
+                      <option value="ALL">Tất cả</option>
+                      {roles.map(r => (
+                        <option key={r.id} value={r.id.toString()}>{projectRoleLabel(r.name)}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </th>
               <th>Ngày tham gia</th>
+              <th>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}>
+                  Trạng thái
+                  <div style={{ position: "relative", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--foreground-muted)" }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ position: "absolute", pointerEvents: "none" }}>
+                      <path d="M7 10l5 5 5-5z" />
+                    </svg>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", appearance: "none" }}
+                    >
+                      <option value="ALL">Tất cả</option>
+                      <option value="ACTIVE">Hoạt động</option>
+                      <option value="INACTIVE">Tạm dừng</option>
+                    </select>
+                  </div>
+                </div>
+              </th>
               {canManage && <th />}
             </tr>
           </thead>
           <tbody>
-            {members.map(member => (
+            {paginatedMembers.map(member => (
               <tr key={member.id}>
                 <td>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
@@ -144,48 +292,100 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
                   </div>
                 </td>
                 <td>{member.userEmail}</td>
-                <td>
+                <td style={{ textAlign: "center" }}>
                   {canManage && member.userId.toString() !== viewerId.replace("usr-", "") ? (
                     <select
-                      value={member.roleId}
+                      value={resolveMemberRoleId(member)}
                       onChange={e => handleUpdateRole(member.id, Number(e.target.value))}
                       style={{ padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
                     >
                       {roles.map(r => (
-                        <option key={r.id} value={r.id}>{r.name}</option>
+                        <option key={r.id} value={r.id}>{projectRoleLabel(r.name)}</option>
                       ))}
                     </select>
                   ) : (
-                    <StatusPill label={member.roleName} tone={member.roleName === "PROJECT_MANAGER" ? "accent" : "neutral"} />
+                    <StatusPill label={projectRoleLabel(member.roleName)} tone={member.roleName === "PROJECT_MANAGER" ? "accent" : "neutral"} />
                   )}
                 </td>
                 <td>{new Date(member.joinedAt).toLocaleDateString("vi-VN")}</td>
+                <td style={{ textAlign: "center" }}>
+                  <StatusPill 
+                    label={member.isActive ? "Hoạt động" : "Tạm dừng"} 
+                    tone={member.isActive ? "on-track" : "critical"} 
+                  />
+                </td>
                 {canManage && (
                   <td>
                     {member.userId.toString() !== viewerId.replace("usr-", "") && (
-                      <button 
-                        type="button" 
-                        className="secondary-button" 
-                        style={{ color: "var(--status-critical)", borderColor: "var(--status-critical)", background: "transparent" }}
-                        onClick={() => handleRemoveMember(member.id)}
-                      >
-                        Gỡ bỏ
-                      </button>
+                      member.isActive ? (
+                        <button 
+                          type="button" 
+                          className="secondary-button" 
+                          style={{ 
+                            color: "var(--status-critical)", 
+                            borderColor: "var(--status-critical)", 
+                            background: "transparent",
+                            opacity: (member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) ? 0.5 : 1,
+                            cursor: (member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) ? "not-allowed" : "pointer"
+                          }}
+                          disabled={member.roleName === "PROJECT_MANAGER" && activePMCount <= 1}
+                          title={member.roleName === "PROJECT_MANAGER" && activePMCount <= 1 ? "Không thể gỡ Quản lý dự án duy nhất" : ""}
+                          onClick={() => handleRemoveMember(member.id)}
+                        >
+                          Gỡ bỏ
+                        </button>
+                      ) : (
+                        <button 
+                          type="button" 
+                          className="secondary-button" 
+                          style={{ color: "var(--primary-base)", borderColor: "var(--primary-base)", background: "transparent" }}
+                          onClick={() => handleRestoreMember(member)}
+                        >
+                          Thêm lại
+                        </button>
+                      )
                     )}
                   </td>
                 )}
               </tr>
             ))}
-            {members.length === 0 && (
+            {filteredMembers.length === 0 && (
               <tr>
-                <td colSpan={canManage ? 5 : 4} style={{ textAlign: "center", padding: "2rem", color: "var(--foreground-muted)" }}>
-                  Chưa có thành viên nào
+                <td colSpan={canManage ? 6 : 5} style={{ textAlign: "center", padding: "2rem", color: "var(--foreground-muted)" }}>
+                  {searchQuery.trim() ? "Không tìm thấy thành viên phù hợp" : "Chưa có thành viên nào"}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className={styles.paginationBar} style={{ marginTop: "1rem" }}>
+          <p>
+            Hiển thị {(validPage - 1) * MEMBERS_PER_PAGE + 1} -{" "}
+            {Math.min(validPage * MEMBERS_PER_PAGE, filteredMembers.length)} / {filteredMembers.length} thành viên.
+          </p>
+          <div className={styles.paginationActions}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setPage(Math.max(1, validPage - 1))}
+              disabled={validPage <= 1}
+            >
+              Trang trước
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => setPage(Math.min(totalPages, validPage + 1))}
+              disabled={validPage >= totalPages}
+            >
+              Trang sau
+            </button>
+          </div>
+        </div>
+      )}
     </Surface>
   );
 }

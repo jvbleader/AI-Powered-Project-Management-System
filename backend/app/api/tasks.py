@@ -12,6 +12,7 @@ from app.schemas.task_schema import (
     TaskAssigneeResponse
 )
 from app.services import task_service
+from app.utils.dashboard_helpers import build_task_estimate_rollup
 from pydantic import BaseModel
 
 class AssigneeRequest(BaseModel):
@@ -24,7 +25,19 @@ def _hydrate_task_response(db: Session, task: TaskResponse):
     _hydrate_task_list_response(db, [task])
 
 def _hydrate_task_list_response(db: Session, tasks: List[TaskResponse]):
+    if not tasks:
+        return
+
+    project_ids = sorted({task.project_id for task in tasks})
+    project_task_rollups: dict[int, dict[int, float]] = {}
+    all_project_tasks = task_service.task_repository.list_tasks(db, project_ids=project_ids)
+
+    for project_id in project_ids:
+        project_tasks = [task for task in all_project_tasks if task.project_id == project_id]
+        project_task_rollups[project_id] = build_task_estimate_rollup(project_tasks)
+
     assignees_by_task_id = {task.id: [] for task in tasks}
+    creator_user_ids_by_member_id: dict[int, int | None] = {}
     assignee_rows = task_service.task_repository.list_task_assignee_users(
         db,
         [task.id for task in tasks],
@@ -40,8 +53,21 @@ def _hydrate_task_list_response(db: Session, tasks: List[TaskResponse]):
         )
 
     for task in tasks:
+        task.estimated_hours = project_task_rollups.get(task.project_id, {}).get(
+            task.id,
+            task.estimated_hours,
+        )
         task.assignees = assignees_by_task_id.get(task.id, [])
         task.key = f"TASK-{task.id}"
+        if task.created_by_member_id not in creator_user_ids_by_member_id:
+            member = task_service.project_repository.get_project_member_by_id(
+                db,
+                task.created_by_member_id,
+                task.project_id,
+                include_inactive=True,
+            )
+            creator_user_ids_by_member_id[task.created_by_member_id] = member.user_id if member else None
+        task.created_by_user_id = creator_user_ids_by_member_id.get(task.created_by_member_id)
 
 @router.get("", response_model=List[TaskResponse])
 def get_tasks(
@@ -164,3 +190,12 @@ def create_logwork(
     current_user: User = Depends(get_current_user)
 ):
     return task_service.add_logwork(db, task_id, current_user.id, logwork_in)
+
+
+@router_root.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    task_service.delete_task(db, task_id, current_user.id)

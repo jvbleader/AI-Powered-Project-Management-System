@@ -4,7 +4,8 @@ import { useEffect, useState, useMemo } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { projectApi, userApi, workspaceApi } from "@/services/api";
-import { isPrivilegedUser, normalizeViewer } from "@/lib/mock/permissions";
+import { normalizeViewer } from "@/lib/mock/permissions";
+import { roleLabel } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
 import type {
   Project,
@@ -27,7 +28,6 @@ let accessibleUsersCache: { viewerId: string; data: UserProfile[] } | null = nul
 export default function ProjectsPage() {
   const session = useAuthSession();
   const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
-  const canManage = isPrivilegedUser(viewer);
   const cachedProjectsState =
     projectsPageCache?.viewerId === viewer.id ? projectsPageCache.data : null;
   const cachedAccessibleUsers =
@@ -78,8 +78,14 @@ export default function ProjectsPage() {
     } satisfies WorkspaceShellData);
 
   const projectList = projectsState?.projects ?? [];
+  const canManage =
+    viewer.role === "ADMIN" ||
+    viewer.role === "MANAGER" ||
+    viewer.role === "LEADER" ||
+    projectList.some((project) => project.managerId === viewer.id);
   const selectedProject =
     projectList.find((project) => project.id === selectedProjectId) ?? projectList[0] ?? null;
+  const isAdminViewer = viewer.role === "ADMIN";
 
   async function refreshProjects(nextSelectedId?: string | null) {
     const [{ data: shellData }, { data: projects }] = await Promise.all([
@@ -120,12 +126,14 @@ export default function ProjectsPage() {
       shellData={shellData}
       heading={canManage ? "Quản lí dự án" : "Dự án của tôi"}
       subheading={
-        canManage
-          ? "Theo dõi toàn bộ danh mục dự án, tạo dự án mới và xem chi tiết nguồn lực theo từng dự án."
-          : "Chỉ hiển thị các dự án bạn tham gia và những công việc được giao cho bạn."
+        isAdminViewer
+          ? "Theo dõi toàn bộ danh mục dự án của công ty, tạo dự án mới và xem chi tiết nguồn lực theo từng dự án."
+          : canManage
+            ? "Hiển thị các dự án bạn đang tham gia hoặc đang điều phối trong phạm vi quyền hiện tại."
+            : "Chỉ hiển thị các dự án bạn tham gia và những công việc được giao cho bạn."
       }
       highlightLabel="Phạm vi xem"
-      highlightValue={canManage ? "Admin / Manager / Leader" : "Thành viên"}
+      highlightValue={isAdminViewer ? "Quản trị viên - Toàn bộ dự án" : roleLabel(viewer.role)}
     >
       <section className="two-up" style={{ gridTemplateColumns: "1fr" }}>
         <ProjectList

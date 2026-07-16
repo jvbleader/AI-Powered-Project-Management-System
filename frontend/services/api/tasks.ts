@@ -2,6 +2,7 @@ import {
   Task,
   TaskComment,
   TaskFilters,
+  TaskLogworkEntry,
   UserProfile,
   ApiResponse,
   EnrichedTask,
@@ -38,6 +39,27 @@ function toFrontendUserId(userId: unknown) {
   return "";
 }
 
+function normalizeTaskStatus(status: unknown): Task["status"] {
+  if (typeof status !== "string") {
+    return "TODO";
+  }
+
+  const normalized = status.toUpperCase();
+  if (normalized === "DONE") {
+    return "DONE";
+  }
+
+  if (normalized === "REVIEW" || normalized === "BLOCKED" || normalized === "INPROGRESS") {
+    return "IN_PROGRESS";
+  }
+
+  if (normalized === "IN_PROGRESS") {
+    return "IN_PROGRESS";
+  }
+
+  return "TODO";
+}
+
 function mapBackendTask(data: any): Task {
   const primaryAssignee = data.assignees?.[0];
 
@@ -48,16 +70,16 @@ function mapBackendTask(data: any): Task {
     key: data.key || `TASK-${data.id}`,
     title: data.title || "",
     description: data.description || "",
-    status: (data.status?.toUpperCase() || "TODO") as Task["status"],
+    status: normalizeTaskStatus(data.status),
     priority: (data.priority?.toUpperCase() || "MEDIUM") as Task["priority"],
     assigneeId: primaryAssignee ? toFrontendUserId(primaryAssignee.user_id) : "",
     assigneeName: primaryAssignee?.name || "",
     assigneeEmail: primaryAssignee?.email || "",
-    reporterId: `usr-${data.created_by_member_id}`,
-    startDate: data.created_at || "",
+    reporterId: toFrontendUserId(data.created_by_user_id),
+    startDate: data.start_date || data.created_at || "",
     dueDate: data.deadline || "",
     estimateHours: data.estimated_hours || 0,
-    spentHours: data.spentHours || 0, // Need backend logworks sum to get real spent hours, fallback 0
+    spentHours: data.spent_hours || data.spentHours || 0,
     tags: [],
     blockers: [],
     commentsCount: 0,
@@ -123,6 +145,7 @@ export const taskApi = {
   },
 
   async get(taskId: string, viewer?: UserProfile | null): Promise<ApiResponse<Task>> {
+    void viewer;
     const endpoint = apiEndpoints.tasks.detail(taskId);
     const response = await requestApi<any>(endpoint);
     return { data: mapBackendTask(response.data), meta: response.meta };
@@ -133,42 +156,69 @@ export const taskApi = {
       method: "POST" as const,
       path: `/api/projects/${payload.projectId}/tasks`,
     };
-    
+
     const backendPayload = {
       title: payload.title,
-      description: payload.description,
+      description: payload.description.trim() ? payload.description.trim() : null,
       status: payload.status?.toLowerCase(),
       priority: payload.priority?.toLowerCase(),
+      start_date: payload.startDate,
       deadline: payload.dueDate || null,
-      estimated_hours: payload.estimateHours,
+      estimated_hours: payload.estimateHours > 0 ? payload.estimateHours : null,
       sprint_id: payload.sprintId ? parseInt(payload.sprintId) : null,
-      assignee_user_ids: payload.assigneeId ? [payload.assigneeId] : []
+      parent_task_id: payload.parentTaskId ? parseInt(payload.parentTaskId) : null,
+      assignee_user_ids: payload.assigneeId ? [payload.assigneeId] : [],
     };
-    
+
     const response = await requestApi<any>(endpoint, {
       body: JSON.stringify(backendPayload),
     });
-    
+
     return { data: mapBackendTask(response.data), meta: response.meta };
   },
 
   async update(taskId: string, payload: Partial<Task>): Promise<ApiResponse<Task>> {
     const endpoint = apiEndpoints.tasks.update(taskId);
-    
+
     const backendPayload: any = {};
-    if (payload.title) backendPayload.title = payload.title;
-    if (payload.description) backendPayload.description = payload.description;
-    if (payload.status) backendPayload.status = payload.status.toLowerCase();
-    if (payload.priority) backendPayload.priority = payload.priority.toLowerCase();
-    if (payload.dueDate) backendPayload.deadline = payload.dueDate;
-    if (payload.estimateHours) backendPayload.estimated_hours = payload.estimateHours;
-    if (payload.sprintId) backendPayload.sprint_id = parseInt(payload.sprintId);
-    
+    if ("title" in payload) backendPayload.title = payload.title;
+    if ("description" in payload) {
+      backendPayload.description =
+        typeof payload.description === "string"
+          ? payload.description.trim() || null
+          : payload.description ?? null;
+    }
+    if ("status" in payload && payload.status) backendPayload.status = payload.status.toLowerCase();
+    if ("priority" in payload && payload.priority)
+      backendPayload.priority = payload.priority.toLowerCase();
+    if ("startDate" in payload) backendPayload.start_date = payload.startDate;
+    if ("dueDate" in payload) backendPayload.deadline = payload.dueDate || null;
+    if ("estimateHours" in payload)
+      backendPayload.estimated_hours =
+        typeof payload.estimateHours === "number" && payload.estimateHours > 0
+          ? payload.estimateHours
+          : null;
+    if ("sprintId" in payload) {
+      backendPayload.sprint_id = payload.sprintId ? parseInt(payload.sprintId) : null;
+    }
+    if ("parentTaskId" in payload) {
+      backendPayload.parent_task_id = payload.parentTaskId ? parseInt(payload.parentTaskId) : null;
+    }
+
     const response = await requestApi<any>(endpoint, {
       body: JSON.stringify(backendPayload),
     });
-    
+
     return { data: mapBackendTask(response.data), meta: response.meta };
+  },
+
+  async remove(taskId: string): Promise<ApiResponse<void>> {
+    const endpoint = {
+      method: "DELETE" as const,
+      path: `/api/tasks/${taskId}`,
+    };
+    const response = await requestApi<void>(endpoint);
+    return response;
   },
 
   async updateStatus(taskId: string, status: Task["status"]): Promise<ApiResponse<Task>> {
@@ -238,50 +288,53 @@ export const taskApi = {
 
       return { data: enrichedTasks, meta: tasksRes.meta };
     }
-    
+
     const [tasksRes, projectRes, usersRes] = await Promise.all([
       this.list(filters, viewer),
       context?.projects?.length
         ? Promise.resolve({
-            data:
-              context.projects.find((project) => project.id === filters.projectId) ??
-              null,
+            data: context.projects.find((project) => project.id === filters.projectId) ?? null,
           } as ApiResponse<Project | null>)
         : projectApi.get(filters.projectId),
       context?.users?.length
         ? Promise.resolve({ data: context.users } as ApiResponse<UserProfile[]>)
         : Promise.resolve(emptyUsersResponse()),
     ]);
-    
+
     const tasks = tasksRes.data;
     const project = projectRes.data ?? (await projectApi.get(filters.projectId)).data;
     const users = usersRes.data;
-    
+
     const enrichedTasks: EnrichedTask[] = tasks.map((task) =>
       enrichTaskWithContext(task, project, users),
     );
-    
+
     return { data: enrichedTasks, meta: tasksRes.meta };
   },
 
-  async listComments(taskId: string, viewer?: UserProfile | null): Promise<ApiResponse<TaskComment[]>> {
+  async listComments(
+    taskId: string,
+    viewer?: UserProfile | null,
+  ): Promise<ApiResponse<TaskComment[]>> {
     const endpoint = {
       method: "GET" as const,
       path: `/api/tasks/${taskId}/comments`,
     };
     const response = await requestApi<any[]>(endpoint);
-    const comments: TaskComment[] = response.data.map(c => ({
+    const comments: TaskComment[] = response.data.map((c) => ({
       id: c.id.toString(),
       taskId: c.task_id.toString(),
-      userId: `usr-${c.project_member_id}`, 
+      userId: `usr-${c.project_member_id}`,
       content: c.content,
       createdAt: c.created_at,
-      updatedAt: c.updated_at
+      updatedAt: c.updated_at,
     }));
     return { data: comments, meta: response.meta };
   },
 
-  async addComment(payload: Omit<TaskComment, "id" | "createdAt" | "updatedAt">): Promise<ApiResponse<TaskComment>> {
+  async addComment(
+    payload: Omit<TaskComment, "id" | "createdAt" | "updatedAt">,
+  ): Promise<ApiResponse<TaskComment>> {
     const endpoint = {
       method: "POST" as const,
       path: `/api/tasks/${payload.taskId}/comments`,
@@ -297,9 +350,77 @@ export const taskApi = {
         userId: `usr-${c.project_member_id}`,
         content: c.content,
         createdAt: c.created_at,
-        updatedAt: c.updated_at
+        updatedAt: c.updated_at,
       },
-      meta: response.meta
+      meta: response.meta,
+    };
+  },
+
+  async listLogworks(
+    taskId: string,
+    viewer?: UserProfile | null,
+  ): Promise<ApiResponse<TaskLogworkEntry[]>> {
+    void viewer;
+    const endpoint = {
+      method: "GET" as const,
+      path: `/api/tasks/${taskId}/logworks`,
+    };
+    const response = await requestApi<any[]>(endpoint);
+    const logworks: TaskLogworkEntry[] = response.data.map((item) => ({
+      id: item.id.toString(),
+      taskId: item.task_id.toString(),
+      userId: `usr-${item.project_member_id}`,
+      userName: item.user_name || "Chưa rõ",
+      workDate: item.work_date,
+      hoursSpent: Number(item.hours_spent || 0),
+      workContent: item.work_content || "",
+      comment: item.comment || "",
+      progressPercent: Number(item.progress_percent || 0),
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+    }));
+    return { data: logworks, meta: response.meta };
+  },
+
+  async addLogwork(
+    taskId: string,
+    payload: {
+      workDate: string;
+      hoursSpent: number;
+      workContent: string;
+      comment?: string | null;
+      progressPercent?: number;
+    },
+  ): Promise<ApiResponse<TaskLogworkEntry>> {
+    const endpoint = {
+      method: "POST" as const,
+      path: `/api/tasks/${taskId}/logworks`,
+    };
+    const response = await requestApi<any>(endpoint, {
+      body: JSON.stringify({
+        work_date: payload.workDate,
+        hours_spent: payload.hoursSpent,
+        work_content: payload.workContent,
+        comment: payload.comment ?? null,
+        progress_percent: payload.progressPercent ?? 0,
+      }),
+    });
+    const item = response.data;
+    return {
+      data: {
+        id: item.id.toString(),
+        taskId: item.task_id.toString(),
+        userId: `usr-${item.project_member_id}`,
+        userName: item.user_name || "Chưa rõ",
+        workDate: item.work_date,
+        hoursSpent: Number(item.hours_spent || 0),
+        workContent: item.work_content || "",
+        comment: item.comment || "",
+        progressPercent: Number(item.progress_percent || 0),
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+      },
+      meta: response.meta,
     };
   },
 
@@ -311,7 +432,7 @@ export const taskApi = {
     // Note: Backend endpoint for update comment hasn't been implemented yet. Mocking response for now.
     return {
       data: { id: commentId, content, updatedAt: new Date().toISOString() },
-      meta: { source: "mock", latencyMs: 120, generatedAt: new Date().toISOString() }
+      meta: { source: "mock", latencyMs: 120, generatedAt: new Date().toISOString() },
     };
-  }
+  },
 };

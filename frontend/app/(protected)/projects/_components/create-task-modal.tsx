@@ -1,143 +1,470 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
 import { taskApi } from "@/services/api";
-import { UserProfile } from "@/types";
+import type { EnrichedTask, UserProfile } from "@/types";
 
 interface CreateTaskModalProps {
   projectId: string;
+  projectName: string;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   users: UserProfile[];
+  tasks: EnrichedTask[];
+  defaultParentTaskId?: string;
 }
 
-export function CreateTaskModal({ projectId, isOpen, onClose, onSuccess, users }: CreateTaskModalProps) {
+const today = new Date().toISOString().split("T")[0];
+
+export function CreateTaskModal({
+  projectId,
+  projectName,
+  isOpen,
+  onClose,
+  onSuccess,
+  users,
+  tasks,
+  defaultParentTaskId = "",
+}: CreateTaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "CRITICAL">("MEDIUM");
-  const [dueDate, setDueDate] = useState("");
+  const [startDate, setStartDate] = useState(today);
+  const [dueDate, setDueDate] = useState(today);
   const [assigneeId, setAssigneeId] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
+  const [parentTaskId, setParentTaskId] = useState(defaultParentTaskId);
   const [isLoading, setIsLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const parentTaskOptions = useMemo(
+    () => tasks.filter((task) => task.projectId === projectId),
+    [projectId, tasks],
+  );
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setFormError(null);
+
+    if (!title.trim() || !startDate || !dueDate) {
+      setFormError("Vui lòng nhập tiêu đề, ngày bắt đầu và hạn chót.");
+      return;
+    }
+
+    if (dueDate < startDate) {
+      setFormError("Hạn chót phải sau hoặc bằng ngày bắt đầu.");
+      return;
+    }
 
     setIsLoading(true);
     try {
       await taskApi.create({
         projectId,
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         status: "TODO",
         priority,
+        startDate,
         dueDate,
         estimateHours: estimatedHours ? parseFloat(estimatedHours) : 0,
         assigneeId,
         sprintId: null,
+        parentTaskId: parentTaskId || null,
         spentHours: 0,
-        progress: 0
-      } as any);
+        tags: [],
+        blockers: [],
+        commentsCount: 0,
+        lastActivity: "",
+        key: "",
+        reporterId: "",
+      });
       onSuccess();
       onClose();
-    } catch (err: any) {
-      alert("Lỗi tạo công việc: " + (err.message || "Unknown error"));
+    } catch (error: unknown) {
+      setFormError(error instanceof Error ? error.message : "Lỗi tạo công việc.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div style={{
-      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
-    }}>
-      <div style={{
-        background: "var(--surface)", padding: "2rem", borderRadius: "8px", width: "100%", maxWidth: "500px",
-        boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-      }}>
-        <h2 style={{ margin: "0 0 1.5rem 0" }}>Tạo Công việc mới</h2>
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(15, 23, 42, 0.56)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: "1.5rem",
+      }}
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <section
+        style={{
+          background: "var(--surface)",
+          borderRadius: "24px",
+          width: "100%",
+          maxWidth: "820px",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          boxShadow: "0 28px 80px rgba(15, 23, 42, 0.3)",
+          border: "1px solid rgba(148, 163, 184, 0.22)",
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-task-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div
+          style={{
+            padding: "1.5rem 1.5rem 1rem",
+            borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "1rem",
+          }}
+        >
           <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Tiêu đề *</label>
-            <input 
-              type="text" 
-              value={title} 
-              onChange={e => setTitle(e.target.value)} 
-              required
-              style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
-            />
+            <div
+              style={{
+                fontSize: "0.8rem",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--foreground-muted)",
+                marginBottom: "0.4rem",
+              }}
+            >
+              Dự án hiện tại
+            </div>
+            <h2 id="create-task-title" style={{ margin: 0, fontSize: "1.4rem" }}>
+              Tạo công việc mới
+            </h2>
+            <p style={{ margin: "0.5rem 0 0", color: "var(--foreground-muted)", lineHeight: 1.6 }}>
+              Tạo task ngay trong dự án <strong style={{ color: "var(--foreground)" }}>{projectName}</strong> và gán người phụ trách, timeline, parent task nếu cần.
+            </p>
           </div>
-          <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Mô tả</label>
-            <textarea 
-              value={description} 
-              onChange={e => setDescription(e.target.value)} 
-              rows={3}
-              style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
-            />
-          </div>
-          <div style={{ display: "flex", gap: "1rem" }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Mức độ ưu tiên</label>
-              <select 
-                value={priority} 
-                onChange={e => setPriority(e.target.value as any)}
-                style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng popup"
+            style={{
+              border: "1px solid var(--border)",
+              background: "var(--surface-sunken)",
+              color: "var(--foreground-muted)",
+              width: "40px",
+              height: "40px",
+              borderRadius: "999px",
+              cursor: "pointer",
+              fontSize: "1.1rem",
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1.5rem" }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gap: "1rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "1rem",
+                padding: "1.25rem",
+                borderRadius: "18px",
+                border: "1px solid rgba(148, 163, 184, 0.18)",
+                background:
+                  "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.96))",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "var(--foreground-muted)",
+                }}
               >
-                <option value="LOW">Thấp (Low)</option>
-                <option value="MEDIUM">Trung bình (Medium)</option>
-                <option value="HIGH">Cao (High)</option>
-                <option value="CRITICAL">Nghiêm trọng (Critical)</option>
-              </select>
+                Thông tin cơ bản
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                  Dự án
+                </label>
+                <input
+                  value={projectName}
+                  readOnly
+                  style={{
+                    width: "100%",
+                    padding: "0.85rem 1rem",
+                    borderRadius: "14px",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-sunken)",
+                    color: "var(--foreground-muted)",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                  Tiêu đề *
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  required
+                  placeholder="Ví dụ: Hoàn thiện API cho task detail"
+                  style={{
+                    width: "100%",
+                    padding: "0.85rem 1rem",
+                    borderRadius: "14px",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-sunken)",
+                    color: "var(--foreground)",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                  Mô tả
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  rows={6}
+                  placeholder="Mô tả ngắn gọn mục tiêu, phạm vi và đầu ra mong đợi..."
+                  style={{
+                    width: "100%",
+                    padding: "0.85rem 1rem",
+                    borderRadius: "14px",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-sunken)",
+                    color: "var(--foreground)",
+                    resize: "vertical",
+                    minHeight: "140px",
+                  }}
+                />
+              </div>
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Hạn chót</label>
-              <input 
-                type="date" 
-                value={dueDate} 
-                onChange={e => setDueDate(e.target.value)}
-                style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
-              />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: "1rem" }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Người thực hiện</label>
-              <select 
-                value={assigneeId} 
-                onChange={e => setAssigneeId(e.target.value)}
-                style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "1rem",
+                padding: "1.25rem",
+                borderRadius: "18px",
+                border: "1px solid rgba(148, 163, 184, 0.18)",
+                background:
+                  "linear-gradient(180deg, rgba(248,250,252,0.96), rgba(241,245,249,0.96))",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "var(--foreground-muted)",
+                }}
               >
-                <option value="">-- Chưa phân công --</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Ước lượng (giờ)</label>
-              <input 
-                type="number" 
-                min="0" step="0.5"
-                value={estimatedHours} 
-                onChange={e => setEstimatedHours(e.target.value)}
-                style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
-              />
+                Phân công và timeline
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "1rem" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                    Người thực hiện
+                  </label>
+                  <select
+                    value={assigneeId}
+                    onChange={(event) => setAssigneeId(event.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.85rem 1rem",
+                      borderRadius: "14px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-sunken)",
+                      color: "var(--foreground)",
+                    }}
+                  >
+                    <option value="">-- Chưa phân công --</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                    Mức độ ưu tiên
+                  </label>
+                  <select
+                    value={priority}
+                    onChange={(event) => setPriority(event.target.value as typeof priority)}
+                    style={{
+                      width: "100%",
+                      padding: "0.85rem 1rem",
+                      borderRadius: "14px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-sunken)",
+                      color: "var(--foreground)",
+                    }}
+                  >
+                    <option value="LOW">Thấp</option>
+                    <option value="MEDIUM">Trung bình</option>
+                    <option value="HIGH">Cao</option>
+                    <option value="CRITICAL">Khẩn cấp</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "1rem" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                    Ngày bắt đầu *
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    required
+                    style={{
+                      width: "100%",
+                      padding: "0.85rem 1rem",
+                      borderRadius: "14px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-sunken)",
+                      color: "var(--foreground)",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                    Hạn chót *
+                  </label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(event) => setDueDate(event.target.value)}
+                    required
+                    style={{
+                      width: "100%",
+                      padding: "0.85rem 1rem",
+                      borderRadius: "14px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-sunken)",
+                      color: "var(--foreground)",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                    Ước tính (giờ)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={estimatedHours}
+                    onChange={(event) => setEstimatedHours(event.target.value)}
+                    placeholder="Ví dụ: 6"
+                    style={{
+                      width: "100%",
+                      padding: "0.85rem 1rem",
+                      borderRadius: "14px",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-sunken)",
+                      color: "var(--foreground)",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+                  Parent task
+                </label>
+                <select
+                  value={parentTaskId}
+                  onChange={(event) => setParentTaskId(event.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "0.85rem 1rem",
+                    borderRadius: "14px",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-sunken)",
+                    color: "var(--foreground)",
+                  }}
+                >
+                  <option value="">-- Không có --</option>
+                  {parentTaskOptions.map((task) => (
+                    <option key={task.id} value={task.id}>
+                      {task.key} - {task.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem", marginTop: "1rem" }}>
-            <button type="button" onClick={onClose} className="secondary-button" disabled={isLoading}>
+
+          {formError ? (
+            <div
+              style={{
+                padding: "0.95rem 1rem",
+                borderRadius: "14px",
+                border: "1px solid rgba(220, 38, 38, 0.22)",
+                background: "rgba(254, 242, 242, 0.92)",
+                color: "#b91c1c",
+                fontSize: "0.95rem",
+              }}
+            >
+              {formError}
+            </div>
+          ) : null}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem", marginTop: "0.5rem" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              className="secondary-button"
+              disabled={isLoading}
+            >
               Hủy
             </button>
-            <button type="submit" className="primary-button" disabled={isLoading || !title.trim()}>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={isLoading || !title.trim() || !startDate || !dueDate}
+            >
               {isLoading ? "Đang tạo..." : "Tạo mới"}
             </button>
           </div>
         </form>
-      </div>
+      </section>
     </div>
   );
 }

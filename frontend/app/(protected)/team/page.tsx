@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { taskApi, userApi, workspaceApi } from "@/services/api";
+import { projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
 import { updateSessionCurrentUser } from "@/services/auth/session";
 import { useAuthSession } from "@/hooks/use-session";
+import { normalizeViewer } from "@/lib/mock/permissions";
 import type {
   EnrichedTask,
   PaginatedUsers,
@@ -27,13 +28,16 @@ const EMPTY_DIRECTORY: PaginatedUsers = {
   items: [],
   total: 0,
   page: 1,
-  pageSize: 8,
+  pageSize: 10,
   totalPages: 1,
 };
 
 export default function TeamPage() {
   const session = useAuthSession();
-  const currentActor = useMemo(() => session?.currentUser as UserProfile, [session?.currentUser]);
+  const currentActor = useMemo(
+    () => normalizeViewer(session?.currentUser as UserProfile),
+    [session?.currentUser],
+  );
   const [shellData, setShellData] = useState<WorkspaceShellData>({
     currentUser: currentActor,
     activeProjects: 0,
@@ -50,7 +54,7 @@ export default function TeamPage() {
   const [roleFilter, setRoleFilter] = useState<UserDirectoryFilters["role"]>("ALL");
   const [departmentFilter, setDepartmentFilter] =
     useState<UserDirectoryFilters["department"]>("ALL");
-  const [pageSize, setPageSize] = useState(8);
+  const [pageSize] = useState(10);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
@@ -72,16 +76,59 @@ export default function TeamPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const canManageUsers = currentActor.role === "ADMIN";
+  const [canAccessTeamPage, setCanAccessTeamPage] = useState<boolean | null>(
+    currentActor?.role === "ADMIN" ||
+      currentActor?.role === "MANAGER" ||
+      currentActor?.role === "LEADER"
+      ? true
+      : null,
+  );
+  const canManageUsers = currentActor?.role === "ADMIN";
   const router = useRouter();
 
   useEffect(() => {
-    if (!canManageUsers) {
-      router.push("/dashboard");
+    let isCancelled = false;
+
+    async function resolveTeamAccess() {
+      if (
+        currentActor.role === "ADMIN" ||
+        currentActor.role === "MANAGER" ||
+        currentActor.role === "LEADER"
+      ) {
+        setCanAccessTeamPage(true);
+        return;
+      }
+
+      try {
+        const { data: projects } = await projectApi.list(undefined, currentActor);
+        if (!isCancelled) {
+          setCanAccessTeamPage(projects.some((project) => project.managerId === currentActor.id));
+        }
+      } catch {
+        if (!isCancelled) {
+          setCanAccessTeamPage(false);
+        }
+      }
     }
-  }, [canManageUsers, router]);
+
+    void resolveTeamAccess();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentActor]);
 
   useEffect(() => {
+    if (canAccessTeamPage === false) {
+      router.push("/dashboard");
+    }
+  }, [canAccessTeamPage, router]);
+
+  useEffect(() => {
+    if (canAccessTeamPage !== true) {
+      return;
+    }
+
     let isCancelled = false;
     async function loadStaticData() {
       try {
@@ -115,9 +162,13 @@ export default function TeamPage() {
     return () => {
       isCancelled = true;
     };
-  }, [currentActor, reloadKey]);
+  }, [canAccessTeamPage, currentActor, reloadKey]);
 
   useEffect(() => {
+    if (canAccessTeamPage !== true) {
+      return;
+    }
+
     let isCancelled = false;
     async function loadDirectory() {
       try {
@@ -146,15 +197,15 @@ export default function TeamPage() {
     return () => {
       isCancelled = true;
     };
-  }, [currentActor, page, pageSize, reloadKey, roleFilter, departmentFilter, search, statusFilter]);
+  }, [canAccessTeamPage, currentActor, page, pageSize, reloadKey, roleFilter, departmentFilter, search, statusFilter]);
 
   const taskSummaryByUserId = useMemo(() => {
-    return taskBoard.reduce<Record<string, { total: number; open: number; blocked: number }>>(
+    return taskBoard.reduce<Record<string, { total: number; open: number; inProgress: number }>>(
       (summary, task) => {
-        const entry = summary[task.assigneeId] ?? { total: 0, open: 0, blocked: 0 };
+        const entry = summary[task.assigneeId] ?? { total: 0, open: 0, inProgress: 0 };
         entry.total += 1;
         if (task.status !== "DONE") entry.open += 1;
-        if (task.status === "BLOCKED") entry.blocked += 1;
+        if (task.status === "IN_PROGRESS") entry.inProgress += 1;
         summary[task.assigneeId] = entry;
         return summary;
       },
@@ -172,8 +223,8 @@ export default function TeamPage() {
   }, [allUsers, directory.items, selectedUserId]);
 
   const selectedUserTaskSummary = selectedUser
-    ? (taskSummaryByUserId[selectedUser.id] ?? { total: 0, open: 0, blocked: 0 })
-    : { total: 0, open: 0, blocked: 0 };
+    ? (taskSummaryByUserId[selectedUser.id] ?? { total: 0, open: 0, inProgress: 0 })
+    : { total: 0, open: 0, inProgress: 0 };
 
   function patchUser(updatedUser: UserProfile) {
     setAllUsers((current) =>

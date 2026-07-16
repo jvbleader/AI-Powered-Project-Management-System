@@ -12,7 +12,6 @@ import {
   categorizeTask,
   DEMO_TODAY,
   getProjectManager,
-  isPrivilegedUser,
   isTaskOverdue,
   normalizeViewer,
 } from "@/lib/mock/permissions";
@@ -22,9 +21,7 @@ import {
   formatHours,
   formatRange,
   healthToneLabel,
-  roleLabel,
   sprintStatusLabel,
-  taskPriorityLabel,
   taskStatusLabel,
 } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
@@ -54,18 +51,6 @@ function buildTaskKey(projectCode: string, totalTasks: number) {
   return `${projectCode.replace("FP-", "FP-")}-${suffix}`;
 }
 
-function boardStatus(task: EnrichedTask) {
-  if (task.status === "DONE") {
-    return "DONE";
-  }
-
-  if (task.status === "TODO") {
-    return "TODO";
-  }
-
-  return "IN_PROGRESS";
-}
-
 function canEditLogwork(viewer: UserProfile, entry: LogworkEntry) {
   return viewer.role !== "MEMBER" || entry.userId === viewer.id;
 }
@@ -73,7 +58,6 @@ function canEditLogwork(viewer: UserProfile, entry: LogworkEntry) {
 export default function SprintsPage() {
   const session = useAuthSession();
   const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
-  const canManage = isPrivilegedUser(viewer);
   const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "ALL">("ALL");
@@ -88,7 +72,6 @@ export default function SprintsPage() {
   const [logworkDate, setLogworkDate] = useState(DEMO_TODAY);
   const [logworkHours, setLogworkHours] = useState("2");
   const [logworkNote, setLogworkNote] = useState("");
-  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [pageState, setPageState] = useState<SprintPageState | null>(null);
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
   const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
@@ -139,6 +122,11 @@ export default function SprintsPage() {
     } satisfies WorkspaceShellData);
 
   const projectList = pageState?.projects ?? [];
+  const canManage =
+    viewer.role === "ADMIN" ||
+    viewer.role === "MANAGER" ||
+    viewer.role === "LEADER" ||
+    projectList.some((project) => project.managerId === viewer.id);
   const sprintList = pageState?.sprints ?? [];
   const taskList = pageState?.tasks ?? [];
   const users = pageState?.users ?? [];
@@ -435,16 +423,6 @@ export default function SprintsPage() {
       )
     : (selectedSprint?.progress ?? 0);
 
-  const boardColumns: Array<{
-    label: string;
-    key: "TODO" | "IN_PROGRESS" | "DONE";
-    status: TaskStatus;
-  }> = [
-    { label: "Cần làm", key: "TODO", status: "TODO" },
-    { label: "Đang tiến hành", key: "IN_PROGRESS", status: "IN_PROGRESS" },
-    { label: "Đã hoàn thành", key: "DONE", status: "DONE" },
-  ];
-
   return (
     <WorkspaceShell
       shellData={shellData}
@@ -612,8 +590,6 @@ export default function SprintsPage() {
                   <option value="ALL">Tất cả</option>
                   <option value="TODO">Cần thực hiện</option>
                   <option value="IN_PROGRESS">Đang xử lý</option>
-                  <option value="REVIEW">Chờ rà soát</option>
-                  <option value="BLOCKED">Đang vướng</option>
                   <option value="DONE">Hoàn thành</option>
                 </select>
               </label>

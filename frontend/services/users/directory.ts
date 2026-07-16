@@ -11,7 +11,7 @@ import type {
 } from "@/types";
 
 const STORAGE_KEY = "flowpilot-user-directory-v1";
-const DEFAULT_PAGE_SIZE = 8;
+const DEFAULT_PAGE_SIZE = 10;
 
 const ROLE_PRIORITY: Record<UserRole, number> = {
   ADMIN: 0,

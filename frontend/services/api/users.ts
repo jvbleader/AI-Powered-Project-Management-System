@@ -1,4 +1,5 @@
 import {
+  AdminResetPasswordPayload,
   AdminDeactivateUserPayload,
   ApiResponse,
   CreateUserPayload,
@@ -11,13 +12,13 @@ import {
   UserStatusUpdatePayload,
 } from "@/types";
 import { users } from "@/lib/mock/data";
-import { isPrivilegedUser, normalizeViewer } from "@/lib/mock/permissions";
 import {
   getDirectoryUsers,
   updateDirectoryProfile,
   updateDirectoryUserRoles,
   updateDirectoryUserStatus,
 } from "@/services/users/directory";
+import { normalizeViewer } from "@/lib/mock/permissions";
 import {
   apiEndpoints,
   BackendPaginatedUsers,
@@ -41,7 +42,11 @@ export const userApi = {
     }
   },
 
-  async resetPassword(payload: any, viewer?: UserProfile | null): Promise<ApiResponse<null>> {
+  async resetPassword(
+    payload: AdminResetPasswordPayload,
+    _viewer?: UserProfile | null,
+  ): Promise<ApiResponse<null>> {
+    void _viewer;
     try {
       await requestApi(apiEndpoints.users.resetPassword, {
         body: JSON.stringify({ email: payload.email, new_password: payload.newPassword }),
@@ -53,6 +58,7 @@ export const userApi = {
   },
 
   async list(viewer?: UserProfile | null): Promise<ApiResponse<UserProfile[]>> {
+    void viewer;
     try {
       const searchParams = new URLSearchParams();
       searchParams.append("page_size", "100");
@@ -60,16 +66,7 @@ export const userApi = {
       endpoint.path += `?${searchParams.toString()}`;
 
       const result = await requestApi<BackendPaginatedUsers>(endpoint);
-      const frontendItems = result.data.items.map(toFrontendUserProfile);
-
-      const currentViewer = normalizeViewer(viewer);
-      const visibleUsers = isPrivilegedUser(currentViewer)
-        ? frontendItems
-        : frontendItems.filter(
-            (user) => user.email.toLowerCase() === currentViewer.email.toLowerCase(),
-          );
-
-      return wrapBackendResponse(visibleUsers);
+      return wrapBackendResponse(result.data.items.map(toFrontendUserProfile));
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
     }
@@ -84,24 +81,25 @@ export const userApi = {
     filters?: UserDirectoryFilters,
     viewer?: UserProfile | null,
   ): Promise<ApiResponse<PaginatedUsers>> {
+    void viewer;
     const searchParams = new URLSearchParams();
     if (filters?.search) searchParams.append("search", filters.search);
     if (filters?.status && filters.status !== "ALL") searchParams.append("status", filters.status);
     if (filters?.role && filters.role !== "ALL") searchParams.append("role", filters.role);
     if (filters?.department && filters.department !== "ALL")
       searchParams.append("department", filters.department);
-    if (filters?.page) searchParams.append("page", filters.page.toString());
-    if (filters?.pageSize) searchParams.append("page_size", filters.pageSize.toString());
+    const requestedPage = filters?.page ?? 1;
+    const requestedPageSize = filters?.pageSize ?? 10;
+    searchParams.append("page", requestedPage.toString());
+    searchParams.append("page_size", requestedPageSize.toString());
 
     const endpoint = { ...apiEndpoints.users.list };
     endpoint.path += `?${searchParams.toString()}`;
 
     try {
       const result = await requestApi<BackendPaginatedUsers>(endpoint);
-      const frontendItems = result.data.items.map(toFrontendUserProfile);
-
       return wrapBackendResponse({
-        items: frontendItems,
+        items: result.data.items.map(toFrontendUserProfile),
         total: result.data.total,
         page: result.data.page,
         pageSize: result.data.pageSize,
@@ -146,8 +144,9 @@ export const userApi = {
 
   async updateStatus(
     payload: UserStatusUpdatePayload,
-    viewer?: UserProfile | null,
+    _viewer?: UserProfile | null,
   ): Promise<ApiResponse<UserProfile>> {
+    void _viewer;
     try {
       const result = await requestApi<BackendUserResponse>(
         apiEndpoints.users.updateStatus(payload.userId),
@@ -163,8 +162,9 @@ export const userApi = {
 
   async updateRoles(
     payload: UserRolesUpdatePayload,
-    viewer?: UserProfile | null,
+    _viewer?: UserProfile | null,
   ): Promise<ApiResponse<UserProfile>> {
+    void _viewer;
     try {
       const role = payload.roles.length > 0 ? payload.roles[0] : "MEMBER";
       const result = await requestApi<BackendUserResponse>(

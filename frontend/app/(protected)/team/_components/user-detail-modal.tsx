@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { StatusPill } from "@/components/ui";
-import { formatDateTime, roleLabel, userStatusLabel } from "@/lib/utils/format";
+import { roleLabel, userStatusLabel } from "@/lib/utils/format";
 import type { UserProfile, UserRole, UserStatus, Department } from "@/types";
 import styles from "../styles/team.module.css";
 
@@ -17,7 +17,7 @@ function getStatusTone(status: UserStatus) {
 interface UserDetailModalProps {
   user: UserProfile;
   departments: Department[];
-  taskSummary: { total: number; open: number; blocked: number };
+  taskSummary: { total: number; open: number; inProgress: number };
   canManageUsers: boolean;
   onClose: () => void;
   statusDraft: UserStatus;
@@ -128,8 +128,8 @@ export function UserDetailModal({
                 <strong>{taskSummary.open}</strong>
               </article>
               <article>
-                <span>Task blocked</span>
-                <strong>{taskSummary.blocked}</strong>
+                <span>Task đang tiến hành</span>
+                <strong>{taskSummary.inProgress}</strong>
               </article>
             </div>
           </section>

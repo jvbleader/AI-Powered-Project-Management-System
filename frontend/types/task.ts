@@ -2,7 +2,7 @@ import type { UserProfile } from "./user";
 import type { Project } from "./project";
 import type { Sprint } from "./sprint";
 
-export type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "BLOCKED" | "DONE";
+export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 export interface Task {

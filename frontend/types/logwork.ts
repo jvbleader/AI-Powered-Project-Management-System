@@ -10,6 +10,20 @@ export interface LogworkEntry {
   mood: WorklogMood;
 }
 
+export interface TaskLogworkEntry {
+  id: string;
+  taskId: string;
+  userId: string;
+  userName: string;
+  workDate: string;
+  hoursSpent: number;
+  workContent: string;
+  comment?: string;
+  progressPercent: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LogworkFilters {
   projectId?: string;
   userId?: string;

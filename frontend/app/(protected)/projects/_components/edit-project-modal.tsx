@@ -1,7 +1,8 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useEffectEvent, type FormEvent } from "react";
 import { roleLabel, projectRoleLabel } from "@/lib/utils/format";
 import type { UserProfile, Project } from "@/types";
 import { projectApi } from "@/services/api";
+import type { ProjectMemberResponse, ProjectRoleResponse } from "@/services/api/projects";
 import styles from "./create-project-modal.module.css";
 
 interface EditProjectModalProps {
@@ -18,7 +19,6 @@ export function EditProjectModal({
   isOpen,
   onClose,
   project,
-  viewerId,
   viewerRole,
   accessibleUsers,
   onProjectUpdated,
@@ -34,24 +34,37 @@ export function EditProjectModal({
   const [formError, setFormError] = useState<string | null>(null);
 
   // Members State
-  const [members, setMembers] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
+  const [members, setMembers] = useState<ProjectMemberResponse[]>([]);
+  const [roles, setRoles] = useState<ProjectRoleResponse[]>([]);
   const [newMemberId, setNewMemberId] = useState("");
   const [newMemberRole, setNewMemberRole] = useState("2");
   const [membersError, setMembersError] = useState<string | null>(null);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const extractErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error ? error.message : fallback;
+
+  const resolveMemberRoleId = (member: Pick<ProjectMemberResponse, "roleId" | "roleName">) =>
+    roles.find((role) => role.name === member.roleName)?.id ?? member.roleId;
+
+  const syncModalState = useEffectEvent(() => {
+    if (!project) return;
+
+    setEditName(project.name || "");
+    setEditDescription(project.description || "");
+    setEditStart(project.startDate || "");
+    setEditEnd(project.endDate || "");
+    setEditStatus(project.status || "ACTIVE");
+    setActiveTab("INFO");
+    setFormError(null);
+    setMembersError(null);
+    void loadMembersAndRoles();
+  });
 
   useEffect(() => {
     if (isOpen && project) {
-      setEditName(project.name || "");
-      setEditDescription(project.description || "");
-      setEditStart(project.startDate || "");
-      setEditEnd(project.endDate || "");
-      setEditStatus(project.status || "ACTIVE");
-      setActiveTab("INFO");
-      setFormError(null);
-      setMembersError(null);
-      loadMembersAndRoles();
+      queueMicrotask(() => {
+        syncModalState();
+      });
     }
   }, [isOpen, project]);
 
@@ -67,8 +80,8 @@ export function EditProjectModal({
       const loadedRoles = rolesRes.data || [];
       setRoles(loadedRoles);
       
-      const pmRoleObj = loadedRoles.find((r: any) => r.name === "PROJECT_MANAGER");
-      const firstValidRole = loadedRoles.find((r: any) => !pmRoleObj || r.id !== pmRoleObj.id);
+      const pmRoleObj = loadedRoles.find((role) => role.name === "PROJECT_MANAGER");
+      const firstValidRole = loadedRoles.find((role) => !pmRoleObj || role.id !== pmRoleObj.id);
       if (firstValidRole) {
         setNewMemberRole(firstValidRole.id.toString());
       }
@@ -76,8 +89,8 @@ export function EditProjectModal({
       if (accessibleUsers.length > 0) {
         setNewMemberId(accessibleUsers[0].id);
       }
-    } catch (err: any) {
-      setMembersError(err.message || "Không thể tải danh sách thành viên.");
+    } catch (error: unknown) {
+      setMembersError(extractErrorMessage(error, "Không thể tải danh sách thành viên."));
     } finally {
       setIsLoadingMembers(false);
     }
@@ -103,14 +116,14 @@ export function EditProjectModal({
       await projectApi.update(project!.id, {
         name: editName.trim(),
         description: editDescription.trim(),
-        status: editStatus as any,
+        status: editStatus as Project["status"],
         startDate: editStart,
         endDate: editEnd,
       });
       onProjectUpdated();
       onClose();
-    } catch (err: any) {
-      setFormError(err.message || "Cập nhật thất bại.");
+    } catch (error: unknown) {
+      setFormError(extractErrorMessage(error, "Cập nhật thất bại."));
     }
   }
 
@@ -121,8 +134,8 @@ export function EditProjectModal({
       await projectApi.addMember(project!.id, newMemberId, parseInt(newMemberRole));
       await loadMembersAndRoles();
       onProjectUpdated(); // Refresh project list to update member counts if needed
-    } catch (err: any) {
-      setMembersError(err.message || "Thêm thành viên thất bại.");
+    } catch (error: unknown) {
+      setMembersError(extractErrorMessage(error, "Thêm thành viên thất bại."));
     }
   }
 
@@ -132,8 +145,8 @@ export function EditProjectModal({
       await projectApi.updateMemberRole(project!.id, memberId, newRoleId);
       await loadMembersAndRoles();
       onProjectUpdated();
-    } catch (err: any) {
-      setMembersError(err.message || "Cập nhật vai trò thất bại.");
+    } catch (error: unknown) {
+      setMembersError(extractErrorMessage(error, "Cập nhật vai trò thất bại."));
     }
   }
 
@@ -143,8 +156,8 @@ export function EditProjectModal({
       await projectApi.removeMember(project!.id, memberId);
       await loadMembersAndRoles();
       onProjectUpdated();
-    } catch (err: any) {
-      setMembersError(err.message || "Xóa thành viên thất bại.");
+    } catch (error: unknown) {
+      setMembersError(extractErrorMessage(error, "Xóa thành viên thất bại."));
     }
   }
 
@@ -336,7 +349,7 @@ export function EditProjectModal({
                       <tr><td colSpan={4} style={{ padding: "16px", textAlign: "center" }}>Chưa có thành viên.</td></tr>
                     ) : (
                       members.map((m) => {
-                        const isPmRole = pmRole && m.roleId === pmRole.id;
+                        const isPmRole = m.roleName === "PROJECT_MANAGER";
                         const canEdit = viewerRole === "ADMIN" || (!isPmRole);
                         return (
                           <tr key={m.id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -346,7 +359,7 @@ export function EditProjectModal({
                               <select
                                 className={styles.inputControl}
                                 style={{ padding: "4px 8px", fontSize: "13px", height: "auto" }}
-                                value={m.roleId}
+                                value={resolveMemberRoleId(m)}
                                 disabled={!canEdit}
                                 onChange={(e) => handleUpdateRole(m.id, parseInt(e.target.value))}
                               >

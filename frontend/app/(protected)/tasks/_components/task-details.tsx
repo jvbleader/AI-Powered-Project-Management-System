@@ -1,10 +1,11 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Surface, StatusPill, StatCard } from "@/components/ui";
-import { taskPriorityLabel, taskStatusLabel, formatHours } from "@/lib/utils/format";
+import { formatHours, taskPriorityLabel, taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
 import type { EnrichedTask } from "@/types";
 import { LogworkModal } from "./logwork-modal";
 import { useRouter } from "next/navigation";
+import { taskApi } from "@/services/api";
 
 interface TaskDetailsProps {
   task: EnrichedTask;
@@ -20,7 +21,7 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
       <Surface title={task.title} kicker={`Nhiệm vụ: ${task.key} - Dự án: ${task.project.name}`}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1.5rem" }}>
           <div style={{ display: "flex", gap: "1rem" }}>
-            <StatusPill label={taskStatusLabel(task.status)} tone="neutral" />
+            <StatusPill label={taskStatusLabel(task.status)} tone={taskStatusTone(task.status)} />
             <StatusPill label={taskPriorityLabel(task.priority)} tone="accent" />
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -30,6 +31,24 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
               onClick={() => router.push("/tasks")}
             >
               Quay lại
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              style={{ color: "var(--critical-fg)", borderColor: "var(--critical-border)" }}
+              onClick={async () => {
+                if (confirm("Bạn có chắc chắn muốn xoá task này không?")) {
+                  try {
+                    await taskApi.remove(task.id);
+                    router.push("/tasks");
+                    router.refresh();
+                  } catch (e) {
+                    alert("Lỗi khi xoá task");
+                  }
+                }
+              }}
+            >
+              Xoá task
             </button>
             <button
               type="button"
@@ -46,7 +65,7 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
             label="Trạng thái"
             value={taskStatusLabel(task.status)}
             note={`Ngày hết hạn: ${task.dueDate}`}
-            tone="neutral"
+            tone={taskStatusTone(task.status)}
           />
           <StatCard
             label="Thời gian ước tính (ET)"

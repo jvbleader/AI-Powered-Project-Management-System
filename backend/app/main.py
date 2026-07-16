@@ -1,7 +1,7 @@
 from app.core.connection import Base, engine
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, projects, users
+from app.api import ai, auth, dashboard, projects, sprints, tasks, users
 
 app = FastAPI()
 
@@ -21,8 +21,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(projects.router)
-
-from app.api import tasks, sprints
+app.include_router(dashboard.router)
+app.include_router(ai.router)
 app.include_router(tasks.router)
 app.include_router(tasks.router_root)
 app.include_router(sprints.router)

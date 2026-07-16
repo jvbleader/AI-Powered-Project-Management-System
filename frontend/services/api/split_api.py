@@ -155,6 +155,10 @@ export function toRoleTitle(role: UserRole) {
     return "Project Manager";
   }
 
+  if (role === "LEADER") {
+    return "Team Lead";
+  }
+
   return "Team Member";
 }
 

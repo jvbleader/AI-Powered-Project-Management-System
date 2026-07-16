@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import (Column, Date, DateTime, ForeignKey, Integer, String,
+from sqlalchemy import (Boolean, Column, Date, DateTime, ForeignKey, Integer, String,
                         Text)
 
 from app.core.connection import Base
@@ -49,3 +49,4 @@ class ProjectMember(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
