@@ -382,17 +382,18 @@ export default function ProjectDetailPage() {
           users={state.users}
           viewerId={viewer.id}
           canManage={canManageCurrentProject}
-          onTaskUpdated={async (updatedTask) => {
-            const { data: dashboardOverview } = await dashboardApi
-              .getOverview(viewer, projectId)
-              .catch(() => ({ data: null as DashboardOverview | null }));
+          onTaskUpdated={async () => {
+            const [{ data: updatedTasks }, { data: dashboardOverview }] = await Promise.all([
+              taskApi.getEnrichedBoard({ projectId }, viewer),
+              dashboardApi
+                .getOverview(viewer, projectId)
+                .catch(() => ({ data: null as DashboardOverview | null })),
+            ]);
             setState((prev) =>
               prev
                 ? {
                     ...prev,
-                    tasks: prev.tasks.map((task) =>
-                      task.id === updatedTask.id ? { ...task, ...updatedTask } : task,
-                    ),
+                    tasks: updatedTasks,
                     dashboardOverview: dashboardOverview ?? prev.dashboardOverview,
                   }
                 : null,

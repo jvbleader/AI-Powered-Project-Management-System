@@ -173,6 +173,7 @@ class TaskResponse(TaskBase):
     updated_at: datetime
     key: Optional[str] = None  # Ví dụ: TASK-123
     assignees: List[TaskAssigneeResponse] = []
+    spent_hours: float = 0.0
 
     @field_validator("created_at", "updated_at", "completed_at")
     @classmethod

@@ -42,6 +42,8 @@ class DashboardTaskPreviewResponse(BaseModel):
     dueDate: Optional[date] = None
     assigneeName: Optional[str] = None
     sprintName: Optional[str] = None
+    projectId: Optional[int] = None
+    projectName: Optional[str] = None
 
 
 class DashboardWorkloadMemberResponse(BaseModel):
@@ -94,3 +96,26 @@ class DashboardOverviewResponse(BaseModel):
     activeTasks: List[DashboardTaskPreviewResponse] = Field(default_factory=list)
     workloadBoard: List[DashboardWorkloadMemberResponse] = Field(default_factory=list)
     recentLogwork: List[DashboardRecentLogworkResponse] = Field(default_factory=list)
+
+class ProjectHealthPreviewResponse(BaseModel):
+    id: int
+    name: str
+    code: str
+    status: str
+    progress: int = 0
+    totalTasks: int = 0
+    health: Literal["on-track", "watch", "critical"] = "on-track"
+
+
+class GlobalDashboardOverviewResponse(BaseModel):
+    totalProjects: int = 0
+    activeProjects: int = 0
+    completedProjects: int = 0
+    taskSummary: DashboardTaskSummaryResponse = Field(default_factory=DashboardTaskSummaryResponse)
+    globalWorkload: List[DashboardWorkloadMemberResponse] = Field(default_factory=list)
+    upcomingDeadlines: List[DashboardTaskPreviewResponse] = Field(default_factory=list)
+    overdueTasks: List[DashboardTaskPreviewResponse] = Field(default_factory=list)
+    completedTasks: List[DashboardTaskPreviewResponse] = Field(default_factory=list)
+    projectHealths: List[ProjectHealthPreviewResponse] = Field(default_factory=list)
+    activeSprints: List[DashboardSprintSummaryResponse] = Field(default_factory=list)
+    recentLogworks: List[DashboardRecentLogworkResponse] = Field(default_factory=list)

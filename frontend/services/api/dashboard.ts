@@ -53,6 +53,8 @@ function mapTaskPreview(item: BackendRecord): DashboardTaskPreview {
     dueDate: asOptionalString(item.dueDate),
     assigneeName: asOptionalString(item.assigneeName),
     sprintName: asOptionalString(item.sprintName),
+    projectId: item.projectId != null ? String(item.projectId) : null,
+    projectName: asString(item.projectName),
   };
 }
 
@@ -153,6 +155,57 @@ function mapDashboardOverview(data: unknown): DashboardOverview {
   };
 }
 
+function mapProjectHealthPreview(item: BackendRecord): import("@/types").ProjectHealthPreview {
+  return {
+    id: String(item.id ?? ""),
+    name: asString(item.name),
+    code: asString(item.code),
+    status: asString(item.status, "ACTIVE"),
+    progress: asNumber(item.progress),
+    totalTasks: asNumber(item.totalTasks),
+    health: (asString(item.health, "on-track") as import("@/types").ProjectHealthPreview["health"]),
+  };
+}
+
+function mapGlobalDashboardOverview(data: unknown): import("@/types").GlobalDashboardOverview {
+  const overview = asRecord(data);
+  const taskSummary = asRecord(overview.taskSummary);
+
+  return {
+    totalProjects: asNumber(overview.totalProjects),
+    activeProjects: asNumber(overview.activeProjects),
+    completedProjects: asNumber(overview.completedProjects),
+    taskSummary: {
+      todo: asNumber(taskSummary.todo),
+      inProgress: asNumber(taskSummary.inProgress),
+      done: asNumber(taskSummary.done),
+      total: asNumber(taskSummary.total),
+      overdue: asNumber(taskSummary.overdue),
+    },
+    globalWorkload: Array.isArray(overview.globalWorkload)
+      ? overview.globalWorkload.map((item) => mapWorkloadMember(asRecord(item)))
+      : [],
+    upcomingDeadlines: Array.isArray(overview.upcomingDeadlines)
+      ? overview.upcomingDeadlines.map((item) => mapTaskPreview(asRecord(item)))
+      : [],
+    overdueTasks: Array.isArray(overview.overdueTasks)
+      ? overview.overdueTasks.map((item) => mapTaskPreview(asRecord(item)))
+      : [],
+    completedTasks: Array.isArray(overview.completedTasks)
+      ? overview.completedTasks.map((item) => mapTaskPreview(asRecord(item)))
+      : [],
+    projectHealths: Array.isArray(overview.projectHealths)
+      ? overview.projectHealths.map((item) => mapProjectHealthPreview(asRecord(item)))
+      : [],
+    activeSprints: Array.isArray(overview.activeSprints)
+      ? overview.activeSprints.map((item) => mapSprintSummary(asRecord(item)))
+      : [],
+    recentLogworks: Array.isArray(overview.recentLogworks)
+      ? overview.recentLogworks.map((item) => mapRecentLogwork(asRecord(item)))
+      : [],
+  };
+}
+
 export const dashboardApi = {
   async getOverview(viewer?: UserProfile | null, projectId?: string) {
     void viewer;
@@ -172,6 +225,18 @@ export const dashboardApi = {
 
     return {
       data: mapDashboardOverview(response.data),
+      meta: response.meta,
+    };
+  },
+
+  async getGlobalOverview() {
+    const response = await requestApi<unknown>({
+      method: "GET",
+      path: "/api/dashboard/global-overview",
+    });
+
+    return {
+      data: mapGlobalDashboardOverview(response.data),
       meta: response.meta,
     };
   },

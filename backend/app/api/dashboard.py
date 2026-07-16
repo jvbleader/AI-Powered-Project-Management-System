@@ -6,6 +6,7 @@ from app.core.connection import get_db
 from app.models.user_model import User
 from app.schemas.dashboard_schema import DashboardOverviewResponse
 from app.services import dashboard_service
+from app.schemas.dashboard_schema import GlobalDashboardOverviewResponse
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
@@ -17,3 +18,12 @@ def get_dashboard_overview(
     current_user: User = Depends(get_current_user),
 ):
     return dashboard_service.get_dashboard_overview(db, current_user, project_id)
+
+
+@router.get("/global-overview")
+def get_global_overview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    
+    return dashboard_service.get_global_overview(db, current_user)

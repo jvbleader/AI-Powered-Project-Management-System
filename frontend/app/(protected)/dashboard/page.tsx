@@ -2,41 +2,34 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { ProjectScopeSelect } from "@/components/project-scope-select";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { useAuthSession } from "@/hooks/use-session";
 import { normalizeViewer } from "@/lib/mock/permissions";
-import { dashboardApi, projectApi } from "@/services/api";
-import type { DashboardOverview, Project, WorkspaceShellData } from "@/types";
-import { ProjectDashboardOverview } from "./_components/project-dashboard-overview";
+import { dashboardApi } from "@/services/api";
+import type { GlobalDashboardOverview as GlobalDashboardOverviewType, WorkspaceShellData } from "@/types";
+import { GlobalDashboardOverview } from "./_components/global-dashboard-overview";
 
 type DashboardState = {
-  overview: DashboardOverview;
-  projects: Project[];
+  overview: GlobalDashboardOverviewType;
 };
 
 export default function DashboardPage() {
   const session = useAuthSession();
   const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [dashboardState, setDashboardState] = useState<DashboardState | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
 
     async function loadDashboard() {
-      const { data: projects } = await projectApi.list(undefined, viewer);
-      const projectId = selectedProjectId ?? projects[0]?.id;
-      const { data: overview } = await dashboardApi.getOverview(viewer, projectId);
+      const { data: overview } = await dashboardApi.getGlobalOverview();
 
       if (isCancelled) {
         return;
       }
 
-      setSelectedProjectId(projectId ?? null);
       setDashboardState({
         overview,
-        projects,
       });
     }
 
@@ -45,55 +38,32 @@ export default function DashboardPage() {
     return () => {
       isCancelled = true;
     };
-  }, [selectedProjectId, viewer]);
+  }, [viewer]);
 
   const overview = dashboardState?.overview ?? null;
-  const projectList = dashboardState?.projects ?? [];
-  const selectedProject = overview?.project ?? null;
-  const selectedProjectValue = selectedProjectId ?? selectedProject?.id ?? "";
   const canManageScope =
     viewer.role === "ADMIN" ||
     viewer.role === "MANAGER" ||
-    viewer.role === "LEADER" ||
-    projectList.some((project) => project.managerId === viewer.id);
-  const missingLogwork =
-    overview?.workloadBoard.length
-      ? Math.max(
-          0,
-          overview.workloadBoard.length -
-            Math.round((overview.workloadBoard.length * overview.logworkCoverage) / 100),
-        )
-      : 0;
+    viewer.role === "LEADER";
+
   const shellData: WorkspaceShellData = {
     currentUser: viewer,
-    activeProjects: projectList.filter((project) => project.status === "ACTIVE").length,
-    openTasks: overview?.openTasksInScope ?? 0,
-    missingLogwork,
-    alertCount: overview?.criticalAlerts ?? 0,
+    activeProjects: overview?.activeProjects ?? 0,
+    openTasks: overview?.taskSummary.inProgress ?? 0,
+    missingLogwork: 0,
+    alertCount: overview?.taskSummary.overdue ?? 0,
   };
 
   return (
     <WorkspaceShell
       shellData={shellData}
-      heading="Dashboard dự án"
-      subheading="Tập trung vào chỉ số và biểu đồ quan trọng nhất."
+      heading="Tổng quan toàn bộ hệ thống"
+      subheading="Theo dõi tiến độ, rủi ro và khối lượng công việc của tất cả dự án."
       highlightLabel="Scope"
-      highlightValue={canManageScope ? "Management" : "Personal"}
-      assistantProjectId={selectedProjectValue || selectedProject?.id || null}
-      headerAction={
-        <ProjectScopeSelect
-          label="Dự án đang theo dõi"
-          value={selectedProjectValue}
-          onChange={(value) => setSelectedProjectId(value || null)}
-          disabled={!projectList.length}
-          options={projectList.map((project) => ({
-            value: project.id,
-            label: project.name,
-          }))}
-        />
-      }
+      highlightValue={canManageScope ? "Toàn Hệ Thống" : "Cá Nhân"}
+      assistantProjectId={null}
     >
-      <ProjectDashboardOverview overview={overview} />
+      <GlobalDashboardOverview overview={overview} />
     </WorkspaceShell>
   );
 }

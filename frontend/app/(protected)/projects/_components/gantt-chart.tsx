@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   differenceInDays,
   generateDateRange,
@@ -22,19 +22,21 @@ interface WbsNode {
 }
 
 const MIN_NAME_COL_WIDTH = 160;
-const DEFAULT_NAME_COL_WIDTH = 260;
+const DEFAULT_NAME_COL_WIDTH = 340;
 const STATUS_COL_WIDTH = 130;
 const PRIORITY_COL_WIDTH = 140;
 const ASSIGNEE_COL_WIDTH = 140;
 const START_COL_WIDTH = 110;
 const END_COL_WIDTH = 110;
+const ET_COL_WIDTH = 100;
 const DAY_COLUMN_WIDTH = 18;
 const FIXED_PANE_WIDTH =
   STATUS_COL_WIDTH +
   PRIORITY_COL_WIDTH +
   ASSIGNEE_COL_WIDTH +
   START_COL_WIDTH +
-  END_COL_WIDTH;
+  END_COL_WIDTH +
+  ET_COL_WIDTH;
 
 function getPriorityPresentation(priority: EnrichedTask["priority"]) {
   switch (priority) {
@@ -68,6 +70,9 @@ function getPriorityPresentation(priority: EnrichedTask["priority"]) {
 
 export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightTaskId = searchParams.get("highlightTaskId");
+  const highlightColor = searchParams.get("highlightColor") || "blue";
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [nameColWidth, setNameColWidth] = useState(DEFAULT_NAME_COL_WIDTH);
   const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
@@ -244,10 +249,14 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
 
       return (
         <React.Fragment key={node.task.id}>
-          <div className={rowClass}>
+          <div 
+            id={`gantt-row-${node.task.id}`}
+            className={`${rowClass} ${node.task.id === highlightTaskId ? (highlightColor === "red" ? styles.flashHighlightRed : highlightColor === "green" ? styles.flashHighlightGreen : styles.flashHighlightBlue) : ""}`}
+          >
             {/* Left Cell */}
             <div className={styles.ganttLeftCell} style={{ width: `${leftPaneWidth}px` }} onClick={() => handleRowClick(node.task.id)}>
-              <div className={styles.ganttLeftCol} style={{ width: `${nameColWidth}px`, paddingLeft: `${node.level * 18 + 8}px` }}>
+              <div className={styles.ganttLeftCol} style={{ width: `${nameColWidth}px` }}>
+                <div style={{ width: `${node.level * 28}px`, flexShrink: 0 }} />
                 {hasChildren ? (
                   <button className={styles.expandBtn} onClick={(e) => toggleExpand(node.task.id, e)}>
                     {ToggleIcon}
@@ -303,6 +312,11 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
                   {new Date(effectiveDueDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </span>
               </div>
+              <div className={styles.ganttLeftCol} style={{ width: `${ET_COL_WIDTH}px` }}>
+                <span className={styles.ganttMetaText} style={{ fontWeight: 500 }}>
+                  {node.task.spentHours || 0}h / {node.task.estimateHours || 0}h
+                </span>
+              </div>
             </div>
 
             {/* Right Cell */}
@@ -316,14 +330,50 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               }}
               onClick={() => handleRowClick(node.task.id)}
             >
-              <div
-                className={`${styles.ganttBar} ${priorityPresentation.barClass}`}
-                style={{
-                  gridColumnStart: startCol,
-                  gridColumnEnd: endCol,
-                }}
-                title={`Mức độ cấp thiết: ${priorityPresentation.label}`}
-              />
+              {hasChildren ? (
+                /* Summary Task (Parent) */
+                <div
+                  style={{
+                    gridColumnStart: startCol,
+                    gridColumnEnd: endCol,
+                    position: "relative",
+                    marginTop: "8px",
+                    height: "8px",
+                    backgroundColor: "#1a365d", /* Màu xanh đen đậm */
+                    zIndex: 2
+                  }}
+                  title={`[Hạng mục] ${node.task.title}`}
+                >
+                  <div style={{ position: "absolute", left: 0, top: "8px", width: 0, height: 0, borderLeft: "4px solid transparent", borderRight: "4px solid transparent", borderTop: "6px solid #1a365d" }} />
+                  <div style={{ position: "absolute", right: 0, top: "8px", width: 0, height: 0, borderLeft: "4px solid transparent", borderRight: "4px solid transparent", borderTop: "6px solid #1a365d" }} />
+                </div>
+              ) : (
+                /* Leaf Task (Child) */
+                <div
+                  className={`${styles.ganttBar} ${priorityPresentation.barClass}`}
+                  style={{
+                    gridColumnStart: startCol,
+                    gridColumnEnd: endCol,
+                    position: "relative",
+                    overflow: "hidden"
+                  }}
+                  title={`Mức độ cấp thiết: ${priorityPresentation.label}\nTiến độ: ${node.task.spentHours || 0}h / ${node.task.estimateHours || 0}h`}
+                >
+                  {(node.task.estimateHours || 0) > 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "25%",
+                        left: 0,
+                        height: "50%",
+                        width: `${Math.min(100, Math.round(((node.task.spentHours || 0) / node.task.estimateHours) * 100))}%`,
+                        background: "#1c4a7e",
+                        borderRight: "1px solid #102a47"
+                      }}
+                    />
+                  )}
+                </div>
+              )}
             </div>
           </div>
           {isExpanded && hasChildren && renderTree(node.children)}
@@ -331,6 +381,17 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
       );
     });
   };
+
+  useEffect(() => {
+    if (highlightTaskId) {
+      setTimeout(() => {
+        const el = document.getElementById(`gantt-row-${highlightTaskId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 500); // Wait a bit for layout to settle
+    }
+  }, [highlightTaskId, expanded]); // Also trigger if expanded state changes and task becomes visible
 
   if (tasks.length === 0) {
     return (
@@ -361,6 +422,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${ASSIGNEE_COL_WIDTH}px` }}>Người thực hiện</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${START_COL_WIDTH}px` }}>Bắt đầu</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${END_COL_WIDTH}px` }}>Kết thúc</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${ET_COL_WIDTH}px` }}>Tiến độ (ET)</div>
             </div>
             <div
               className={styles.ganttRightHeader}

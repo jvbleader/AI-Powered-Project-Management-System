@@ -38,6 +38,8 @@ export interface DashboardTaskPreview {
   dueDate?: string | null;
   assigneeName?: string | null;
   sprintName?: string | null;
+  projectId: string | null;
+  projectName: string | null;
 }
 
 export interface DashboardWorkloadMember {
@@ -98,4 +100,28 @@ export interface WorkspaceShellData {
   openTasks: number;
   missingLogwork: number;
   alertCount: number;
+}
+
+export interface ProjectHealthPreview {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+  progress: number;
+  totalTasks: number;
+  health: "on-track" | "watch" | "critical";
+}
+
+export interface GlobalDashboardOverview {
+  totalProjects: number;
+  activeProjects: number;
+  completedProjects: number;
+  taskSummary: DashboardTaskSummary;
+  globalWorkload: DashboardWorkloadMember[];
+  upcomingDeadlines: DashboardTaskPreview[];
+  overdueTasks: DashboardTaskPreview[];
+  completedTasks: DashboardTaskPreview[];
+  projectHealths: ProjectHealthPreview[];
+  activeSprints: DashboardSprintSummary[];
+  recentLogworks: DashboardRecentLogwork[];
 }

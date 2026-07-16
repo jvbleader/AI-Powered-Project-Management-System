@@ -79,7 +79,7 @@ function mapBackendTask(data: any): Task {
     startDate: data.start_date || data.created_at || "",
     dueDate: data.deadline || "",
     estimateHours: data.estimated_hours || 0,
-    spentHours: data.spentHours || 0, // Need backend logworks sum to get real spent hours, fallback 0
+    spentHours: data.spent_hours || data.spentHours || 0,
     tags: [],
     blockers: [],
     commentsCount: 0,

@@ -11,16 +11,18 @@ export function Surface({
   kicker,
   aside,
   className,
+  style,
   children,
 }: {
   title: string;
   kicker?: string;
   aside?: ReactNode;
   className?: string;
+  style?: React.CSSProperties;
   children: ReactNode;
 }) {
   return (
-    <section className={classNames("surface", className)}>
+    <section className={classNames("surface", className)} style={style}>
       <div className="surface-header">
         <div>
           {kicker ? <span className="kicker">{kicker}</span> : null}
@@ -224,6 +226,65 @@ export function MiniBars({
           {item.note ? <small>{item.note}</small> : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+import Link from "next/link";
+
+export function ColumnChart({
+  items,
+}: {
+  items: Array<{ label: string; value: number; tone?: "on-track" | "watch" | "critical"; href?: string }>;
+}) {
+  const max = Math.max(...items.map((item) => item.value), 100);
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: "1.5rem", height: "100%", minHeight: "250px", padding: "1rem 0", width: "100%", overflowX: "auto", borderBottom: "1px solid rgba(148,163,184,0.2)" }}>
+      {items.map((item) => {
+        const height = Math.max(2, (item.value / max) * 100);
+        const color = item.tone === "critical" ? "#ef4444" : item.tone === "watch" ? "#facc15" : "#22c55e";
+        
+        const content = (
+          <div key={item.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, minWidth: "80px", gap: "0.5rem", height: "100%", justifyContent: "flex-end" }}>
+            <span style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--ink)" }}>{item.value}%</span>
+            <div style={{ 
+              width: "100%", 
+              maxWidth: "48px", 
+              height: `${height}%`, 
+              minHeight: "4px",
+              backgroundColor: color, 
+              borderRadius: "6px 6px 0 0",
+              transition: "all 0.4s ease",
+              boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)"
+            }} title={item.label} />
+            <span style={{ 
+              fontSize: "0.75rem", 
+              textAlign: "center", 
+              color: "var(--foreground-muted)",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              width: "100%",
+              lineHeight: 1.2
+            }} title={item.label}>
+              {item.label}
+            </span>
+          </div>
+        );
+
+        if (item.href) {
+          return (
+            <Link key={item.label} href={item.href} style={{ textDecoration: "none", color: "inherit", flex: 1, display: "flex", height: "100%" }}>
+              {content}
+            </Link>
+          );
+        }
+
+        return content;
+      })}
     </div>
   );
 }

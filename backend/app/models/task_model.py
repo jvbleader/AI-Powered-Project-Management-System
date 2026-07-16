@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import (Column, Date, DateTime, ForeignKey, Integer, Numeric,
-                        String, Text)
+                        String, Text, func)
 
 from app.core.connection import Base
-
+from app.models.logworks import LogWork
+from sqlalchemy.orm import object_session
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -24,6 +25,14 @@ class Task(Base):
     completed_at = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    @property
+    def spent_hours(self) -> float:
+        session = object_session(self)
+        if not session:
+            return 0.0
+        total = session.query(func.sum(LogWork.hours_spent)).filter(LogWork.task_id == self.id).scalar()
+        return float(total or 0.0)
     
 class TaskAssignees(Base):
     __tablename__ = "task_assignees"
