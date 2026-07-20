@@ -268,7 +268,8 @@ export function ColumnChart({
               overflow: "hidden",
               textOverflow: "ellipsis",
               width: "100%",
-              lineHeight: 1.2
+              lineHeight: 1.2,
+              height: "2.4em"
             }} title={item.label}>
               {item.label}
             </span>

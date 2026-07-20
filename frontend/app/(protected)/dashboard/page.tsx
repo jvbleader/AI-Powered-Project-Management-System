@@ -5,6 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { useAuthSession } from "@/hooks/use-session";
 import { normalizeViewer } from "@/lib/mock/permissions";
+import {
+  canManageProjectsByRole,
+  hasCompanywideProjectAccess,
+  isAdminRole,
+} from "@/lib/utils/format";
 import { dashboardApi } from "@/services/api";
 import type { GlobalDashboardOverview as GlobalDashboardOverviewType, WorkspaceShellData } from "@/types";
 import { GlobalDashboardOverview } from "./_components/global-dashboard-overview";
@@ -41,10 +46,9 @@ export default function DashboardPage() {
   }, [viewer]);
 
   const overview = dashboardState?.overview ?? null;
-  const canManageScope =
-    viewer.role === "ADMIN" ||
-    viewer.role === "MANAGER" ||
-    viewer.role === "LEADER";
+  const isAdminViewer = isAdminRole(viewer.role);
+  const hasCompanywideAccess = hasCompanywideProjectAccess(viewer.role, viewer.department);
+  const canManageScope = canManageProjectsByRole(viewer.role, viewer.department);
 
   const shellData: WorkspaceShellData = {
     currentUser: viewer,
@@ -60,7 +64,15 @@ export default function DashboardPage() {
       heading="Tổng quan toàn bộ hệ thống"
       subheading="Theo dõi tiến độ, rủi ro và khối lượng công việc của tất cả dự án."
       highlightLabel="Scope"
-      highlightValue={canManageScope ? "Toàn Hệ Thống" : "Cá Nhân"}
+      highlightValue={
+        isAdminViewer
+          ? "Admin Helpdesk"
+          : hasCompanywideAccess
+            ? "Toàn công ty"
+            : canManageScope
+              ? "Dự án quản lý"
+              : "Cá nhân"
+      }
       assistantProjectId={null}
     >
       <GlobalDashboardOverview overview={overview} />

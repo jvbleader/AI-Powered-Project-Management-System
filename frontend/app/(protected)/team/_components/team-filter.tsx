@@ -1,10 +1,9 @@
 import { Surface } from "@/components/ui";
 
 import { roleLabel, userStatusLabel } from "@/lib/utils/format";
-import type { UserDirectoryFilters, UserRole, UserStatus } from "@/types";
+import { SYSTEM_ROLE_OPTIONS, type UserDirectoryFilters, type UserStatus } from "@/types";
 import styles from "../styles/team.module.css";
 
-const ROLE_OPTIONS: UserRole[] = ["ADMIN", "MANAGER", "LEADER", "MEMBER"];
 const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INACTIVE"];
 
 interface TeamFilterProps {
@@ -17,6 +16,8 @@ interface TeamFilterProps {
   departmentFilter: UserDirectoryFilters["department"];
   onDepartmentFilterChange: (value: UserDirectoryFilters["department"]) => void;
   departments: { id: number; name: string }[];
+  canFilterDepartment?: boolean;
+  currentDepartment?: string;
 }
 
 export function TeamFilter({
@@ -29,6 +30,8 @@ export function TeamFilter({
   departmentFilter,
   onDepartmentFilterChange,
   departments,
+  canFilterDepartment = true,
+  currentDepartment = "",
 }: TeamFilterProps) {
   return (
     <Surface title="Bộ lọc danh sách" kicker="Search & Pagination" className={styles.filterSurface}>
@@ -68,7 +71,7 @@ export function TeamFilter({
             }
           >
             <option value="ALL">Tất cả vai trò</option>
-            {ROLE_OPTIONS.map((role) => (
+            {SYSTEM_ROLE_OPTIONS.map((role) => (
               <option key={role} value={role}>
                 {roleLabel(role)}
               </option>
@@ -78,20 +81,33 @@ export function TeamFilter({
 
         <label className={styles.filterField}>
           <span>Phòng ban</span>
-          <select
-            value={departmentFilter ?? "ALL"}
-            onChange={(event) =>
-              onDepartmentFilterChange(event.target.value as UserDirectoryFilters["department"])
-            }
-          >
-            <option value="ALL">Tất cả phòng ban</option>
-            <option value="UNASSIGNED">Chưa cập nhật phòng ban</option>
-            {departments.map((dept) => (
-              <option key={dept.id} value={dept.name}>
-                {dept.name}
-              </option>
-            ))}
-          </select>
+          {canFilterDepartment ? (
+            <select
+              value={departmentFilter ?? "ALL"}
+              onChange={(event) =>
+                onDepartmentFilterChange(event.target.value as UserDirectoryFilters["department"])
+              }
+            >
+              <option value="ALL">Tất cả phòng ban</option>
+              <option value="UNASSIGNED">Chưa cập nhật phòng ban</option>
+              {departments.map((dept) => (
+                <option key={dept.id} value={dept.name}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={currentDepartment || "Chưa cập nhật phòng ban"}
+              disabled
+              style={{
+                backgroundColor: "var(--surface-sunken)",
+                color: "var(--ink-light)",
+                cursor: "not-allowed",
+              }}
+            />
+          )}
         </label>
       </div>
     </Surface>

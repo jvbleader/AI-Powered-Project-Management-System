@@ -376,6 +376,7 @@ export const taskApi = {
       workContent: item.work_content || "",
       comment: item.comment || "",
       progressPercent: Number(item.progress_percent || 0),
+      status: item.status || "PENDING",
       createdAt: item.created_at,
       updatedAt: item.updated_at,
     }));
@@ -417,6 +418,7 @@ export const taskApi = {
         workContent: item.work_content || "",
         comment: item.comment || "",
         progressPercent: Number(item.progress_percent || 0),
+        status: item.status || "PENDING",
         createdAt: item.created_at,
         updatedAt: item.updated_at,
       },

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRef, useState, type ChangeEvent } from "react";
 import { StatusPill } from "@/components/ui";
+import { hasCompanywideProjectAccess, isAdminRole, isLeaderRole, isManagerRole, roleLabel } from "@/lib/utils/format";
 import { userApi } from "@/services/api";
 import { storeUserAvatar } from "@/lib/utils/avatar";
 import type { UserProfile } from "@/types";
@@ -16,6 +17,13 @@ interface ProfileHeroProps {
 export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
+  const roleTone = isAdminRole(user.role)
+    ? "critical"
+    : hasCompanywideProjectAccess(user.role, user.department)
+      ? "on-track"
+      : isManagerRole(user.role) || isLeaderRole(user.role)
+        ? "accent"
+        : "neutral";
 
   function handleSelectAvatar() {
     setAvatarNotice(null);
@@ -108,8 +116,8 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
         <span className={styles.heroEmail}>{user.email}</span>
         <div className={styles.heroBadges}>
           <StatusPill
-            label={user.role === "ADMIN" ? "Admin" : "Member"}
-            tone={user.role === "ADMIN" ? "critical" : "accent"}
+            label={roleLabel(user.role)}
+            tone={roleTone}
           />
           <StatusPill
             label={user.isActive ? "Hoạt động" : "Tạm dừng"}

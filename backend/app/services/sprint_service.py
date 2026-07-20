@@ -3,15 +3,47 @@ from sqlalchemy.orm import Session
 
 from app.repositories import sprint_repository
 from app.schemas.sprint_schema import SprintCreate, SprintUpdate
-from app.utils.project_helpers import user_can_manage_project
+from app.utils.project_helpers import (
+    user_can_manage_project,
+    has_companywide_project_access,
+    list_accessible_project_ids,
+    list_managed_project_ids
+)
 from app.services.task_service import (
     _get_or_create_actor_member,
     _require_project_access,
+    _get_current_user
 )
 
 def list_sprints(db: Session, project_id: int, current_user_id: int):
     _require_project_access(db, project_id, current_user_id)
-    return sprint_repository.list_sprints(db, project_id)
+    return sprint_repository.list_sprints(db, project_id=project_id)
+
+def list_accessible_sprints(db: Session, current_user_id: int, project_id: int | None = None):
+    if project_id is not None:
+        return list_sprints(db, project_id, current_user_id)
+
+    user = _get_current_user(db, current_user_id)
+    accessible_project_ids = list_accessible_project_ids(db, user)
+    if not accessible_project_ids:
+        return []
+
+    if has_companywide_project_access(user):
+        return sprint_repository.list_sprints(
+            db,
+            project_ids_subquery=accessible_project_ids,
+        )
+
+    managed_project_ids = set(list_managed_project_ids(db, user))
+    if not managed_project_ids:
+        return sprint_repository.list_sprints(
+            db,
+            project_ids_subquery=accessible_project_ids,
+        )
+    return sprint_repository.list_sprints(
+        db,
+        project_ids_subquery=accessible_project_ids,
+    )
 
 def create_sprint(db: Session, project_id: int, current_user_id: int, sprint_in: SprintCreate):
     current_user = _require_project_access(db, project_id, current_user_id)

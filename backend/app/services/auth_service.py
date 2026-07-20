@@ -1,4 +1,8 @@
 import uuid
+import time
+
+from app.core.redis_client import redis_client
+from app.utils.jwt_handler import ACCESS_TOKEN_EXPIRE_MINUTES
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -65,13 +69,36 @@ def refresh_tokens(db: Session, refresh_token: str) -> dict:
     }
 
 
-def logout_user(db: Session, refresh_token: str | None) -> None:
+def logout_user(db: Session, refresh_token: str | None, access_token: str | None = None) -> None:
     if refresh_token:
         refresh_token_repository.revoke_token(db, refresh_token)
+    
+    if access_token:
+        try:
+            redis_client.setex(
+                f"blacklist_token:{access_token}", 
+                ACCESS_TOKEN_EXPIRE_MINUTES * 60, 
+                "true"
+            )
+        except Exception:
+            pass
 
 
-def logout_all_devices(db: Session, user_id: int) -> None:
+def logout_all_devices(db: Session, user_id: int, access_token: str | None = None) -> None:
     refresh_token_repository.revoke_all_for_user(db, user_id)
+    
+    try:
+        current_timestamp = int(time.time())
+        redis_client.set(f"user:{user_id}:logout_all", current_timestamp)
+        
+        if access_token:
+            redis_client.setex(
+                f"blacklist_token:{access_token}", 
+                ACCESS_TOKEN_EXPIRE_MINUTES * 60, 
+                "true"
+            )
+    except Exception:
+        pass
 
 
 def change_user_password(

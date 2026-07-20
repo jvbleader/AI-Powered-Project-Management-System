@@ -1,7 +1,11 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState, ProgressBar, StatusPill, Surface } from "@/components/ui";
-import { formatRange, projectStatusLabel } from "@/lib/utils/format";
+import {
+  formatRange,
+  hasCompanywideProjectAccess,
+  projectStatusLabel,
+} from "@/lib/utils/format";
 import type { Project } from "@/types";
 import styles from "../../team/styles/team.module.css";
 
@@ -12,6 +16,7 @@ interface ProjectListProps {
   canManage: boolean;
   viewerId: string;
   viewerRole: string;
+  viewerDepartment?: string;
   onAddProjectClick?: () => void;
   onEditProjectClick?: (project: Project) => void;
 }
@@ -25,6 +30,7 @@ export function ProjectList({
   canManage,
   viewerId,
   viewerRole,
+  viewerDepartment,
   onAddProjectClick,
   onEditProjectClick,
 }: ProjectListProps) {
@@ -53,14 +59,11 @@ export function ProjectList({
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PROJECTS_PER_PAGE));
   const validPage = Math.min(page, totalPages);
   const canEditProject = (project: Project) => {
-    if (viewerRole === "ADMIN" || project.managerId === viewerId) {
+    if (hasCompanywideProjectAccess(viewerRole, viewerDepartment) || project.managerId === viewerId) {
       return true;
     }
 
-    return (
-      (viewerRole === "MANAGER" || viewerRole === "LEADER") &&
-      project.memberIds.includes(viewerId)
-    );
+    return false;
   };
   
   const paginatedProjects = filteredProjects.slice(
@@ -82,25 +85,80 @@ export function ProjectList({
       }
     >
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", gap: "1rem", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: "0.5rem", flex: 1, minWidth: "250px" }}>
-          <input
-            type="text"
-            placeholder="Tìm kiếm dự án..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)", flex: 1 }}
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="ACTIVE">Đang triển khai</option>
-            <option value="PLANNING">Đang lập kế hoạch</option>
-            <option value="AT_RISK">Rủi ro trễ hạn</option>
-            <option value="COMPLETED">Đã hoàn thành</option>
-          </select>
+        <div style={{ display: "flex", gap: "0.75rem", flex: 1, minWidth: "250px" }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <div style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--foreground-muted)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Tìm kiếm dự án..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.6rem 1rem 0.6rem 2.5rem",
+                borderRadius: "9999px",
+                border: "1px solid var(--border)",
+                background: "var(--surface-sunken)",
+                color: "var(--foreground)",
+                fontSize: "0.875rem",
+                outline: "none",
+                transition: "border-color 0.2s ease, box-shadow 0.2s ease"
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "var(--primary)";
+                e.target.style.boxShadow = "0 0 0 2px rgba(var(--primary-rgb), 0.2)";
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = "var(--border)";
+                e.target.style.boxShadow = "none";
+              }}
+            />
+          </div>
+          <div style={{ position: "relative", minWidth: "180px" }}>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                appearance: "none",
+                width: "100%",
+                padding: "0.6rem 2.5rem 0.6rem 1.25rem",
+                borderRadius: "9999px",
+                border: "1px solid var(--border)",
+                background: "var(--surface-sunken)",
+                color: "var(--foreground)",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                outline: "none",
+                transition: "border-color 0.2s ease, box-shadow 0.2s ease"
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "var(--primary)";
+                e.target.style.boxShadow = "0 0 0 2px rgba(var(--primary-rgb), 0.2)";
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = "var(--border)";
+                e.target.style.boxShadow = "none";
+              }}
+            >
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value="ACTIVE">Đang triển khai</option>
+              <option value="PLANNING">Đang lập kế hoạch</option>
+              <option value="AT_RISK">Rủi ro trễ hạn</option>
+              <option value="COMPLETED">Đã hoàn thành</option>
+              <option value="ON_HOLD">Tạm dừng</option>
+            </select>
+            <div style={{ position: "absolute", right: "14px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--foreground-muted)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </div>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <button
@@ -146,6 +204,7 @@ export function ProjectList({
                     <th>Dự án</th>
                     <th>Mã dự án</th>
                     <th>Trạng thái</th>
+                    <th>Phòng ban</th>
                     <th style={{ width: "25%" }}>Tiến độ</th>
                     <th>Thời gian</th>
                     <th />
@@ -169,7 +228,7 @@ export function ProjectList({
                           <span className={styles.userCellCopy}>
                             <strong>{project.name}</strong>
                             <small>
-                              Người quản lý: {project.managerName || "Chưa rõ"}
+                              Manager: {project.managerName || "Chưa rõ"}
                             </small>
                           </span>
                         </button>
@@ -185,10 +244,13 @@ export function ProjectList({
                                 ? "watch"
                                 : project.status === "AT_RISK"
                                   ? "critical"
-                                  : "on-track"
+                                  : project.status === "ON_HOLD"
+                                    ? "neutral"
+                                    : "on-track"
                           }
                         />
                       </td>
+                      <td>{project.departmentName || "---"}</td>
                       <td>
                         <ProgressBar value={project.progress} label="Tiến độ triển khai" />
                       </td>
@@ -261,7 +323,8 @@ export function ProjectList({
                     />
                   </div>
                   <div>
-                    <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Quản lý: {project.managerName || "Chưa rõ"}</p>
+                    <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Phòng ban: {project.departmentName || "Chưa rõ"}</p>
+                    <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Manager: {project.managerName || "Chưa rõ"}</p>
                     <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Thời gian: {formatRange(project.startDate, project.endDate)}</p>
                   </div>
                   <div style={{ marginTop: "auto" }}>

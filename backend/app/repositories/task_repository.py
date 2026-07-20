@@ -3,7 +3,7 @@ from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
-from app.models.task_model import Task, TaskAssignees, TaskComment
+from app.models.task_model import Task, TaskAssignees, TaskAttachment
 from app.models.logworks import LogWork
 from app.models.project_model import ProjectMember
 from app.models.user_model import User
@@ -15,6 +15,9 @@ def _active_project_member_filter():
 
 def get_task_by_id(db: Session, task_id: int) -> Optional[Task]:
     return db.query(Task).filter(Task.id == task_id).first()
+
+def get_tasks_by_parent_id(db: Session, parent_id: int) -> List[Task]:
+    return db.query(Task).filter(Task.parent_task_id == parent_id).all()
 
 def list_tasks(
     db: Session,
@@ -69,7 +72,7 @@ def update_task(db: Session, task: Task, update_data: dict) -> Task:
 
 def delete_task(db: Session, task: Task) -> None:
     db.query(TaskAssignees).filter(TaskAssignees.task_id == task.id).delete()
-    db.query(TaskComment).filter(TaskComment.task_id == task.id).delete()
+    db.query(TaskAttachment).filter(TaskAttachment.task_id == task.id).delete()
     db.query(LogWork).filter(LogWork.task_id == task.id).delete()
     db.query(Task).filter(Task.parent_task_id == task.id).update({"parent_task_id": None})
     db.delete(task)
@@ -134,14 +137,14 @@ def remove_task_assignee(db: Session, task_id: int, project_member_id: int) -> N
         db.flush()
 
 # --- Comments ---
-def list_task_comments(db: Session, task_id: int) -> List[TaskComment]:
-    return db.query(TaskComment).filter(TaskComment.task_id == task_id).order_by(TaskComment.created_at).all()
+def list_task_attachments(db: Session, task_id: int) -> List[TaskAttachment]:
+    return db.query(TaskAttachment).filter(TaskAttachment.task_id == task_id).order_by(TaskAttachment.created_at).all()
 
-def create_task_comment(db: Session, comment_data: dict) -> TaskComment:
-    comment = TaskComment(**comment_data)
-    db.add(comment)
+def create_task_attachment(db: Session, attachment_data: dict) -> TaskAttachment:
+    attachment = TaskAttachment(**attachment_data)
+    db.add(attachment)
     db.flush()
-    return comment
+    return attachment
 
 # --- Logworks ---
 def list_task_logworks(db: Session, task_id: int) -> List[LogWork]:

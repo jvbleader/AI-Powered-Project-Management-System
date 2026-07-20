@@ -7,11 +7,12 @@ type TaskCardProps = {
   task: EnrichedTask;
   onClick: () => void;
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
+  onDragEnd?: (event: React.DragEvent<HTMLElement>) => void;
 };
 
-export function TaskCard({ task, onClick, onDragStart }: TaskCardProps) {
+export function TaskCard({ task, onClick, onDragStart, onDragEnd }: TaskCardProps) {
   return (
-    <article className="task-card" draggable onDragStart={onDragStart} onClick={onClick}>
+    <article className="task-card" draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}>
       <div className="task-topline">
         <strong>{task.key}</strong>
         <StatusPill

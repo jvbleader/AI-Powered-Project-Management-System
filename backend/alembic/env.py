@@ -18,7 +18,7 @@ from app.models.logworks import LogWork
 from app.models.project_model import Project, ProjectMember, Role
 from app.models.refresh_token_model import RefreshToken
 from app.models.sprint_model import Sprint
-from app.models.task_model import Task, TaskAssignees
+from app.models.task_model import Task, TaskAssignees, TaskAttachment
 from app.models.user_model import User
 
 config = context.config

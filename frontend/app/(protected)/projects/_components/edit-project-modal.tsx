@@ -1,8 +1,9 @@
 import { useState, useEffect, useEffectEvent, type FormEvent } from "react";
 import { roleLabel, projectRoleLabel } from "@/lib/utils/format";
 import type { UserProfile, Project } from "@/types";
-import { projectApi } from "@/services/api";
+import { projectApi, userApi } from "@/services/api";
 import type { ProjectMemberResponse, ProjectRoleResponse } from "@/services/api/projects";
+import { Department } from "@/types/user";
 import styles from "./create-project-modal.module.css";
 
 interface EditProjectModalProps {
@@ -23,6 +24,7 @@ export function EditProjectModal({
   accessibleUsers,
   onProjectUpdated,
 }: EditProjectModalProps) {
+  void viewerRole;
   const [activeTab, setActiveTab] = useState<"INFO" | "MEMBERS">("INFO");
   
   // Info State
@@ -31,7 +33,10 @@ export function EditProjectModal({
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
   const [editStatus, setEditStatus] = useState("ACTIVE");
+  const [editDepartmentId, setEditDepartmentId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [departments, setDepartments] = useState<Department[]>([]);
 
   // Members State
   const [members, setMembers] = useState<ProjectMemberResponse[]>([]);
@@ -54,6 +59,7 @@ export function EditProjectModal({
     setEditStart(project.startDate || "");
     setEditEnd(project.endDate || "");
     setEditStatus(project.status || "ACTIVE");
+    setEditDepartmentId(project.departmentId ? String(project.departmentId) : "");
     setActiveTab("INFO");
     setFormError(null);
     setMembersError(null);
@@ -65,6 +71,9 @@ export function EditProjectModal({
       queueMicrotask(() => {
         syncModalState();
       });
+      userApi.getDepartments().then(res => {
+        setDepartments(res.data);
+      }).catch(console.error);
     }
   }, [isOpen, project]);
 
@@ -119,6 +128,7 @@ export function EditProjectModal({
         status: editStatus as Project["status"],
         startDate: editStart,
         endDate: editEnd,
+        departmentId: parseInt(editDepartmentId, 10),
       });
       onProjectUpdated();
       onClose();
@@ -165,8 +175,6 @@ export function EditProjectModal({
   const availableUsersToAdd = accessibleUsers.filter(
     (u) => !members.some((m) => m.userId.toString() === u.id.replace("usr-", ""))
   );
-
-  const pmRole = roles.find((r) => r.name === "PROJECT_MANAGER");
 
   return (
     <div className={styles.modalBackdrop} role="presentation" onMouseDown={onClose}>
@@ -244,6 +252,23 @@ export function EditProjectModal({
                     <option value="PLANNING">Đang lập kế hoạch</option>
                     <option value="AT_RISK">Rủi ro trễ hạn</option>
                     <option value="COMPLETED">Đã hoàn thành</option>
+                    <option value="ON_HOLD">Tạm dừng</option>
+                  </select>
+                </div>
+                <div className={styles.inputGroup}>
+                  <label>Phòng ban phụ trách</label>
+                  <select
+                    className={styles.inputControl}
+                    value={editDepartmentId}
+                    onChange={(event) => setEditDepartmentId(event.target.value)}
+                    required
+                  >
+                    <option value="" disabled>-- Chọn phòng ban --</option>
+                    {departments.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className={`${styles.inputGroup} ${styles.fullWidth}`}>
@@ -312,11 +337,11 @@ export function EditProjectModal({
                     value={newMemberRole}
                     onChange={(e) => setNewMemberRole(e.target.value)}
                   >
-                    {roles.map(r => {
-                      const isPmRole = pmRole && r.id === pmRole.id;
-                      if (isPmRole && viewerRole !== "ADMIN") return null;
-                      return <option key={r.id} value={r.id}>{projectRoleLabel(r.name)}</option>;
-                    })}
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {projectRoleLabel(r.name)}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <button
@@ -349,8 +374,7 @@ export function EditProjectModal({
                       <tr><td colSpan={4} style={{ padding: "16px", textAlign: "center" }}>Chưa có thành viên.</td></tr>
                     ) : (
                       members.map((m) => {
-                        const isPmRole = m.roleName === "PROJECT_MANAGER";
-                        const canEdit = viewerRole === "ADMIN" || (!isPmRole);
+                        const canEdit = true;
                         return (
                           <tr key={m.id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                             <td style={{ padding: "12px", fontSize: "14px" }}><strong>{m.userName}</strong></td>
@@ -363,11 +387,11 @@ export function EditProjectModal({
                                 disabled={!canEdit}
                                 onChange={(e) => handleUpdateRole(m.id, parseInt(e.target.value))}
                               >
-                                {roles.map(r => {
-                                  const rIsPmRole = pmRole && r.id === pmRole.id;
-                                  if (rIsPmRole && viewerRole !== "ADMIN" && !isPmRole) return null; // PM can't promote to PM
-                                  return <option key={r.id} value={r.id}>{projectRoleLabel(r.name)}</option>;
-                                })}
+                                {roles.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {projectRoleLabel(r.name)}
+                                  </option>
+                                ))}
                               </select>
                             </td>
                             <td style={{ padding: "12px", textAlign: "right" }}>

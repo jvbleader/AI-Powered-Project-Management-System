@@ -2803,7 +2803,7 @@ p {
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
-  padding: 26px 28px;
+  padding: 26px 28px 104px 28px;
   background: rgba(15, 23, 42, 0.04);
 }
 
@@ -3395,4 +3395,19 @@ p {
   .employee-form-grid {
     grid-template-columns: 1fr;
   }
+}
+
+@keyframes flashOutlineGreen {
+  0% {
+    outline: 4px solid rgba(34, 197, 94, 0.8);
+    outline-offset: 2px;
+  }
+  100% {
+    outline: 4px solid transparent;
+    outline-offset: 2px;
+  }
+}
+
+.highlight-flash {
+  animation: flashOutlineGreen 2.5s ease-out forwards;
 }

@@ -20,6 +20,7 @@ import {
   formatDateTime,
   formatHours,
   formatRange,
+  hasCompanywideProjectAccess,
   healthToneLabel,
   sprintStatusLabel,
   taskStatusLabel,
@@ -51,8 +52,12 @@ function buildTaskKey(projectCode: string, totalTasks: number) {
   return `${projectCode.replace("FP-", "FP-")}-${suffix}`;
 }
 
-function canEditLogwork(viewer: UserProfile, entry: LogworkEntry) {
-  return viewer.role !== "MEMBER" || entry.userId === viewer.id;
+function canEditLogwork(viewer: UserProfile, entry: LogworkEntry, project?: Project | null) {
+  return (
+    entry.userId === viewer.id ||
+    hasCompanywideProjectAccess(viewer.role, viewer.department) ||
+    project?.managerId === viewer.id
+  );
 }
 
 export default function SprintsPage() {
@@ -75,6 +80,7 @@ export default function SprintsPage() {
   const [pageState, setPageState] = useState<SprintPageState | null>(null);
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
   const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
+
 
   useEffect(() => {
     let isCancelled = false;
@@ -122,11 +128,8 @@ export default function SprintsPage() {
     } satisfies WorkspaceShellData);
 
   const projectList = pageState?.projects ?? [];
-  const canManage =
-    viewer.role === "ADMIN" ||
-    viewer.role === "MANAGER" ||
-    viewer.role === "LEADER" ||
-    projectList.some((project) => project.managerId === viewer.id);
+  const hasCompanywideAccess = hasCompanywideProjectAccess(viewer.role, viewer.department);
+  const canManage = hasCompanywideAccess || projectList.some((project) => project.managerId === viewer.id);
   const sprintList = pageState?.sprints ?? [];
   const taskList = pageState?.tasks ?? [];
   const users = pageState?.users ?? [];
@@ -136,6 +139,9 @@ export default function SprintsPage() {
     sprintList.find((sprint) => sprint.id === selectedSprintId) ?? sprintList[0] ?? null;
   const selectedProject =
     projectList.find((project) => project.id === selectedSprint?.projectId) ?? null;
+  const canManageSelectedProject = Boolean(
+    selectedProject && (hasCompanywideAccess || selectedProject.managerId === viewer.id),
+  );
 
   const sprintTasks = selectedSprint
     ? taskList.filter((task) => task.sprintId === selectedSprint.id)
@@ -161,6 +167,37 @@ export default function SprintsPage() {
     ? entries.filter((entry) => entry.taskId === selectedTask.id)
     : [];
   const activeTaskId = selectedTask?.id ?? null;
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadLogworks() {
+      if (!selectedTask) return;
+      try {
+        const res = await taskApi.listLogworks(selectedTask.id, viewer);
+        if (!isCancelled && res.data) {
+          const formatted: LogworkEntry[] = res.data.map(d => ({
+            id: d.id,
+            taskId: d.taskId,
+            userId: d.userId,
+            date: d.workDate,
+            hours: d.hoursSpent,
+            note: d.workContent,
+            mood: "smooth",
+            status: d.status,
+          }));
+          setPageState(prev => prev ? {...prev, entries: formatted} : null);
+        }
+      } catch (e) {
+        console.error("Failed to load logworks", e);
+      }
+    }
+    loadLogworks();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedTask?.id, viewer]);
 
   useEffect(() => {
     if (!activeTaskId) {
@@ -229,8 +266,7 @@ export default function SprintsPage() {
       return;
     }
 
-    const created = await sprintApi.create({
-      projectId: data.projectId,
+    const created = await sprintApi.create(data.projectId, {
       name: data.name.trim(),
       goal: data.goal.trim(),
       status: "PLANNED",
@@ -363,22 +399,34 @@ export default function SprintsPage() {
     }
 
     if (editingLogworkId) {
-      await logworkApi.update(editingLogworkId, {
-        date: logworkDate,
-        hours: Number(logworkHours),
-        note: logworkNote.trim(),
-      });
-      setNotice("Đã cập nhật logwork.");
+      // Mock update for now
+      setNotice("Chức năng cập nhật đang được bảo trì.");
     } else {
-      await logworkApi.create({
-        taskId: selectedTask.id,
-        userId: viewer.id,
-        date: logworkDate,
-        hours: Number(logworkHours),
-        note: logworkNote.trim(),
-        mood: "smooth",
-      });
-      setNotice("Đã ghi nhận logwork mới.");
+      try {
+        const response = await taskApi.addLogwork(selectedTask.id, {
+          workDate: logworkDate,
+          hoursSpent: Number(logworkHours),
+          workContent: logworkNote.trim(),
+          progressPercent: (selectedTask as any).progress || 0,
+        });
+        if (response.data) {
+          // Add to local state manually
+          const newEntry: LogworkEntry = {
+            id: response.data.id,
+            taskId: response.data.taskId,
+            userId: response.data.userId,
+            date: response.data.workDate,
+            hours: response.data.hoursSpent,
+            note: response.data.workContent,
+            mood: "smooth",
+            status: response.data.status,
+          };
+          setPageState((prev) => prev ? { ...prev, entries: [newEntry, ...prev.entries] } : null);
+        }
+        setNotice("Đã ghi nhận logwork mới. Cần phê duyệt để tính vào tổng giờ.");
+      } catch (err: any) {
+        setNotice("Lỗi khi ghi nhận logwork: " + (err.message || "Unknown"));
+      }
     }
 
     setEditingLogworkId(null);
@@ -389,9 +437,7 @@ export default function SprintsPage() {
   }
 
   async function handleDeleteLogwork(entryId: string) {
-    await logworkApi.remove(entryId);
-    await refreshPage(selectedSprint?.id, selectedTask?.id);
-    setNotice("Đã xóa logwork.");
+    setNotice("Chức năng xóa đang được bảo trì.");
   }
 
   const sprintTaskSegments = [
@@ -419,7 +465,7 @@ export default function SprintsPage() {
 
   const sprintCompletion = sprintTasks.length
     ? Math.round(
-        (sprintTasks.filter((task) => task.status === "DONE").length / sprintTasks.length) * 100,
+        (sprintTasks.filter((task) => task.status?.toUpperCase() === "DONE").length / sprintTasks.length) * 100,
       )
     : (selectedSprint?.progress ?? 0);
 
@@ -433,7 +479,7 @@ export default function SprintsPage() {
           : "Chỉ hiển thị những sprint và task bạn trực tiếp tham gia."
       }
       highlightLabel="Sprint active"
-      highlightValue={`${sprintList.filter((sprint) => sprint.status === "ACTIVE").length}`}
+      highlightValue={`${sprintList.filter((sprint) => sprint.status?.toUpperCase() === "ACTIVE").length}`}
     >
       {notice ? (
         <div className="scope-banner">
@@ -485,7 +531,11 @@ export default function SprintsPage() {
 
         {canManage ? (
           <CreateSprintForm
-            projectList={projectList}
+            projectList={
+              hasCompanywideAccess
+                ? projectList
+                : projectList.filter((project) => project.managerId === viewer.id)
+            }
             onSubmit={handleCreateSprint}
             error={sprintFormError}
             onClearError={() => setSprintFormError(null)}
@@ -519,7 +569,7 @@ export default function SprintsPage() {
               <p>{selectedSprint.goal}</p>
               <ProgressBar value={selectedSprint.progress} label="Tiến độ sprint" />
               <div className="token-row">
-                {selectedSprint.focusAreas.map((area) => (
+                {(selectedSprint.focusAreas || []).map((area) => (
                   <span key={area} className="soft-token">
                     {area}
                   </span>
@@ -569,15 +619,13 @@ export default function SprintsPage() {
             </Surface>
           </section>
 
-          {canManage ? (
-            <CreateTaskForm
-              users={users}
-              defaultAssigneeId={users[0]?.id || viewer.id}
-              onSubmit={handleCreateTask}
-              error={taskFormError}
-              onClearError={() => setTaskFormError(null)}
-            />
-          ) : null}
+          <CreateTaskForm
+            users={users}
+            defaultAssigneeId={users[0]?.id || viewer.id}
+            onSubmit={handleCreateTask}
+            error={taskFormError}
+            onClearError={() => setTaskFormError(null)}
+          />
 
           <Surface title="Danh sách công việc & bộ lọc" kicker="Task list">
             <div className="filter-row">
@@ -621,7 +669,7 @@ export default function SprintsPage() {
                     <span>{task.key}</span>
                     <strong>{task.title}</strong>
                     <p>{taskStatusLabel(task.status)}</p>
-                    {canManage ? (
+                    {canManageSelectedProject ? (
                       <select
                         value={task.assigneeId}
                         onClick={(event) => event.stopPropagation()}
@@ -831,11 +879,16 @@ export default function SprintsPage() {
                   {selectedTaskLogwork.length ? (
                     <div className="table-like">
                       {selectedTaskLogwork.map((entry) => (
-                        <div key={entry.id} className="table-row">
-                          <span>{formatDate(entry.date)}</span>
-                          <strong>{formatHours(entry.hours)}</strong>
-                          <p>{entry.note}</p>
-                          {canEditLogwork(viewer, entry) ? (
+                        <div key={entry.id} className="table-row" style={{ alignItems: "flex-start" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                            <span>{formatDate(entry.date)}</span>
+                            {entry.status === "PENDING" && <StatusPill label="Đang xét duyệt" tone="watch" />}
+                            {entry.status === "APPROVED" && <StatusPill label="Nghiệm thu" tone="on-track" />}
+                            {entry.status === "REJECTED" && <StatusPill label="Từ chối" tone="critical" />}
+                          </div>
+                          <strong style={{ paddingTop: "0.25rem" }}>{formatHours(entry.hours)}</strong>
+                          <p style={{ paddingTop: "0.25rem", margin: 0 }}>{entry.note}</p>
+                          {canEditLogwork(viewer, entry, selectedProject) ? (
                             <div className="inline-actions">
                               <button
                                 type="button"

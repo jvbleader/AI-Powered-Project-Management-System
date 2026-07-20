@@ -241,7 +241,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
 
         {/* Upcoming Deadlines */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", height: "100%" }}>
-          <Surface title="Deadline sắp tới toàn hệ thống" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <Surface title="Cảnh báo" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", flex: 1 }}>
               {upcomingDeadlines.length > 0 ? upcomingDeadlines.map((task) => (
                 <Link key={task.id} href={`/projects/${task.projectId || ""}?tab=gantt&highlightTaskId=${task.id}&highlightColor=blue`} style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", gap: "0.25rem", padding: "0.75rem", border: "1px solid rgba(148,163,184,0.2)", borderRadius: "8px", background: "var(--surface)", cursor: "pointer", transition: "background-color 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(241,245,249,0.8)"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "var(--surface)"}>

@@ -5,7 +5,12 @@ import { useEffect, useState, useMemo } from "react";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { projectApi, userApi, workspaceApi } from "@/services/api";
 import { normalizeViewer } from "@/lib/mock/permissions";
-import { roleLabel } from "@/lib/utils/format";
+import {
+  canCreateProjects,
+  hasCompanywideProjectAccess,
+  isAdminRole,
+  roleLabel,
+} from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
 import type {
   Project,
@@ -78,14 +83,13 @@ export default function ProjectsPage() {
     } satisfies WorkspaceShellData);
 
   const projectList = projectsState?.projects ?? [];
-  const canManage =
-    viewer.role === "ADMIN" ||
-    viewer.role === "MANAGER" ||
-    viewer.role === "LEADER" ||
-    projectList.some((project) => project.managerId === viewer.id);
+  const hasCompanywideAccess = hasCompanywideProjectAccess(viewer.role, viewer.department);
+  const managesAnyProject = projectList.some((project) => project.managerId === viewer.id);
+  const canCreateProject = canCreateProjects(viewer.role, viewer.department);
+  const canManage = hasCompanywideAccess || managesAnyProject || canCreateProject;
   const selectedProject =
     projectList.find((project) => project.id === selectedProjectId) ?? projectList[0] ?? null;
-  const isAdminViewer = viewer.role === "ADMIN";
+  const isAdminViewer = isAdminRole(viewer.role);
 
   async function refreshProjects(nextSelectedId?: string | null) {
     const [{ data: shellData }, { data: projects }] = await Promise.all([
@@ -127,13 +131,21 @@ export default function ProjectsPage() {
       heading={canManage ? "Quản lí dự án" : "Dự án của tôi"}
       subheading={
         isAdminViewer
-          ? "Theo dõi toàn bộ danh mục dự án của công ty, tạo dự án mới và xem chi tiết nguồn lực theo từng dự án."
+          ? "Tài khoản Admin Helpdesk không tham gia quản lý dự án và sẽ được chuyển về khu vực nhân sự."
+          : hasCompanywideAccess
+            ? "Theo dõi toàn bộ danh mục dự án của công ty và điều phối theo phạm vi phòng ban đặc biệt."
           : canManage
             ? "Hiển thị các dự án bạn đang tham gia hoặc đang điều phối trong phạm vi quyền hiện tại."
             : "Chỉ hiển thị các dự án bạn tham gia và những công việc được giao cho bạn."
       }
       highlightLabel="Phạm vi xem"
-      highlightValue={isAdminViewer ? "Quản trị viên - Toàn bộ dự án" : roleLabel(viewer.role)}
+      highlightValue={
+        isAdminViewer
+          ? "Admin Helpdesk"
+          : hasCompanywideAccess
+            ? "Toàn bộ dự án công ty"
+            : roleLabel(viewer.role)
+      }
     >
       <section className="two-up" style={{ gridTemplateColumns: "1fr" }}>
         <ProjectList
@@ -143,7 +155,8 @@ export default function ProjectsPage() {
           canManage={canManage}
           viewerId={viewer.id}
           viewerRole={viewer.role}
-          onAddProjectClick={viewer.role === "ADMIN" ? handleOpenCreateProject : undefined}
+          viewerDepartment={viewer.department}
+          onAddProjectClick={canCreateProject ? handleOpenCreateProject : undefined}
           onEditProjectClick={handleOpenEditProject}
         />
       </section>
@@ -152,6 +165,8 @@ export default function ProjectsPage() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         viewerId={viewer.id}
+        viewerRole={viewer.role}
+        viewerDepartment={viewer.department ?? null}
         accessibleUsers={accessibleUsers}
         onProjectCreated={refreshProjects}
       />

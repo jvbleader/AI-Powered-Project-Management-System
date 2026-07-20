@@ -47,10 +47,11 @@ def login(user: UserLogin, db: Session = Depends(get_db), response: Response = N
 def logout(
     response: Response,
     db: Session = Depends(get_db),
+    access_token: str | None = Cookie(None),
     refresh_token: str | None = Cookie(None),
 ):
-    if refresh_token:
-        auth_service.logout_user(db, refresh_token)
+    if refresh_token or access_token:
+        auth_service.logout_user(db, refresh_token, access_token)
 
     response.delete_cookie(key="access_token", httponly=True, samesite="lax")
     response.delete_cookie(key="refresh_token", httponly=True, samesite="lax")
@@ -62,8 +63,9 @@ def logout_all(
     response: Response,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
+    access_token: str | None = Cookie(None),
 ):
-    auth_service.logout_all_devices(db, current_user.id)
+    auth_service.logout_all_devices(db, current_user.id, access_token)
     db.commit()
 
     response.delete_cookie(key="access_token", httponly=True, samesite="lax")

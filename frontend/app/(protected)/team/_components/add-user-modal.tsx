@@ -1,8 +1,7 @@
 import { roleLabel } from "@/lib/utils/format";
-import type { UserRole, Department } from "@/types";
+import { ROLE_ADMIN } from "@/lib/utils/format";
+import { SYSTEM_ROLE_OPTIONS, type UserRole, type Department } from "@/types";
 import styles from "../styles/team.module.css";
-
-const ROLE_OPTIONS: UserRole[] = ["ADMIN", "MANAGER", "LEADER", "MEMBER"];
 
 interface AddUserModalProps {
   isOpen: boolean;
@@ -18,8 +17,6 @@ interface AddUserModalProps {
   onAddRoleChange: (value: UserRole) => void;
   addPassword: string;
   onAddPasswordChange: (value: string) => void;
-  isAdmin: boolean;
-  onIsAdminChange: (value: boolean) => void;
   isAddingUser: boolean;
   onSave: () => void;
   error: string | null;
@@ -39,8 +36,6 @@ export function AddUserModal({
   onAddRoleChange,
   addPassword,
   onAddPasswordChange,
-  isAdmin,
-  onIsAdminChange,
   isAddingUser,
   onSave,
   error,
@@ -114,17 +109,9 @@ export function AddUserModal({
             <span>Chức danh (Vai trò)</span>
             <select
               value={addRole}
-              onChange={(e) => {
-                const role = e.target.value as UserRole;
-                onAddRoleChange(role);
-                if (role === "ADMIN") {
-                  onIsAdminChange(true);
-                } else {
-                  onIsAdminChange(false);
-                }
-              }}
+              onChange={(e) => onAddRoleChange(e.target.value as UserRole)}
             >
-              {ROLE_OPTIONS.map((r) => (
+              {SYSTEM_ROLE_OPTIONS.map((r) => (
                 <option key={r} value={r}>
                   {roleLabel(r)}
                 </option>
@@ -143,25 +130,12 @@ export function AddUserModal({
             />
           </label>
 
-          <label className={styles.roleOption} style={{ marginTop: "0.5rem" }}>
-            <input
-              type="checkbox"
-              checked={isAdmin}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                onIsAdminChange(checked);
-                if (checked) {
-                  onAddRoleChange("ADMIN");
-                } else if (addRole === "ADMIN") {
-                  onAddRoleChange("MEMBER");
-                }
-              }}
-            />
-            <span>
-              <strong>Cấp quyền Quản trị viên (Admin)</strong>
-              <small>Người dùng sẽ có toàn quyền truy cập hệ thống.</small>
-            </span>
-          </label>
+          {addRole === ROLE_ADMIN ? (
+            <p className={styles.helperText}>
+              Tài khoản `Admin` chỉ dành cho IT Helpdesk để tạo tài khoản, đổi trạng thái làm việc
+              và reset mật khẩu. Tài khoản này không truy cập vào dự án.
+            </p>
+          ) : null}
 
           {error ? <p className="form-error">{error}</p> : null}
 

@@ -27,3 +27,5 @@ app.include_router(tasks.router)
 app.include_router(tasks.router_root)
 app.include_router(sprints.router)
 app.include_router(sprints.router_root)
+from app.api import logworks
+app.include_router(logworks.router)

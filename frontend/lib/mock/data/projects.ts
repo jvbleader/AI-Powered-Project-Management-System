@@ -6,6 +6,7 @@ export const projects: Project[] = [
     code: "MOCK-DASH",
     name: "Mock Dashboard Project",
     description: "Temporary mock project to keep dashboard from crashing.",
+    projectType: "agile",
     status: "ACTIVE",
     progress: 50,
     managerId: "usr-manager",

@@ -265,14 +265,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   cursor: pointer;
   margin-right: 6px;
-  color: #555;
+  color: #333;
   flex-shrink: 0;
   background: transparent;
   border: none;
+  border-radius: 4px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.expandBtn:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
 }
 
 .taskIcon {
@@ -304,15 +311,44 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 92px;
-  padding: 6px 12px;
+  padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid transparent;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.priorityIndicatorWrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.textPriorityLow {
+  color: #0369a1;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.textPriorityMedium {
+  color: #15803d;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.textPriorityHigh {
+  color: #b45309;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.textPriorityCritical {
+  color: #b91c1c;
+  font-weight: 600;
+  font-size: 12px;
 }
 
 .ganttMetaText {
@@ -325,27 +361,27 @@
 }
 
 .priorityLow {
-  color: #2563eb;
-  background: #dbeafe;
-  border-color: #bfdbfe;
+  color: #0369a1;
+  background: #e0f2fe;
+  border-color: #bae6fd;
 }
 
 .priorityMedium {
-  color: #059669;
-  background: #d1fae5;
-  border-color: #a7f3d0;
+  color: #15803d;
+  background: #dcfce7;
+  border-color: #bbf7d0;
 }
 
 .priorityHigh {
-  color: #d97706;
+  color: #b45309;
   background: #fef3c7;
   border-color: #fde68a;
 }
 
 .priorityCritical {
-  color: #e11d48;
-  background: #ffe4e6;
-  border-color: #fecdd3;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fecaca;
 }
 
 /* Status colors */

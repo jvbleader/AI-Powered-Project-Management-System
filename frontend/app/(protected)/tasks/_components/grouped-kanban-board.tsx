@@ -1,23 +1,10 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { taskApi } from "@/services/api";
 import { EnrichedTask, Project } from "@/types";
 import { EmptyState, Surface, StatusPill } from "@/components/ui";
-import { formatDate, taskPriorityLabel, toWorkflowTaskStatus } from "@/lib/utils/format";
-
-const getTaskBgColor = (status: EnrichedTask["status"]) => {
-  switch (toWorkflowTaskStatus(status)) {
-    case "TODO":
-      return "#fef08a"; // Vàng (Yellow)
-    case "IN_PROGRESS":
-      return "#bfdbfe"; // Xanh dương (Blue)
-    case "DONE":
-      return "#bbf7d0"; // Xanh lá (Green)
-    default:
-      return "var(--surface)";
-  }
-};
+import { formatDate, taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
 
 interface GroupedKanbanBoardProps {
   projects: Project[];
@@ -46,10 +33,21 @@ export function GroupedKanbanBoard({
 }: GroupedKanbanBoardProps) {
   const router = useRouter();
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
+
+  useEffect(() => {
+    setLocalTasks(tasks);
+  }, [tasks]);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
-    setDraggedTaskId(taskId);
     e.dataTransfer.effectAllowed = "move";
+    setTimeout(() => {
+      setDraggedTaskId(taskId);
+    }, 0);
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    setDraggedTaskId(null);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -61,16 +59,18 @@ export function GroupedKanbanBoard({
     e.preventDefault();
     if (!draggedTaskId) return;
 
-    const task = tasks.find((t) => t.id === draggedTaskId);
+    const task = localTasks.find((t) => t.id === draggedTaskId);
+    setDraggedTaskId(null);
     if (task && toWorkflowTaskStatus(task.status) !== statusId) {
       try {
+        setLocalTasks(prev => prev.map(t => t.id === draggedTaskId ? { ...t, status: statusId as EnrichedTask["status"] } : t));
         await taskApi.updateStatus(draggedTaskId, statusId as EnrichedTask["status"]);
         onTaskUpdated();
-      } catch (error) {
-        alert(error instanceof Error ? error.message : "Lỗi khi cập nhật trạng thái");
+      } catch (err: unknown) {
+        setLocalTasks(tasks); // Revert on error
+        alert(err instanceof Error ? err.message : "Lỗi khi cập nhật trạng thái");
       }
     }
-    setDraggedTaskId(null);
   };
 
   const selectedProject =
@@ -85,7 +85,7 @@ export function GroupedKanbanBoard({
       return [
         {
           project: selectedProject,
-          tasks: tasks.filter((task) => task.projectId === selectedProject.id),
+          tasks: localTasks.filter((task) => task.projectId === selectedProject.id),
         },
       ];
     }
@@ -93,17 +93,18 @@ export function GroupedKanbanBoard({
     return projects
       .map((project) => ({
         project,
-        tasks: tasks.filter((task) => task.projectId === project.id),
+        tasks: localTasks.filter((task) => task.projectId === project.id),
       }))
       .filter((entry) => entry.tasks.length > 0)
       .sort((left, right) => right.tasks.length - left.tasks.length);
-  }, [projects, selectedProject, tasks]);
+  }, [projects, selectedProject, localTasks]);
 
   const renderTaskCard = (task: EnrichedTask) => (
     <article
       key={task.id}
       draggable
       onDragStart={(e) => handleDragStart(e, task.id)}
+      onDragEnd={handleDragEnd}
       onClick={() => (onTaskClick ? onTaskClick(task.id) : router.push(`/tasks?taskId=${task.id}`))}
       className="task-kanban-card"
       style={{

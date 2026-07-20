@@ -1,4 +1,5 @@
 from typing import Iterable, Optional
+from datetime import timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -6,18 +7,15 @@ from sqlalchemy.orm import Session
 from app.models.project_model import ProjectMember
 from app.models.task_model import Task
 from app.repositories import project_repository, task_repository
-from app.schemas.task_schema import LogWorkCreate, TaskCommentCreate, TaskCreate, TaskUpdate
+from app.schemas.task_schema import LogWorkCreate, TaskAttachmentCreate, TaskCreate, TaskUpdate
 from app.utils.project_helpers import (
-    DEVELOPER_ROLE_NAME,
-    ensure_default_roles,
-    get_pm_role,
-    is_admin_user,
+    has_companywide_project_access,
     list_accessible_project_ids,
     list_managed_project_ids,
-    normalize_task_status,
+    user_can_access_project,
     user_can_manage_project,
-    user_is_project_member,
 )
+from app.utils.dashboard_helpers import normalize_task_status
 
 
 def _get_current_user(db: Session, user_id: int):
@@ -51,7 +49,7 @@ def _sort_tasks(tasks: Iterable[Task]) -> list[Task]:
 
 def _require_project_access(db: Session, project_id: int, user_id: int):
     user = _get_current_user(db, user_id)
-    if is_admin_user(user) or user_is_project_member(db, project_id, user.id):
+    if user_can_access_project(db, project_id, user):
         return user
 
     raise HTTPException(
@@ -117,42 +115,23 @@ def _get_or_create_actor_member(db: Session, project_id: int, user_id: int) -> P
             db.flush()
         return member
 
-    user = _get_current_user(db, user_id)
-    if not is_admin_user(user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn phải là thành viên của dự án để thực hiện thao tác này.",
-        )
-
-    ensure_default_roles(db)
-    developer_role = project_repository.get_role_by_name(db, DEVELOPER_ROLE_NAME)
-    pm_role = get_pm_role(db)
-    actor_member = ProjectMember(
-        project_id=project_id,
-        user_id=user_id,
-        role_id=developer_role.id if developer_role else pm_role.id,
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Bạn phải là thành viên của dự án để thực hiện thao tác này.",
     )
-    project_repository.add_project_member(db, actor_member)
-    db.flush()
-    return actor_member
 
 
 def _ensure_task_update_access(db: Session, task: Task, user_id: int, update_data: dict):
     if _can_manage_project_tasks(db, task.project_id, user_id):
         return
 
-    if not task_repository.is_task_assignee(db, task.id, user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn không có quyền cập nhật task này.",
-        )
-
-    allowed_keys = {"status"}
+    # Regular members can only update status and sprint_id (Kanban dragging)
+    allowed_keys = {"status", "sprint_id"}
     disallowed_keys = set(update_data.keys()) - allowed_keys
     if disallowed_keys:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn chỉ có thể cập nhật trạng thái của task được giao cho mình.",
+            detail="Bạn chỉ có quyền cập nhật trạng thái hoặc kéo thả task. Chỉ Quản lý/Leader mới được sửa đổi chi tiết task.",
         )
 
 
@@ -172,13 +151,17 @@ def list_accessible_tasks(
         return list_tasks(db, project_id, current_user_id, sprint_id)
 
     user = _get_current_user(db, current_user_id)
-    if is_admin_user(user):
-        tasks = task_repository.list_tasks(db, sprint_id=sprint_id)
-        return _normalize_tasks(tasks)
-
     accessible_project_ids = list_accessible_project_ids(db, user)
     if not accessible_project_ids:
         return []
+
+    if has_companywide_project_access(user):
+        tasks = task_repository.list_tasks(
+            db,
+            project_ids=accessible_project_ids,
+            sprint_id=sprint_id,
+        )
+        return _normalize_tasks(_sort_tasks(tasks))
 
     managed_project_ids = set(list_managed_project_ids(db, user))
     merged_tasks: dict[int, Task] = {}
@@ -205,7 +188,7 @@ def list_accessible_tasks(
 
 
 def create_task(db: Session, project_id: int, current_user_id: int, task_in: TaskCreate):
-    actor_user = _require_manage_project_tasks(db, project_id, current_user_id)
+    actor_user = _require_project_access(db, project_id, current_user_id)
     actor_member = _get_or_create_actor_member(db, project_id, actor_user.id)
     _validate_parent_task(db, project_id, task_in.parent_task_id)
 
@@ -258,6 +241,16 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
         _validate_parent_task(db, task.project_id, parent_task_id)
         _ensure_no_parent_cycle(db, task.id, parent_task_id)
 
+        # Auto-update deadline based on estimated_hours change
+        if "estimated_hours" in update_data and "deadline" not in update_data:
+            old_estimate = float(task.estimated_hours or 0)
+            new_estimate = float(update_data["estimated_hours"] or 0)
+            diff_hours = new_estimate - old_estimate
+            diff_days = round(diff_hours / 8.0)
+            
+            if diff_days != 0 and task.deadline:
+                update_data["deadline"] = task.deadline + timedelta(days=diff_days)
+
         start_date = update_data.get("start_date", task.start_date)
         deadline = update_data.get("deadline", task.deadline)
         if start_date and deadline and deadline < start_date:
@@ -267,6 +260,14 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
             )
 
     task = task_repository.update_task(db, task, update_data)
+    
+    if "status" in update_data and update_data["status"] == "DONE" and task.parent_task_id:
+        siblings = task_repository.get_tasks_by_parent_id(db, task.parent_task_id)
+        if siblings and all(normalize_task_status(s.status) == "DONE" for s in siblings):
+            parent_task = task_repository.get_task_by_id(db, task.parent_task_id)
+            if parent_task and normalize_task_status(parent_task.status) != "DONE":
+                task_repository.update_task(db, parent_task, {"status": "DONE"})
+
     db.commit()
     db.refresh(task)
     return _normalize_task(task)
@@ -274,7 +275,18 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 
 def add_assignee(db: Session, task_id: int, user_id_to_assign: str, current_user_id: int):
     task = get_task(db, task_id, current_user_id)
-    actor_user = _require_manage_project_tasks(db, task.project_id, current_user_id)
+    actor_user = _require_project_access(db, task.project_id, current_user_id)
+    
+    is_manager = _can_manage_project_tasks(db, task.project_id, current_user_id)
+    target_user_id = str(user_id_to_assign).replace("usr-", "") if user_id_to_assign else ""
+    
+    if not is_manager:
+        if target_user_id and target_user_id != str(current_user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bạn chỉ có thể tự nhận task cho chính mình. Chỉ Quản lý/Leader mới được giao việc cho người khác.",
+            )
+            
     actor_member = _get_or_create_actor_member(db, task.project_id, actor_user.id)
 
     if not user_id_to_assign:
@@ -299,23 +311,23 @@ def add_assignee(db: Session, task_id: int, user_id_to_assign: str, current_user
     return assignee
 
 
-def get_comments(db: Session, task_id: int, current_user_id: int):
+def get_attachments(db: Session, task_id: int, current_user_id: int):
     task = get_task(db, task_id, current_user_id)
-    return task_repository.list_task_comments(db, task.id)
+    return task_repository.list_task_attachments(db, task.id)
 
 
-def add_comment(db: Session, task_id: int, current_user_id: int, comment_in: TaskCommentCreate):
+def add_attachment(db: Session, task_id: int, current_user_id: int, attachment_in: TaskAttachmentCreate):
     task = get_task(db, task_id, current_user_id)
     actor_member = _get_or_create_actor_member(db, task.project_id, current_user_id)
-
-    comment_data = comment_in.model_dump()
-    comment_data["task_id"] = task_id
-    comment_data["project_member_id"] = actor_member.id
-
-    comment = task_repository.create_task_comment(db, comment_data)
+    
+    attachment_data = attachment_in.model_dump()
+    attachment_data["task_id"] = task_id
+    attachment_data["uploaded_by"] = actor_member.id
+    
+    attachment = task_repository.create_task_attachment(db, attachment_data)
     db.commit()
-    db.refresh(comment)
-    return comment
+    db.refresh(attachment)
+    return attachment
 
 
 def get_logworks(db: Session, task_id: int, current_user_id: int):

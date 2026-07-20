@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { taskApi } from "@/services/api";
 import { EnrichedTask } from "@/types";
 import { StatusPill } from "@/components/ui";
-import { taskPriorityLabel, toWorkflowTaskStatus } from "@/lib/utils/format";
+import { formatDate, taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
 
 interface KanbanBoardProps {
   tasks: EnrichedTask[];
@@ -18,10 +18,21 @@ const COLUMNS = [
 
 export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardProps) {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
+
+  useEffect(() => {
+    setLocalTasks(tasks);
+  }, [tasks]);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
-    setDraggedTaskId(taskId);
     e.dataTransfer.effectAllowed = "move";
+    setTimeout(() => {
+      setDraggedTaskId(taskId);
+    }, 0);
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    setDraggedTaskId(null);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -33,16 +44,18 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
     e.preventDefault();
     if (!draggedTaskId) return;
 
-    const task = tasks.find((t) => t.id === draggedTaskId);
+    const task = localTasks.find((t) => t.id === draggedTaskId);
+    setDraggedTaskId(null);
     if (task && toWorkflowTaskStatus(task.status) !== statusId) {
       try {
+        setLocalTasks(prev => prev.map(t => t.id === draggedTaskId ? { ...t, status: statusId as EnrichedTask["status"] } : t));
         await taskApi.updateStatus(draggedTaskId, statusId as EnrichedTask["status"]);
         onTaskUpdated();
       } catch (err: unknown) {
+        setLocalTasks(tasks); // Revert on error
         alert(err instanceof Error ? err.message : "Lỗi khi cập nhật trạng thái");
       }
     }
-    setDraggedTaskId(null);
   };
 
   return (
@@ -56,7 +69,7 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
       }}
     >
       {COLUMNS.map((col) => {
-        const colTasks = tasks.filter((t) => toWorkflowTaskStatus(t.status) === col.id);
+        const colTasks = localTasks.filter((t) => toWorkflowTaskStatus(t.status) === col.id);
         return (
           <div
             key={col.id}
@@ -101,9 +114,11 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
                 key={task.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, task.id)}
+                onDragEnd={handleDragEnd}
                 onClick={() => onTaskClick(task.id)}
                 style={{
-                  background: "var(--surface)",
+                  opacity: draggedTaskId === task.id ? 0.5 : 1,
+                  backgroundColor: getTaskBgColor(task.status),
                   border: "1px solid var(--border)",
                   borderRadius: "6px",
                   padding: "1rem",
@@ -112,7 +127,6 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
                   display: "flex",
                   flexDirection: "column",
                   gap: "0.75rem",
-                  opacity: draggedTaskId === task.id ? 0.5 : 1,
                 }}
               >
                 <div

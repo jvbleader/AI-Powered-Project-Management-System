@@ -7,7 +7,7 @@ from app.api.auth import get_current_user
 from app.models.user_model import User
 from app.schemas.task_schema import (
     TaskResponse, TaskCreate, TaskUpdate, 
-    TaskCommentResponse, TaskCommentCreate,
+    TaskAttachmentResponse, TaskAttachmentCreate,
     LogWorkResponse, LogWorkCreate,
     TaskAssigneeResponse
 )
@@ -52,11 +52,20 @@ def _hydrate_task_list_response(db: Session, tasks: List[TaskResponse]):
             )
         )
 
+    import math
+    from datetime import timedelta
+
     for task in tasks:
         task.estimated_hours = project_task_rollups.get(task.project_id, {}).get(
             task.id,
             task.estimated_hours,
         )
+        if task.start_date and task.estimated_hours and task.estimated_hours > 0:
+            days_required = max(1, math.ceil(float(task.estimated_hours) / 8.0))
+            calculated_deadline = task.start_date + timedelta(days=days_required - 1)
+            if not task.deadline or calculated_deadline > task.deadline:
+                task.deadline = calculated_deadline
+
         task.assignees = assignees_by_task_id.get(task.id, [])
         task.key = f"TASK-{task.id}"
         if task.created_by_member_id not in creator_user_ids_by_member_id:
@@ -138,32 +147,33 @@ def add_assignee(
     task_service.add_assignee(db, task_id, req.user_id, current_user.id)
     return {"message": "Success"}
 
-@router_root.get("/{task_id}/comments", response_model=List[TaskCommentResponse])
-def get_comments(
+@router_root.get("/{task_id}/attachments", response_model=List[TaskAttachmentResponse])
+def get_attachments(
     task_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    comments = task_service.get_comments(db, task_id, current_user.id)
-    for comment in comments:
+    attachments = task_service.get_attachments(db, task_id, current_user.id)
+    for attachment in attachments:
         # Resolve user name
         task = task_service.task_repository.get_task_by_id(db, task_id)
         if task:
-            member = task_service.project_repository.get_project_member_by_id(db, comment.project_member_id, task.project_id)
+            member = task_service.project_repository.get_project_member_by_id(db, attachment.uploaded_by, task.project_id)
             if member:
                 user = task_service.project_repository.get_user_by_id(db, member.user_id)
                 if user:
-                    comment.user_name = user.full_name
-    return comments
+                    attachment.user_name = user.full_name
+    return attachments
 
-@router_root.post("/{task_id}/comments", response_model=TaskCommentResponse, status_code=status.HTTP_201_CREATED)
-def create_comment(
+@router_root.post("/{task_id}/attachments", response_model=TaskAttachmentResponse, status_code=status.HTTP_201_CREATED)
+def create_attachment(
     task_id: int,
-    comment_in: TaskCommentCreate,
+    attachment_in: TaskAttachmentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return task_service.add_comment(db, task_id, current_user.id, comment_in)
+    attachment = task_service.add_attachment(db, task_id, current_user.id, attachment_in)
+    return attachment
 
 @router_root.get("/{task_id}/logworks", response_model=List[LogWorkResponse])
 def get_logworks(

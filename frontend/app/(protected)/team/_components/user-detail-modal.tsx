@@ -1,11 +1,22 @@
 import Image from "next/image";
 import { StatusPill } from "@/components/ui";
-import { roleLabel, userStatusLabel } from "@/lib/utils/format";
-import type { UserProfile, UserRole, UserStatus, Department } from "@/types";
+import { ROLE_ADMIN, roleLabel, userStatusLabel } from "@/lib/utils/format";
+import { SYSTEM_ROLE_OPTIONS, type UserProfile, type UserRole, type UserStatus, type Department } from "@/types";
 import styles from "../styles/team.module.css";
 
-const ROLE_OPTIONS: UserRole[] = ["ADMIN", "MANAGER", "LEADER", "MEMBER"];
 const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INACTIVE"];
+
+const ROLE_DESCRIPTIONS: Record<string, string> = {
+  "Lập trình viên": "Tham gia các dự án đã được phân công với vai trò thực thi kỹ thuật.",
+  Tester: "Thực hiện kiểm thử trong các dự án được giao.",
+  QA: "Theo dõi chất lượng và quy trình trong phạm vi dự án tham gia.",
+  QC: "Kiểm soát chất lượng đầu ra theo phạm vi dự án tham gia.",
+  "Project Manager / Product Owner / Group Member":
+    "Quản lý các dự án được giao phụ trách; nếu thuộc phòng Head of Dev thì có thể xem toàn bộ dự án công ty.",
+  Leader: "Quản lý các dự án mà mình trực tiếp phụ trách.",
+  "Giám đốc": "Có quyền xem toàn bộ dự án trong công ty.",
+  Admin: "IT Helpdesk quản lý tài khoản, trạng thái làm việc và reset mật khẩu.",
+};
 
 function getStatusTone(status: UserStatus) {
   if (status === "ACTIVE") {
@@ -195,7 +206,7 @@ export function UserDetailModal({
             </label>
 
             <div className={styles.roleChecklist}>
-              {ROLE_OPTIONS.map((role) => {
+              {SYSTEM_ROLE_OPTIONS.map((role) => {
                 const checked = roleDraft.includes(role);
 
                 return (
@@ -209,20 +220,18 @@ export function UserDetailModal({
                     />
                     <span>
                       <strong>{roleLabel(role)}</strong>
-                      <small>
-                        {role === "ADMIN"
-                          ? "Toàn quyền quản trị người dùng."
-                          : role === "MANAGER"
-                            ? "Điều phối danh sách và theo dõi nguồn lực."
-                            : role === "LEADER"
-                              ? "Giám sát nhóm và phân phối công việc."
-                              : "Vai trò vận hành cơ bản."}
-                      </small>
+                      <small>{ROLE_DESCRIPTIONS[role] ?? "Vai trò vận hành cơ bản."}</small>
                     </span>
                   </label>
                 );
               })}
             </div>
+
+            {roleDraft[0] === ROLE_ADMIN ? (
+              <p className={styles.helperText}>
+                `Admin` không có quyền truy cập dự án, chỉ dùng cho luồng IT Helpdesk.
+              </p>
+            ) : null}
 
             <button
               type="button"
@@ -241,8 +250,8 @@ export function UserDetailModal({
 
             {!canManageUsers ? (
               <p className={styles.helperText}>
-                Tài khoản hiện tại chỉ có quyền xem. Chỉ `ADMIN` mới được thay đổi trạng thái và vai
-                trò.
+                Tài khoản hiện tại chỉ có quyền xem. Chỉ `Admin` mới được thay đổi trạng thái, vai
+                trò và phòng ban.
               </p>
             ) : null}
 

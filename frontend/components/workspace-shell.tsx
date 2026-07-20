@@ -12,22 +12,20 @@ import { AssistantBubble } from "@/components/assistant-bubble";
 import { useAuthSession } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
 import { ChangePasswordModal } from "@/components/change-password-modal";
+import {
+  canAccessTeamDirectoryRole,
+  isAdminRole,
+  roleLabel,
+} from "@/lib/utils/format";
 import type { UserRole, WorkspaceShellData } from "@/types";
 
 const navigation = [
   { href: "/dashboard", label: "Tổng quan", icon: "grid" },
   { href: "/projects", label: "Dự án", icon: "layers" },
   { href: "/tasks", label: "Nhiệm vụ", icon: "kanban" },
+  { href: "/logwork-approvals", label: "Duyệt log work", icon: "check-circle" },
   { href: "/team", label: "Nhân sự", icon: "users" },
 ];
-
-const teamVisibleRoles = new Set(["ADMIN", "MANAGER", "LEADER"]);
-const sidebarRoleTitles: Record<UserRole, string> = {
-  ADMIN: "Platform Admin",
-  MANAGER: "Project Manager",
-  LEADER: "Team Lead",
-  MEMBER: "Team Member",
-};
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -57,8 +55,9 @@ export function WorkspaceShell({
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [canViewTeamNavigation, setCanViewTeamNavigation] = useState(
-    teamVisibleRoles.has(shellData.currentUser.role),
+    canAccessTeamDirectoryRole(shellData.currentUser.role, shellData.currentUser.department),
   );
+  const [canViewLogworkApprovals, setCanViewLogworkApprovals] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeShellData = session
@@ -69,31 +68,44 @@ export function WorkspaceShell({
     : shellData;
   const currentUser = activeShellData.currentUser;
   const currentUserId = activeShellData.currentUser.id;
+  const isAdminViewer = isAdminRole(currentUser.role);
   const sidebarUserTitle = currentUser.department
-    ? `${sidebarRoleTitles[currentUser.role] ?? currentUser.title} - ${currentUser.department}`
-    : sidebarRoleTitles[currentUser.role] ?? currentUser.title;
+    ? `${roleLabel(currentUser.role)} - ${currentUser.department}`
+    : roleLabel(currentUser.role) || currentUser.title;
 
-  const filteredNavigation = navigation.filter(
-    (item) => item.href !== "/team" || canViewTeamNavigation,
-  );
+  const filteredNavigation = navigation.filter((item) => {
+    if (isAdminViewer) {
+      if (item.href === "/logwork-approvals") return false;
+      return item.href === "/team";
+    }
+
+    if (item.href === "/logwork-approvals") {
+      return canViewLogworkApprovals;
+    }
+
+    return item.href !== "/team" || canViewTeamNavigation;
+  });
 
   useEffect(() => {
     let isCancelled = false;
 
     async function resolveTeamNavigationAccess() {
-      if (teamVisibleRoles.has(currentUser.role)) {
-        setCanViewTeamNavigation(true);
-        return;
-      }
-
+      const isGlobalTeamViewer = canAccessTeamDirectoryRole(currentUser.role, currentUser.department);
+      
       try {
         const { data: projects } = await projectApi.list(undefined, currentUser);
         if (!isCancelled) {
-          setCanViewTeamNavigation(projects.some((project) => project.managerId === currentUser.id));
+          const isManagerOfAny = projects.some((project) => project.managerId === currentUser.id);
+          const isLeaderOfAny = projects.some(
+            (project) => (project as any).members?.some((m: any) => m.userId === currentUser.id && m.role === "LEADER")
+          );
+          setCanViewTeamNavigation(isGlobalTeamViewer || isManagerOfAny);
+          setCanViewLogworkApprovals(isManagerOfAny || isLeaderOfAny);
         }
       } catch {
         if (!isCancelled) {
-          setCanViewTeamNavigation(false);
+          setCanViewTeamNavigation(isGlobalTeamViewer);
+          setCanViewLogworkApprovals(false);
         }
       }
     }
@@ -104,6 +116,17 @@ export function WorkspaceShell({
       isCancelled = true;
     };
   }, [currentUser]);
+
+  useEffect(() => {
+    if (
+      isAdminViewer &&
+      pathname &&
+      !pathname.startsWith("/team") &&
+      !pathname.startsWith("/profile")
+    ) {
+      router.replace("/team");
+    }
+  }, [isAdminViewer, pathname, router]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {

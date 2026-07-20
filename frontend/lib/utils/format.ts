@@ -9,6 +9,11 @@ import type {
 } from "@/types";
 
 export const VIETNAM_TIMEZONE = "Asia/Ho_Chi_Minh";
+export const HEAD_OF_DEV_DEPARTMENT = "Head of Dev";
+export const ROLE_PM = "Project Manager / Product Owner / Group Member";
+export const ROLE_LEADER = "Leader";
+export const ROLE_DIRECTOR = "Giám đốc";
+export const ROLE_ADMIN = "Admin";
 
 function normalizeApiDateString(date: string) {
   const trimmed = date.trim();
@@ -81,12 +86,99 @@ export function formatPercent(value: number) {
 }
 
 export function roleLabel(role: UserRole) {
-  return {
-    ADMIN: "Quản trị viên",
+  const normalized = (role || "").trim();
+
+  const labels: Record<string, string> = {
+    ADMIN: "Admin",
     MANAGER: "Quản lý dự án",
     LEADER: "Trưởng nhóm",
     MEMBER: "Thành viên",
-  }[role];
+    "Lập trình viên": "Lập trình viên",
+    Tester: "Tester",
+    QA: "QA",
+    QC: "QC",
+    [ROLE_PM]: "Manager / PO / Group Manager",
+    [ROLE_LEADER]: "Team Leader",
+    [ROLE_DIRECTOR]: "Giám đốc",
+    [ROLE_ADMIN]: "Admin",
+  };
+
+  return labels[normalized] ?? normalized;
+}
+
+export function isAdminRole(role: UserRole) {
+  return (role || "").trim() === ROLE_ADMIN || (role || "").trim() === "ADMIN";
+}
+
+export function isDirectorRole(role: UserRole) {
+  return (role || "").trim() === ROLE_DIRECTOR;
+}
+
+export function isManagerRole(role: UserRole) {
+  const normalized = (role || "").trim();
+  return normalized === ROLE_PM || normalized === "MANAGER";
+}
+
+export function isLeaderRole(role: UserRole) {
+  const normalized = (role || "").trim();
+  return normalized === ROLE_LEADER || normalized === "LEADER";
+}
+
+export function getRoleTone(role: UserRole) {
+  const roleStr = (role || "").trim();
+  if (roleStr.includes("Manager") || roleStr.includes("PM") || roleStr.includes("Owner") || isManagerRole(roleStr)) {
+    return "critical" as const;
+  }
+  if (roleStr.includes("Leader") || isLeaderRole(roleStr)) {
+    return "accent" as const;
+  }
+  return "neutral" as const;
+}
+
+export function isHeadOfDevDepartment(department?: string | null) {
+  return (department || "").trim() === HEAD_OF_DEV_DEPARTMENT;
+}
+
+export function hasCompanywideProjectAccess(
+  role: UserRole,
+  department?: string | null,
+) {
+  return isDirectorRole(role) || isHeadOfDevDepartment(department);
+}
+
+export function canManageUsers(role: UserRole) {
+  return isAdminRole(role);
+}
+
+export function canAccessTeamDirectoryRole(
+  role: UserRole,
+  department?: string | null,
+) {
+  return (
+    canManageUsers(role) ||
+    hasCompanywideProjectAccess(role, department) ||
+    isManagerRole(role) ||
+    isLeaderRole(role)
+  );
+}
+
+export function canCreateProjects(
+  role: UserRole,
+  department?: string | null,
+) {
+  return (
+    !isAdminRole(role) &&
+    (hasCompanywideProjectAccess(role, department) ||
+      isManagerRole(role) ||
+      isLeaderRole(role))
+  );
+}
+
+export function canManageProjectsByRole(
+  role: UserRole,
+  department?: string | null,
+) {
+  return hasCompanywideProjectAccess(role, department) || isManagerRole(role) || isLeaderRole(role);
 }
 
 export function normalizeProjectRoleName(roleName: string) {
@@ -100,7 +192,11 @@ export function normalizeProjectRoleName(roleName: string) {
     return "PROJECT_MANAGER";
   }
 
-  if (["DEVELOPER", "DEV", "MEMBER"].includes(normalized)) {
+  if (["PROJECT_MEMBER", "MEMBER"].includes(normalized)) {
+    return "PROJECT_MEMBER";
+  }
+
+  if (["DEVELOPER", "DEV"].includes(normalized)) {
     return "DEVELOPER";
   }
 
@@ -116,20 +212,13 @@ export function normalizeProjectRoleName(roleName: string) {
 }
 
 export function isSupportedProjectRoleName(roleName: string) {
-  return ["PROJECT_MANAGER", "DEVELOPER", "QA", "VIEWER"].includes(
+  return ["PROJECT_MANAGER", "PROJECT_MEMBER", "DEVELOPER", "QA", "VIEWER"].includes(
     normalizeProjectRoleName(roleName),
   );
 }
 
 export function projectRoleLabel(roleName: string) {
-  const normalized = normalizeProjectRoleName(roleName);
-  const map: Record<string, string> = {
-    PROJECT_MANAGER: "Quản lý dự án",
-    DEVELOPER: "Developer",
-    QA: "QA",
-    VIEWER: "Người xem",
-  };
-  return map[normalized] || roleName;
+  return roleName;
 }
 
 export function projectStatusLabel(status: ProjectStatus) {
@@ -138,6 +227,7 @@ export function projectStatusLabel(status: ProjectStatus) {
     ACTIVE: "Đang triển khai",
     AT_RISK: "Rủi ro trễ hạn",
     COMPLETED: "Đã hoàn thành",
+    ON_HOLD: "Tạm dừng",
   }[status];
 }
 
@@ -160,6 +250,19 @@ export function toWorkflowTaskStatus(status: TaskStatus): "TODO" | "IN_PROGRESS"
   }
 
   return "IN_PROGRESS";
+}
+
+export function getTaskBgColor(status: TaskStatus) {
+  switch (toWorkflowTaskStatus(status)) {
+    case "TODO":
+      return "#fef08a";
+    case "IN_PROGRESS":
+      return "#bfdbfe";
+    case "DONE":
+      return "#bbf7d0";
+    default:
+      return "var(--surface)";
+  }
 }
 
 export function taskStatusLabel(status: TaskStatus) {

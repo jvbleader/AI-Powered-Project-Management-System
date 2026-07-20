@@ -8,6 +8,7 @@ export interface LogworkEntry {
   hours: number;
   note: string;
   mood: WorklogMood;
+  status?: "PENDING" | "APPROVED" | "REJECTED";
 }
 
 export interface TaskLogworkEntry {
@@ -20,6 +21,7 @@ export interface TaskLogworkEntry {
   workContent: string;
   comment?: string;
   progressPercent: number;
+  status: "PENDING" | "APPROVED" | "REJECTED";
   createdAt: string;
   updatedAt: string;
 }

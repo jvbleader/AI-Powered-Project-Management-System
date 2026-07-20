@@ -69,7 +69,7 @@ export function CreateTaskModal({
         startDate,
         dueDate,
         estimateHours: estimatedHours ? parseFloat(estimatedHours) : 0,
-        assigneeId,
+        assigneeId: assigneeId,
         sprintId: null,
         parentTaskId: parentTaskId || null,
         spentHours: 0,
@@ -188,8 +188,7 @@ export function CreateTaskModal({
                 padding: "1.25rem",
                 borderRadius: "18px",
                 border: "1px solid rgba(148, 163, 184, 0.18)",
-                background:
-                  "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.96))",
+                background: "var(--surface)",
               }}
             >
               <div
@@ -274,8 +273,7 @@ export function CreateTaskModal({
                 padding: "1.25rem",
                 borderRadius: "18px",
                 border: "1px solid rgba(148, 163, 184, 0.18)",
-                background:
-                  "linear-gradient(180deg, rgba(248,250,252,0.96), rgba(241,245,249,0.96))",
+                background: "var(--surface)",
               }}
             >
               <div
@@ -314,6 +312,7 @@ export function CreateTaskModal({
                       </option>
                     ))}
                   </select>
+
                 </div>
 
                 <div>
@@ -348,7 +347,17 @@ export function CreateTaskModal({
                   <input
                     type="date"
                     value={startDate}
-                    onChange={(event) => setStartDate(event.target.value)}
+                    onChange={(event) => {
+                      const newStartDate = event.target.value;
+                      setStartDate(newStartDate);
+                      const parsedHours = parseFloat(estimatedHours) || 0;
+                      if (parsedHours > 0 && newStartDate) {
+                        const daysRequired = Math.ceil(parsedHours / 8);
+                        const startDateObj = new Date(newStartDate);
+                        startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
+                        setDueDate(startDateObj.toISOString().split("T")[0]);
+                      }
+                    }}
                     required
                     style={{
                       width: "100%",
@@ -390,7 +399,17 @@ export function CreateTaskModal({
                     min="0"
                     step="0.5"
                     value={estimatedHours}
-                    onChange={(event) => setEstimatedHours(event.target.value)}
+                    onChange={(event) => {
+                      const newEstimate = event.target.value;
+                      setEstimatedHours(newEstimate);
+                      const parsed = parseFloat(newEstimate) || 0;
+                      if (parsed > 0 && startDate) {
+                        const daysRequired = Math.ceil(parsed / 8);
+                        const startDateObj = new Date(startDate);
+                        startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
+                        setDueDate(startDateObj.toISOString().split("T")[0]);
+                      }
+                    }}
                     placeholder="Ví dụ: 6"
                     style={{
                       width: "100%",

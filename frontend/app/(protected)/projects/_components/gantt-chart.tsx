@@ -9,6 +9,28 @@ import {
 import type { EnrichedTask } from "@/types";
 import styles from "../styles/gantt.module.css";
 
+function SignalIcon({ level }: { level: "low" | "medium" | "high" | "critical" }) {
+  const bars = {
+    low: [true, false, false],
+    medium: [true, true, false],
+    high: [true, true, true],
+    critical: [true, true, true],
+  };
+  const activeBars = bars[level];
+  const color = level === "critical" ? "#e11d48" : level === "high" ? "#d97706" : level === "medium" ? "#059669" : "#2563eb";
+  
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '14px' }}>
+      <div style={{ width: '3px', height: '6px', borderRadius: '1px', backgroundColor: activeBars[0] ? color : '#e2e8f0' }} />
+      <div style={{ width: '3px', height: '10px', borderRadius: '1px', backgroundColor: activeBars[1] ? color : '#e2e8f0' }} />
+      <div style={{ width: '3px', height: '14px', borderRadius: '1px', backgroundColor: activeBars[2] ? color : '#e2e8f0' }} />
+      {level === "critical" && (
+        <svg style={{ marginLeft: '2px', color: '#e11d48' }} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      )}
+    </div>
+  );
+}
+
 interface GanttChartProps {
   tasks: EnrichedTask[];
   onTaskClick?: (taskId: string) => void;
@@ -22,47 +44,44 @@ interface WbsNode {
 }
 
 const MIN_NAME_COL_WIDTH = 160;
-const DEFAULT_NAME_COL_WIDTH = 340;
-const STATUS_COL_WIDTH = 130;
-const PRIORITY_COL_WIDTH = 140;
-const ASSIGNEE_COL_WIDTH = 140;
-const START_COL_WIDTH = 110;
-const END_COL_WIDTH = 110;
-const ET_COL_WIDTH = 100;
+const DEFAULT_NAME_COL_WIDTH = 420;
+const STATUS_COL_WIDTH = 180;
+const PRIORITY_COL_WIDTH = 150;
+const DEFAULT_ASSIGNEE_COL_WIDTH = 180;
+const START_COL_WIDTH = 120;
+const END_COL_WIDTH = 120;
+const ET_COL_WIDTH = 110;
 const DAY_COLUMN_WIDTH = 18;
-const FIXED_PANE_WIDTH =
-  STATUS_COL_WIDTH +
-  PRIORITY_COL_WIDTH +
-  ASSIGNEE_COL_WIDTH +
-  START_COL_WIDTH +
-  END_COL_WIDTH +
-  ET_COL_WIDTH;
 
 function getPriorityPresentation(priority: EnrichedTask["priority"]) {
   switch (priority) {
     case "LOW":
       return {
         label: taskPriorityLabel(priority),
-        badgeClass: styles.priorityLow,
+        icon: <SignalIcon level="low" />,
+        textClass: styles.textPriorityLow,
         barClass: styles.ganttBarLow,
       };
     case "HIGH":
       return {
         label: taskPriorityLabel(priority),
-        badgeClass: styles.priorityHigh,
+        icon: <SignalIcon level="high" />,
+        textClass: styles.textPriorityHigh,
         barClass: styles.ganttBarHigh,
       };
     case "CRITICAL":
       return {
         label: taskPriorityLabel(priority),
-        badgeClass: styles.priorityCritical,
+        icon: <SignalIcon level="critical" />,
+        textClass: styles.textPriorityCritical,
         barClass: styles.ganttBarCritical,
       };
     case "MEDIUM":
     default:
       return {
         label: taskPriorityLabel(priority),
-        badgeClass: styles.priorityMedium,
+        icon: <SignalIcon level="medium" />,
+        textClass: styles.textPriorityMedium,
         barClass: styles.ganttBarMedium,
       };
   }
@@ -75,10 +94,12 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
   const highlightColor = searchParams.get("highlightColor") || "blue";
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [nameColWidth, setNameColWidth] = useState(DEFAULT_NAME_COL_WIDTH);
+  const [assigneeColWidth, setAssigneeColWidth] = useState(DEFAULT_ASSIGNEE_COL_WIDTH);
   const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
 
-  const leftPaneWidth = nameColWidth + FIXED_PANE_WIDTH;
+  const fixedPaneWidth = STATUS_COL_WIDTH + PRIORITY_COL_WIDTH + assigneeColWidth + START_COL_WIDTH + END_COL_WIDTH + ET_COL_WIDTH;
+  const leftPaneWidth = nameColWidth + fixedPaneWidth;
 
   // ── Resize handlers ────────────────────────────────────────────────────────
   const onResizeMouseMove = useCallback((e: MouseEvent) => {
@@ -104,21 +125,54 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
     document.body.style.userSelect = "none";
   }, [nameColWidth, onResizeMouseMove, onResizeMouseUp]);
 
-  // ── Double-click auto-fit: measure longest task title ──────────────────────
-  const onResizeDblClick = useCallback(() => {
-    if (tasks.length === 0) return;
+  // ── Auto-fit: measure longest task title and assignee ──────────────────────
+  const measureColumns = useCallback((currentTasks: EnrichedTask[]) => {
+    if (currentTasks.length === 0) return;
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.font = "13px Inter, system-ui, sans-serif";
-    let maxWidth = MIN_NAME_COL_WIDTH;
-    tasks.forEach((task) => {
-      // account for indent (approx 18px per level) + icon + padding
-      const measured = ctx.measureText(task.title).width + 72;
-      if (measured > maxWidth) maxWidth = measured;
+    
+    let maxNameWidth = DEFAULT_NAME_COL_WIDTH;
+    let maxAssigneeWidth = DEFAULT_ASSIGNEE_COL_WIDTH;
+    
+    // We compute simple level indentation heuristically by finding parents
+    const getLevel = (taskId: string, tasksMap: Map<string, EnrichedTask>): number => {
+      let level = 0;
+      let curr = tasksMap.get(taskId);
+      while (curr && curr.parentTaskId) {
+        level++;
+        curr = tasksMap.get(curr.parentTaskId);
+      }
+      return level;
+    };
+    
+    const map = new Map(currentTasks.map(t => [t.id, t]));
+
+    currentTasks.forEach((task) => {
+      const level = getLevel(task.id, map);
+      const indent = level * 24;
+      const iconWidth = 30; // expand btn + icon
+      const measuredName = ctx.measureText(task.title).width + indent + iconWidth + 40;
+      if (measuredName > maxNameWidth) maxNameWidth = measuredName;
+      
+      const assigneeName = task.assignee?.name || "Chưa giao";
+      const measuredAssignee = ctx.measureText(assigneeName).width + 32;
+      if (measuredAssignee > maxAssigneeWidth) maxAssigneeWidth = measuredAssignee;
     });
-    setNameColWidth(Math.ceil(maxWidth));
-  }, [tasks]);
+    
+    setNameColWidth(Math.ceil(maxNameWidth));
+    setAssigneeColWidth(Math.ceil(maxAssigneeWidth));
+  }, []);
+
+  // Run auto-fit once when tasks load
+  useEffect(() => {
+    measureColumns(tasks);
+  }, [tasks, measureColumns]);
+  
+  const onResizeDblClick = useCallback(() => {
+    measureColumns(tasks);
+  }, [tasks, measureColumns]);
 
   const rootNodes = useMemo(() => {
     const taskMap = new Map<string, WbsNode>();
@@ -234,9 +288,9 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
 
       // Triangle icon
       const ToggleIcon = isExpanded ? (
-        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="3"><path d="M6 9l6 6 6-6" /></svg>
       ) : (
-        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2"><path d="M9 18l6-6-6-6" /></svg>
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="3"><path d="M9 18l6-6-6-6" /></svg>
       );
 
       // Task icon (generic box)
@@ -251,7 +305,8 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
         <React.Fragment key={node.task.id}>
           <div 
             id={`gantt-row-${node.task.id}`}
-            className={`${rowClass} ${node.task.id === highlightTaskId ? (highlightColor === "red" ? styles.flashHighlightRed : highlightColor === "green" ? styles.flashHighlightGreen : styles.flashHighlightBlue) : ""}`}
+            className={`${rowClass} ${String(node.task.id) === String(highlightTaskId) ? (highlightColor === "red" ? styles.flashHighlightRed : highlightColor === "green" ? styles.flashHighlightGreen : styles.flashHighlightBlue) : ""}`}
+            style={{ position: "relative" }}
           >
             {/* Left Cell */}
             <div className={styles.ganttLeftCell} style={{ width: `${leftPaneWidth}px` }} onClick={() => handleRowClick(node.task.id)}>
@@ -293,11 +348,14 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
                 className={`${styles.ganttLeftCol} ${styles.priorityCol}`}
                 style={{ width: `${PRIORITY_COL_WIDTH}px` }}
               >
-                <span className={`${styles.priorityBadge} ${priorityPresentation.badgeClass}`}>
-                  {priorityPresentation.label}
-                </span>
+                <div className={styles.priorityIndicatorWrapper}>
+                  {priorityPresentation.icon}
+                  <span className={priorityPresentation.textClass}>
+                    {priorityPresentation.label}
+                  </span>
+                </div>
               </div>
-              <div className={styles.ganttLeftCol} style={{ width: `${ASSIGNEE_COL_WIDTH}px` }}>
+              <div className={styles.ganttLeftCol} style={{ width: `${assigneeColWidth}px` }}>
                 <span className={styles.ganttMetaText}>
                   {node.task.assignee?.name || "Chưa giao"}
                 </span>
@@ -330,7 +388,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               }}
               onClick={() => handleRowClick(node.task.id)}
             >
-              {hasChildren ? (
+              {hasChildren && isRoot ? (
                 /* Summary Task (Parent) */
                 <div
                   style={{
@@ -338,14 +396,18 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
                     gridColumnEnd: endCol,
                     position: "relative",
                     marginTop: "8px",
-                    height: "8px",
+                    height: "10px",
                     backgroundColor: "#1a365d", /* Màu xanh đen đậm */
-                    zIndex: 2
+                    zIndex: 2,
+                    borderTopLeftRadius: "2px",
+                    borderTopRightRadius: "2px"
                   }}
                   title={`[Hạng mục] ${node.task.title}`}
                 >
-                  <div style={{ position: "absolute", left: 0, top: "8px", width: 0, height: 0, borderLeft: "4px solid transparent", borderRight: "4px solid transparent", borderTop: "6px solid #1a365d" }} />
-                  <div style={{ position: "absolute", right: 0, top: "8px", width: 0, height: 0, borderLeft: "4px solid transparent", borderRight: "4px solid transparent", borderTop: "6px solid #1a365d" }} />
+                  {/* Left Hook */}
+                  <div style={{ position: "absolute", left: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderRight: "6px solid transparent" }} />
+                  {/* Right Hook */}
+                  <div style={{ position: "absolute", right: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderLeft: "6px solid transparent" }} />
                 </div>
               ) : (
                 /* Leaf Task (Child) */
@@ -390,8 +452,17 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
           el.scrollIntoView({ behavior: "smooth", block: "center" });
         }
       }, 500); // Wait a bit for layout to settle
+
+      const timer = setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("highlightTaskId");
+        url.searchParams.delete("highlightColor");
+        window.history.replaceState({}, '', url.pathname + url.search);
+      }, 5000);
+
+      return () => clearTimeout(timer);
     }
-  }, [highlightTaskId, expanded]); // Also trigger if expanded state changes and task becomes visible
+  }, [highlightTaskId, expanded]);
 
   if (tasks.length === 0) {
     return (
@@ -419,7 +490,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               </div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${STATUS_COL_WIDTH}px` }}>Trạng thái</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${PRIORITY_COL_WIDTH}px` }}>Cấp thiết</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${ASSIGNEE_COL_WIDTH}px` }}>Người thực hiện</div>
+              <div className={styles.ganttLeftHeaderCell} style={{ width: `${assigneeColWidth}px` }}>Người thực hiện</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${START_COL_WIDTH}px` }}>Bắt đầu</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${END_COL_WIDTH}px` }}>Kết thúc</div>
               <div className={styles.ganttLeftHeaderCell} style={{ width: `${ET_COL_WIDTH}px` }}>Tiến độ (ET)</div>
