@@ -31,7 +31,10 @@ class Task(Base):
         session = object_session(self)
         if not session:
             return 0.0
-        total = session.query(func.sum(LogWork.hours_spent)).filter(LogWork.task_id == self.id).scalar()
+        total = session.query(func.sum(LogWork.hours_spent)).filter(
+            LogWork.task_id == self.id,
+            LogWork.status == "APPROVED"
+        ).scalar()
         return float(total or 0.0)
     
 class TaskAssignees(Base):
@@ -43,12 +46,12 @@ class TaskAssignees(Base):
     assigned_by_member_id = Column(Integer, ForeignKey("project_members.id"), nullable=False)
     assigned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-class TaskComment(Base):
-    __tablename__ = "task_comments"
+class TaskAttachment(Base):
+    __tablename__ = "task_attachments"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
-    project_member_id = Column(Integer, ForeignKey("project_members.id"), nullable=False)
-    content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    file_url = Column(String(255), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    uploaded_by = Column(Integer, ForeignKey("project_members.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

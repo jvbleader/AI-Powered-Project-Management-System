@@ -177,6 +177,14 @@ export async function signOutAll() {
   }
 }
 
+export function forceSignOut() {
+  if (typeof window !== "undefined") {
+    clearClientSession();
+    emitSessionChange();
+    authChannel?.postMessage('logout');
+  }
+}
+
 export function isSignedIn() {
   return Boolean(readSession());
 }

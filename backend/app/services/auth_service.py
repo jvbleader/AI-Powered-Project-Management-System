@@ -1,4 +1,8 @@
 import uuid
+import time
+
+from app.core.redis_client import redis_client
+from app.utils.jwt_handler import ACCESS_TOKEN_EXPIRE_MINUTES
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -17,6 +21,12 @@ def authenticate_user(db: Session, user: UserLogin) -> dict:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email hoặc mật khẩu không chính xác",
+        )
+
+    if not db_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tài khoản của bạn đã bị khóa hoặc vô hiệu hóa",
         )
 
     is_password_valid = verify_password(user.password, db_user.password_hash)
@@ -58,20 +68,58 @@ def refresh_tokens(db: Session, refresh_token: str) -> dict:
             detail="Refresh Token không hợp lệ hoặc đã bị thu hồi",
         )
 
+    # Revoke old refresh token
+    refresh_token_repository.revoke_token(db, refresh_token)
+
+    # Generate new tokens
     new_access_token = create_access_token(data={"id": user_id})
+    new_refresh_token = create_refresh_token(data={"id": user_id})
+
+    # Store new refresh token
+    if new_refresh_token:
+        jti = uuid.uuid4().hex
+        new_rf_token = RefreshToken(
+            user_id=user_id, token_hash=new_refresh_token, jti=jti
+        )
+        refresh_token_repository.create(db, new_rf_token)
+
     return {
         "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
         "user_id": user_id,
     }
 
 
-def logout_user(db: Session, refresh_token: str | None) -> None:
+def logout_user(db: Session, refresh_token: str | None, access_token: str | None = None) -> None:
     if refresh_token:
         refresh_token_repository.revoke_token(db, refresh_token)
+    
+    if access_token:
+        try:
+            redis_client.setex(
+                f"blacklist_token:{access_token}", 
+                ACCESS_TOKEN_EXPIRE_MINUTES * 60, 
+                "true"
+            )
+        except Exception:
+            pass
 
 
-def logout_all_devices(db: Session, user_id: int) -> None:
+def logout_all_devices(db: Session, user_id: int, access_token: str | None = None) -> None:
     refresh_token_repository.revoke_all_for_user(db, user_id)
+    
+    try:
+        current_timestamp = int(time.time())
+        redis_client.set(f"user:{user_id}:logout_all", current_timestamp)
+        
+        if access_token:
+            redis_client.setex(
+                f"blacklist_token:{access_token}", 
+                ACCESS_TOKEN_EXPIRE_MINUTES * 60, 
+                "true"
+            )
+    except Exception:
+        pass
 
 
 def change_user_password(

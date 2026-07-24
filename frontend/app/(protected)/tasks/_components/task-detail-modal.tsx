@@ -1,5 +1,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 
+import { KeyValueList, StatusPill } from "@/components/ui";
+import { AssigneeSelect } from "@/components/assignee-select";
 import { taskApi } from "@/services/api";
 import { formatDate, formatDateTime } from "@/lib/utils/format";
 import type { EnrichedTask, Task, TaskLogworkEntry, UserProfile } from "@/types";
@@ -35,9 +37,9 @@ export function TaskDetailModal({
   const [logworks, setLogworks] = useState<TaskLogworkEntry[]>([]);
 
   const isAssignee = Boolean(task?.assigneeId && task.assigneeId === viewerId);
-  const canEditTask = canManage;
-  const canUpdateStatus = canManage || isAssignee;
-  const canLogwork = canManage || isAssignee;
+  const canEditTask = canManage; // Theo yêu cầu: Chỉ Manager và Leader (canManage) mới được sửa tiêu đề, mô tả
+  const canUpdateStatus = true; // Ai cũng có thể update status (vì cũng có quyền kéo thả)
+  const canLogwork = true;
 
   const resolvedAssignee =
     task && "assignee" in task && task.assignee
@@ -66,10 +68,23 @@ export function TaskDetailModal({
           } satisfies UserProfile)
         : null;
 
-  const assigneeOptions =
-    resolvedAssignee && !users.some((user) => user.id === resolvedAssignee.id)
-      ? [resolvedAssignee, ...users]
-      : users;
+  const projectMemberIds = task && "project" in task ? task.project?.memberIds : null;
+  const projectUsers = projectMemberIds ? users.filter(u => projectMemberIds.includes(u.id)) : users;
+
+  const assigneeOptions = canManage 
+    ? (resolvedAssignee && !projectUsers.some((user) => user.id === resolvedAssignee.id)
+      ? [resolvedAssignee, ...projectUsers]
+      : projectUsers)
+    : (resolvedAssignee && resolvedAssignee.id !== viewerId
+      ? [resolvedAssignee, ...projectUsers.filter((user) => user.id === viewerId)]
+      : projectUsers.filter((user) => user.id === viewerId));
+
+  const isWaterfall = task && "project" in task && task.project?.projectType === "waterfall";
+  const isAgile = task && "project" in task && task.project?.projectType === "agile";
+  const isBacklog = isAgile && !task?.sprintId;
+
+  // Người quản lý trong dự án waterfall có quyền assign thành viên. Còn agile thì kéo rồi tự gán trên Kanban.
+  const canEditAssignee = isWaterfall ? canManage : false;
 
   const loadTask = useEffectEvent(async (nextTaskId: string) => {
     setIsLoading(true);
@@ -247,7 +262,6 @@ export function TaskDetailModal({
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            {canEditTask ? (
               <button
                 type="button"
                 className="secondary-button"
@@ -268,6 +282,14 @@ export function TaskDetailModal({
               >
                 Xoá task
               </button>
+            {task?.projectId ? (
+              <a
+                href={`/projects/${task.projectId}?tab=${isWaterfall ? 'gantt' : 'kanban'}&highlightTaskId=${task.id}&highlightColor=green`}
+                className="secondary-button"
+                style={{ textDecoration: "none" }}
+              >
+                Chuyển tới dự án
+              </a>
             ) : null}
             {canLogwork ? (
               <button
@@ -412,10 +434,20 @@ export function TaskDetailModal({
                             Ngày logwork: {formatDate(entry.workDate)}
                           </span>
                         </div>
-                        <div style={{ textAlign: "right" }}>
+                        <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
                           <strong style={{ display: "block" }}>{entry.hoursSpent}h</strong>
                           <span style={{ color: "var(--foreground-muted)", fontSize: "0.8rem" }}>
                             {formatDateTime(entry.createdAt)}
+                          </span>
+                          <span style={{ 
+                            fontSize: "0.75rem", 
+                            fontWeight: 600,
+                            padding: "0.15rem 0.5rem", 
+                            borderRadius: "1rem",
+                            backgroundColor: entry.status === 'APPROVED' ? 'rgba(34, 197, 94, 0.15)' : entry.status === 'REJECTED' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                            color: entry.status === 'APPROVED' ? 'var(--success-fg)' : entry.status === 'REJECTED' ? 'var(--critical-fg)' : 'var(--warning-fg)'
+                          }}>
+                            {entry.status === 'APPROVED' ? 'Đã duyệt' : entry.status === 'REJECTED' ? 'Từ chối' : 'Chờ duyệt'}
                           </span>
                         </div>
                       </div>
@@ -457,8 +489,8 @@ export function TaskDetailModal({
           <aside className="task-detail-side">
             <div className="task-detail-assignee-card">
               <div className="task-detail-assignee-kicker">Người đang được giao</div>
-              <strong>{resolvedAssignee?.name || task?.assigneeName || "Chưa phân công"}</strong>
-              <span>{resolvedAssignee?.email || task?.assigneeEmail || "Chưa có thông tin email"}</span>
+              <strong>{isBacklog ? "Chưa phân công" : (resolvedAssignee?.name || task?.assigneeName || "Chưa phân công")}</strong>
+              <span>{isBacklog ? "Chưa có thông tin email" : (resolvedAssignee?.email || task?.assigneeEmail || "Chưa có thông tin email")}</span>
             </div>
 
             <label className="task-detail-field">
@@ -477,19 +509,18 @@ export function TaskDetailModal({
 
             <label className="task-detail-field">
               <span className="task-detail-field-label">Người thực hiện</span>
-              <select
+              <AssigneeSelect
                 className="task-detail-control task-detail-select"
-                value={task?.assigneeId || ""}
-                onChange={(event) => void handleAssigneeChange(event.target.value)}
-                disabled={isLoading || isSaving || !canEditTask}
-              >
-                <option value="">-- Chưa phân công --</option>
-                {assigneeOptions.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
+                value={isBacklog ? "" : (task?.assigneeId || "")}
+                onChange={(val) => void handleAssigneeChange(val)}
+                disabled={isLoading || isSaving || !canEditAssignee}
+                title={
+                  isAgile 
+                    ? "Trong mô hình Agile, người thực hiện được tự động gán khi kéo thả Task trên bảng Kanban." 
+                    : (!canManage ? "Chỉ quản lý mới có quyền phân công người thực hiện trong dự án Waterfall." : "")
+                }
+                options={assigneeOptions}
+              />
             </label>
 
             <label className="task-detail-field">
@@ -513,7 +544,17 @@ export function TaskDetailModal({
                 className="task-detail-control"
                 type="date"
                 value={task?.startDate || ""}
-                onChange={(event) => void handleUpdate({ startDate: event.target.value })}
+                onChange={(event) => {
+                  const newStartDate = event.target.value;
+                  const updates: Partial<Task> = { startDate: newStartDate };
+                  if (task?.estimateHours && task.estimateHours > 0 && newStartDate) {
+                    const daysRequired = Math.ceil(task.estimateHours / 8);
+                    const startDateObj = new Date(newStartDate);
+                    startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
+                    updates.dueDate = startDateObj.toISOString().split("T")[0];
+                  }
+                  void handleUpdate(updates);
+                }}
                 disabled={isLoading || isSaving || !canEditTask}
               />
             </label>
@@ -537,9 +578,17 @@ export function TaskDetailModal({
                 min="0"
                 step="0.5"
                 value={task?.estimateHours || 0}
-                onChange={(event) =>
-                  void handleUpdate({ estimateHours: parseFloat(event.target.value) || 0 })
-                }
+                onChange={(event) => {
+                  const newEstimate = parseFloat(event.target.value) || 0;
+                  const updates: Partial<Task> = { estimateHours: newEstimate };
+                  if (newEstimate > 0 && task?.startDate) {
+                    const daysRequired = Math.ceil(newEstimate / 8);
+                    const startDateObj = new Date(task.startDate);
+                    startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
+                    updates.dueDate = startDateObj.toISOString().split("T")[0];
+                  }
+                  void handleUpdate(updates);
+                }}
                 disabled={isLoading || isSaving || !canEditTask}
               />
             </label>

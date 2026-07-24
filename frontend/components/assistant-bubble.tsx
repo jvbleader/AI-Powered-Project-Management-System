@@ -166,6 +166,7 @@ export function AssistantBubble({
     setMessages((current) => [...current, createUserMessage(cleanPrompt)]);
 
     const taskId = extractTaskId(cleanPrompt);
+    const scopeProjectId = projectId || null;
 
     const loadingMessageId = `assistant-loading-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     scrollTargetMessageIdRef.current = loadingMessageId;
@@ -175,18 +176,59 @@ export function AssistantBubble({
       {
         id: loadingMessageId,
         role: "assistant",
-        content: `Đang phân tích: ${cleanPrompt}`,
+        content: `Đang phân tích ý định...`,
       },
     ]);
 
     try {
-      const scopeProjectId = projectId || null;
-
-      const { data } = await aiApi.quickResponse({
+      const classifyResponse = await aiApi.classifyIntent({
         action: forcedAction || null,
         prompt: cleanPrompt,
         projectId: scopeProjectId,
         taskId: taskId,
+      });
+      const intent = classifyResponse.intent;
+
+      if (intent === "out_of_scope") {
+        setMessages((current) =>
+            current.map((message) =>
+              message.id === loadingMessageId
+                ? {
+                    ...createAssistantMessage("Hệ thống này không hỗ trợ trả lời câu hỏi này.", {
+                      action: "out_of_scope",
+                      title: "Ngoài phạm vi hỗ trợ",
+                      summary: "Hệ thống này không hỗ trợ trả lời câu hỏi này.",
+                      evidence: [],
+                      recommendations: [],
+                      entities: [],
+                      generatedAt: new Date().toISOString(),
+                      dataFreshnessNote: ""
+                    }),
+                    id: loadingMessageId,
+                  }
+                : message,
+          ),
+        );
+        return;
+      }
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === loadingMessageId
+            ? {
+                ...message,
+                content: intent === "qna" ? "Đang đọc dữ liệu dự án..." : "Đang tính toán phân chia công việc...",
+              }
+            : message,
+        ),
+      );
+
+      const { data } = await aiApi.executeAi({
+        action: forcedAction || null,
+        prompt: cleanPrompt,
+        projectId: scopeProjectId,
+        taskId: taskId,
+        intent,
       });
 
       setMessages((current) =>

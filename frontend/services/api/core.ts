@@ -7,6 +7,7 @@ import {
   tasks,
   users,
 } from "@/lib/mock/data";
+import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import {
   DEMO_TODAY,
   getAccessibleLogwork,
@@ -51,6 +52,7 @@ import type {
   UserStatusUpdatePayload,
   WorkspaceShellData,
 } from "@/types";
+import { roleLabel } from "@/lib/utils/format";
 
 export type EndpointMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -117,29 +119,17 @@ export function toInitials(name: string) {
 }
 
 export function toFrontendRole(backendUser: BackendUserResponse): UserRole {
-  return backendUser.is_admin ? "ADMIN" : "MEMBER";
+  return backendUser.role?.trim() || (backendUser.is_admin ? "Admin" : "Lập trình viên");
 }
 
 export function toRoleTitle(role: UserRole) {
-  if (role === "ADMIN") {
-    return "Platform Admin";
-  }
-
-  if (role === "MANAGER") {
-    return "Project Manager";
-  }
-
-  if (role === "LEADER") {
-    return "Team Lead";
-  }
-
-  return "Team Member";
+  return roleLabel(role);
 }
 
 export function toFrontendUserProfile(backendUser: BackendUserResponse): UserProfile {
   const resolvedName =
     backendUser.full_name?.trim() || backendUser.email.split("@")[0] || "Người dùng";
-  const role = backendUser.is_admin ? "ADMIN" : (backendUser.role as UserRole) || "MEMBER";
+  const role = toFrontendRole(backendUser);
 
   return {
     id: `usr-${backendUser.id}`,
@@ -230,12 +220,18 @@ export const apiEndpoints = {
     }),
   },
   sprints: {
-    list: { method: "GET" as EndpointMethod, path: "/api/sprints" },
+    list: (projectId: string) => ({
+      method: "GET" as EndpointMethod,
+      path: `/api/projects/${projectId}/sprints`,
+    }),
     detail: (sprintId: string) => ({
       method: "GET" as EndpointMethod,
       path: `/api/sprints/${sprintId}`,
     }),
-    create: { method: "POST" as EndpointMethod, path: "/api/sprints" },
+    create: (projectId: string) => ({
+      method: "POST" as EndpointMethod,
+      path: `/api/projects/${projectId}/sprints`,
+    }),
     update: (sprintId: string) => ({
       method: "PATCH" as EndpointMethod,
       path: `/api/sprints/${sprintId}`,
@@ -283,7 +279,8 @@ export const apiEndpoints = {
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
   },
   ai: {
-    quickResponse: { method: "POST" as EndpointMethod, path: "/api/ai/quick-response" },
+    classifyIntent: { method: "POST" as EndpointMethod, path: "/api/ai/classify-intent" },
+    executeAi: { method: "POST" as EndpointMethod, path: "/api/ai/execute" },
     quickQuery: { method: "POST" as EndpointMethod, path: "/api/ai/query" },
     reports: { method: "GET" as EndpointMethod, path: "/api/ai/reports" },
     memory: { method: "GET" as EndpointMethod, path: "/api/ai/memory" },
@@ -326,66 +323,113 @@ export function formatApiError(detail: unknown, fallback: string) {
   return fallback;
 }
 
+const axiosInstance = axios.create({
+  withCredentials: true,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+axiosInstance.interceptors.request.use((config) => {
+  config.baseURL = getApiBaseUrl();
+  return config;
+});
+
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (reason?: any) => void }> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+    
+    // Nếu gặp lỗi 401 và không phải là các API Auth thì sẽ gọi refresh
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest.url?.endsWith("/refresh") &&
+      !originalRequest.url?.endsWith("/login") &&
+      !originalRequest.url?.endsWith("/logout") &&
+      !originalRequest._retry
+    ) {
+      if (isRefreshing) {
+        return new Promise(function (resolve, reject) {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(() => {
+            return axiosInstance(originalRequest);
+          })
+          .catch((err) => {
+            return Promise.reject(err);
+          });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        await axios.get(`${getApiBaseUrl()}/refresh`, { withCredentials: true });
+        isRefreshing = false;
+        processQueue(null);
+        return axiosInstance(originalRequest);
+      } catch (e) {
+        isRefreshing = false;
+        processQueue(e);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("flowpilot-session-expired"));
+        }
+        return Promise.reject(e);
+      }
+    }
+    
+    if (
+      error.response?.status === 401 && 
+      originalRequest && 
+      originalRequest.url?.endsWith("/refresh")
+    ) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("flowpilot-session-expired"));
+      }
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
 export async function requestApi<T>(
   endpoint: { method: EndpointMethod; path: string },
   init?: Omit<RequestInit, "method">,
 ): Promise<ApiResponse<T>> {
-  let response: Response;
-
   try {
-    response = await fetch(`${getApiBaseUrl()}${endpoint.path}`, {
-      ...init,
+    const config: AxiosRequestConfig = {
+      url: endpoint.path,
       method: endpoint.method,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...init?.headers,
-      },
-    });
-  } catch {
+      data: init?.body ? JSON.parse(init.body as string) : undefined,
+      headers: init?.headers as Record<string, string>,
+    };
+
+    const response = await axiosInstance.request(config);
+    return wrapBackendResponse(response.data as T);
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      const payload = error.response.data;
+      const detail =
+        payload && typeof payload === "object" && "detail" in payload ? payload.detail : null;
+      throw new Error(formatApiError(detail, "Không thể kết nối tới hệ thống xác thực."));
+    }
     throw new Error(NETWORK_ERROR_MESSAGE);
   }
-
-  if (
-    response.status === 401 &&
-    endpoint.path !== "/refresh" &&
-    endpoint.path !== "/login" &&
-    endpoint.path !== "/logout"
-  ) {
-    try {
-      const refreshRes = await fetch(`${getApiBaseUrl()}/refresh`, {
-        method: "GET",
-        credentials: "include",
-      });
-      if (refreshRes.ok) {
-        response = await fetch(`${getApiBaseUrl()}${endpoint.path}`, {
-          ...init,
-          method: endpoint.method,
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            ...init?.headers,
-          },
-        });
-      } else {
-        if (typeof window !== "undefined")
-          window.dispatchEvent(new Event("flowpilot-session-expired"));
-      }
-    } catch {
-      if (typeof window !== "undefined")
-        window.dispatchEvent(new Event("flowpilot-session-expired"));
-    }
-  }
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const detail =
-      payload && typeof payload === "object" && "detail" in payload ? payload.detail : null;
-    throw new Error(formatApiError(detail, "Không thể kết nối tới hệ thống xác thực."));
-  }
-
-  return wrapBackendResponse(payload as T);
 }
 
 export async function fetchCurrentUserProfile() {

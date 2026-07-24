@@ -499,3 +499,112 @@
     text-align: left;
   }
 }
+
+/* ── Avatar Cropper Modal ── */
+.cropperModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.cropperModalContent {
+  background: var(--surface);
+  border-radius: 24px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalEnter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.cropperHeader {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  text-align: center;
+}
+
+.cropperHeader h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cropperContainer {
+  position: relative;
+  width: 100%;
+  height: 350px;
+  background: #000;
+}
+
+.cropperControls {
+  padding: 1.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.zoomSlider {
+  width: 80%;
+  accent-color: var(--accent);
+}
+
+.cropperFooter {
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.cropperCancelBtn {
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  background: white;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cropperCancelBtn:hover {
+  background: #f1f5f9;
+  color: var(--ink);
+}
+
+.cropperSaveBtn {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cropperSaveBtn:hover {
+  background: var(--accent-strong);
+}

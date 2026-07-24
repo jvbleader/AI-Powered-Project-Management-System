@@ -83,10 +83,13 @@ export function WbsTable({ tasks }: WbsTableProps) {
                       border: "none",
                       cursor: "pointer",
                       padding: 0,
-                      width: "16px",
-                      display: "flex",
+                      width: "24px",
+                      height: "24px",
+                      marginRight: "6px",
+                      display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      flexShrink: 0,
                     }}
                   >
                     <svg
@@ -105,8 +108,42 @@ export function WbsTable({ tasks }: WbsTableProps) {
                     </svg>
                   </button>
                 ) : (
-                  <span style={{ width: "16px" }} />
+                  <span style={{ width: "24px", height: "24px", marginRight: "6px", display: "inline-block", flexShrink: 0 }} />
                 )}
+                {(() => {
+                  switch (node.level) {
+                    case 0:
+                      return (
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#6366f1", flexShrink: 0 }}>
+                          <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+                        </svg>
+                      );
+                    case 1:
+                      return (
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#0284c7", flexShrink: 0 }}>
+                          <rect x="3" y="3" width="18" height="18" rx="3" />
+                          <path d="M3 9h18" />
+                          <path d="M9 15h6" />
+                        </svg>
+                      );
+                    case 2:
+                      return (
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#10b981", flexShrink: 0 }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="12" y1="18" x2="12" y2="12" />
+                          <line x1="9" y1="15" x2="15" y2="15" />
+                        </svg>
+                      );
+                    default:
+                      return (
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#f59e0b", flexShrink: 0 }}>
+                          <circle cx="12" cy="12" r="9" />
+                          <polyline points="12 8 12 12 15 15" />
+                        </svg>
+                      );
+                  }
+                })()}
                 <div className={styles.userCellCopy}>
                   <strong>{node.task.title}</strong>
                   <small>{node.task.key}</small>

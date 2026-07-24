@@ -36,7 +36,7 @@ from app.utils.dashboard_helpers import (
     sum_estimated_hours,
     sum_logged_hours,
 )
-from app.utils.project_helpers import build_project_response, is_admin_user
+from app.utils.project_helpers import build_project_response, list_accessible_project_ids
 
 
 def _normalize_sprint_status(status: str | None) -> str:
@@ -52,14 +52,7 @@ def _normalize_sprint_status(status: str | None) -> str:
 
 
 def _load_accessible_projects(db: Session, current_user: User):
-    if is_admin_user(current_user):
-        return (
-            db.query(Project)
-            .order_by(desc(Project.updated_at), desc(Project.id))
-            .all()
-        )
-
-    accessible_ids = project_repository.list_member_project_ids(db, current_user.id)
+    accessible_ids = list_accessible_project_ids(db, current_user)
     if not accessible_ids:
         return []
 

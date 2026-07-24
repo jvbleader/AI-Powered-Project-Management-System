@@ -1,11 +1,14 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query, status
+import asyncio
+from fastapi import APIRouter, Depends, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.connection import get_db
 from app.core.dependencies import get_current_user
 from app.models.user_model import User
+from app.models.notification_model import Notification
+from app.services.websocket_manager import manager
 from app.schemas.project_schema import (
     PaginatedProjectsResponse,
     ProjectCreate,
@@ -114,10 +117,44 @@ def list_project_members(
 def add_project_member(
     project_id: str,
     data: ProjectMemberCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     member, user, role = project_service.add_project_member(db, current_user, project_id, data)
+    
+    numeric_id = project_service.parse_project_id(project_id)
+    project = project_service.project_repository.get_project_by_id(db, numeric_id)
+    if project and user.id != current_user.id:
+        notification = Notification(
+            user_id=user.id,
+            type="PROJECT_MEMBER_ADDED",
+            title="Bạn đã được thêm vào dự án mới",
+            content=f"Bạn vừa được thêm vào dự án '{project.name}'.",
+            link=f"/projects/{project_id}"
+        )
+        db.add(notification)
+        db.commit()
+        db.refresh(notification)
+
+        async def send_ws():
+            await manager.send_personal_message(
+                {
+                    "type": "NEW_NOTIFICATION",
+                    "data": {
+                        "id": notification.id,
+                        "type": notification.type,
+                        "title": notification.title,
+                        "content": notification.content,
+                        "link": notification.link,
+                        "is_read": False,
+                        "created_at": notification.created_at.isoformat()
+                    }
+                },
+                user.id
+            )
+        background_tasks.add_task(send_ws)
+        
     return build_member_response(member, user, role)
 
 

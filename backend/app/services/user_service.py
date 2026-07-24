@@ -18,6 +18,7 @@ from app.schemas.user_schema import (
     UserRoleUpdate,
     UserStatusUpdate,
 )
+from app.services.azure_blob_service import azure_blob_service
 from app.utils.project_helpers import (
     is_admin_user,
     list_accessible_project_ids,
@@ -26,8 +27,36 @@ from app.utils.project_helpers import (
 from app.utils.password_hash import hash_password
 
 
-def _is_admin_user(user: User) -> bool:
-    return bool(user and (getattr(user, "is_admin", False) or getattr(user, "role", None) == "ADMIN"))
+def _require_admin(current_user: User) -> None:
+    if not is_admin_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ tài khoản Admin mới được quản trị người dùng.",
+        )
+
+
+def _resolve_department_id(db: Session, department_name: str | None) -> int:
+    if not department_name or not department_name.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phòng ban là bắt buộc.",
+        )
+
+    dept_name = department_name.strip()
+    department = department_repository.get_by_name(db, dept_name)
+    if not department:
+        department = department_repository.create(db, dept_name)
+    return department.id
+
+
+def _resolve_role_id(db: Session, role_name: str) -> int:
+    role = project_repository.get_role_by_name(db, role_name.strip())
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vai trò không hợp lệ.",
+        )
+    return role.id
 
 
 def update_phone(db: Session, current_user: User, data: UpdatePhone) -> User:
@@ -43,17 +72,19 @@ def update_phone(db: Session, current_user: User, data: UpdatePhone) -> User:
     current_user.updated_at = datetime.now(timezone.utc)
     return user_repository.commit_and_refresh(db, current_user)
 
+
 def update_avatar(db: Session, current_user: User, data: UpdateAvatar) -> User:
-    current_user.avatar_url = data.avatar_url
+    avatar_url = azure_blob_service.upload_base64_avatar(data.avatar_url, current_user.id)
+    
+    current_user.avatar_url = avatar_url
     current_user.updated_at = datetime.now(timezone.utc)
-    return user_repository.commit_and_refresh(db, current_user)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
 
 def create_user(db: Session, current_user: User, data: UserCreate) -> User:
-    if not _is_admin_user(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn không có quyền thực hiện hành động này.",
-        )
+    _require_admin(current_user)
 
     existing_user = user_repository.get_by_email(db, data.email.lower())
     if existing_user:
@@ -62,25 +93,19 @@ def create_user(db: Session, current_user: User, data: UserCreate) -> User:
             detail="Email đã được sử dụng.",
         )
 
-    hashed_pass = hash_password(data.password)
-
-    department_id = None
-    if data.department and data.department.strip():
-        dept_name = data.department.strip()
-        dept = department_repository.get_by_name(db, dept_name)
-        if not dept:
-            dept = department_repository.create(db, dept_name)
-        department_id = dept.id
-
     new_user = User(
         full_name=data.name.strip(),
         email=data.email.strip().lower(),
-        password_hash=hashed_pass,
-        role=data.role,
-        is_admin=data.is_admin or data.role == "ADMIN",
-        department_id=department_id,
+        password_hash=hash_password(data.password),
+        department_id=_resolve_department_id(db, data.department),
+        team_id=None,
+        role_id=_resolve_role_id(db, data.role),
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     return user_repository.create(db, new_user)
+
 
 def get_users(
     db: Session,
@@ -113,12 +138,9 @@ def get_users(
         page_size=page_size,
     )
 
+
 def update_user_status(db: Session, current_user: User, user_id: int, data: UserStatusUpdate) -> User:
-    if not _is_admin_user(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn không có quyền thực hiện hành động này.",
-        )
+    _require_admin(current_user)
 
     user = user_repository.get_by_id(db, user_id)
     if not user:
@@ -132,42 +154,27 @@ def update_user_status(db: Session, current_user: User, user_id: int, data: User
 
     return user_repository.commit_and_refresh(db, user)
 
+
 def update_user_role(db: Session, current_user: User, user_id: int, data: UserRoleUpdate) -> User:
-    if not _is_admin_user(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn không có quyền thực hiện hành động này.",
-        )
+    _require_admin(current_user)
 
     user = user_repository.get_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
 
-    user.role = data.role
-    user.is_admin = data.is_admin or data.role == "ADMIN"
-
-    if data.department and data.department.strip():
-        dept_name = data.department.strip()
-        dept = department_repository.get_by_name(db, dept_name)
-        if not dept:
-            dept = department_repository.create(db, dept_name)
-        user.department_id = dept.id
-
+    user.role_id = _resolve_role_id(db, data.role)
+    user.department_id = _resolve_department_id(db, data.department)
     user.updated_at = datetime.now(timezone.utc)
     return user_repository.commit_and_refresh(db, user)
 
+
 def reset_password(db: Session, current_user: User, data: AdminResetPassword) -> None:
-    if not _is_admin_user(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn không có quyền thực hiện hành động này.",
-        )
+    _require_admin(current_user)
 
     user = user_repository.get_by_email(db, data.email.lower())
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
 
-    hashed_pass = hash_password(data.new_password)
-    user.password_hash = hashed_pass
+    user.password_hash = hash_password(data.new_password)
     user.updated_at = datetime.now(timezone.utc)
     user_repository.commit_and_refresh(db, user)

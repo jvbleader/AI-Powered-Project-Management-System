@@ -30,6 +30,7 @@ class ProjectResponse(BaseModel):
     id: int
     code: str
     name: str
+    projectType: str = "agile"
     description: Optional[str] = None
     status: str
     progress: int = 0
@@ -41,6 +42,8 @@ class ProjectResponse(BaseModel):
     createdBy: int
     createdAt: datetime
     updatedAt: datetime
+    departmentId: int = 0
+    departmentName: Optional[str] = None
     metrics: ProjectMetricsResponse = ProjectMetricsResponse()
 
     class Config:
@@ -53,10 +56,12 @@ class ProjectDetailResponse(ProjectResponse):
 
 class ProjectCreate(BaseModel):
     name: str
+    project_type: str = "agile"
     description: str
     start_date: date
     end_date: date
     manager_id: int
+    department_id: int
 
     @field_validator("name", "description")
     @classmethod
@@ -77,10 +82,12 @@ class ProjectCreate(BaseModel):
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
+    project_type: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    department_id: Optional[int] = None
 
 
 class ProjectMemberCreate(BaseModel):

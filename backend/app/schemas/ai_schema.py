@@ -14,6 +14,7 @@ class QuickResponseAction(str, Enum):
     TASK_HEALTH = "task_health"
     GENERAL_QNA = "general_qna"
     OUT_OF_SCOPE = "out_of_scope"
+    TASK_ASSIGNMENT = "task_assignment"
 
 
 class QuickResponseRequest(BaseModel):
@@ -21,6 +22,11 @@ class QuickResponseRequest(BaseModel):
     prompt: Optional[str] = None
     project_id: Optional[int] = None
     task_id: Optional[int] = None
+    intent: Optional[str] = None
+
+class ClassifyIntentResponse(BaseModel):
+    intent: str
+
 
 
 class QuickResponseEntity(BaseModel):
@@ -39,3 +45,11 @@ class QuickResponseResponse(BaseModel):
     entities: list[QuickResponseEntity] = Field(default_factory=list)
     generated_at: datetime
     data_freshness_note: str
+
+class ConfirmTasksRequest(BaseModel):
+    project_id: int
+    tasks_data: list[dict] = Field(description="Danh sách task nháp được UI gửi lên để confirm")
+
+class ConfirmTasksResponse(BaseModel):
+    message: str
+    created_task_ids: list[int]

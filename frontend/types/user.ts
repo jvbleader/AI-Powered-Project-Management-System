@@ -1,7 +1,20 @@
 import type { PresenceStatus } from "./common";
 
-export type UserRole = "ADMIN" | "MANAGER" | "LEADER" | "MEMBER";
+export type UserRole = string;
 export type UserStatus = "ACTIVE" | "INACTIVE";
+
+export const SYSTEM_ROLE_OPTIONS = [
+  "Lập trình viên",
+  "Tester",
+  "QA",
+  "QC",
+  "Project Manager / Product Owner / Group Member",
+  "Leader",
+  "Giám đốc",
+  "Admin",
+  "HR",
+  "Chăm sóc khách hàng",
+] as const;
 
 export interface Department {
   id: number;
@@ -83,7 +96,7 @@ export interface CreateUserPayload {
   name: string;
   password: string;
   role: UserRole;
-  isAdmin: boolean;
+  isAdmin?: boolean;
   department?: string;
 }
 

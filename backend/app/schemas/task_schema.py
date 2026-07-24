@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 from datetime import date, datetime, timezone
 from pydantic import field_validator
@@ -17,21 +17,21 @@ class TaskAssigneeResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class TaskCommentBase(BaseModel):
-    content: str
+class TaskAttachmentBase(BaseModel):
+    file_url: str
+    file_name: str
 
-class TaskCommentCreate(TaskCommentBase):
+class TaskAttachmentCreate(TaskAttachmentBase):
     pass
 
-class TaskCommentResponse(TaskCommentBase):
+class TaskAttachmentResponse(TaskAttachmentBase):
     id: int
     task_id: int
-    project_member_id: int
+    uploaded_by: int
     user_name: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
 
-    @field_validator("created_at", "updated_at")
+    @field_validator("created_at")
     @classmethod
     def attach_timezone(cls, value: datetime) -> datetime:
         return _ensure_utc_datetime(value)
@@ -61,6 +61,9 @@ class LogWorkResponse(LogWorkBase):
     task_id: int
     project_member_id: int
     user_name: Optional[str] = None
+    project_name: Optional[str] = None
+    task_title: Optional[str] = None
+    status: str
     created_at: datetime
     updated_at: datetime
 
@@ -99,7 +102,7 @@ class TaskBase(BaseModel):
 
         stripped = value.strip()
         if not stripped:
-            raise ValueError("Mô tả không được để trống.")
+            return None
         return stripped
 
 
@@ -111,7 +114,14 @@ class TaskBase(BaseModel):
         return value
 
 class TaskCreate(TaskBase):
-    assignee_user_ids: List[str] = Field(default_factory=list)
+    assignee_user_ids: List[Union[str, int]] = Field(default_factory=list)
+
+    @field_validator("assignee_user_ids", mode="before")
+    @classmethod
+    def normalize_assignee_user_ids(cls, values):
+        if isinstance(values, list):
+            return [str(v) for v in values if v is not None]
+        return values
 
     @field_validator("deadline")
     @classmethod

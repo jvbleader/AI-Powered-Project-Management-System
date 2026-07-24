@@ -1,6 +1,14 @@
 import Image from "next/image";
 import { EmptyState, Surface, StatusPill } from "@/components/ui";
-import { roleLabel, userStatusLabel } from "@/lib/utils/format";
+import {
+  hasCompanywideProjectAccess,
+  isAdminRole,
+  isLeaderRole,
+  isManagerRole,
+  roleLabel,
+  userStatusLabel,
+  getRoleTone,
+} from "@/lib/utils/format";
 import type { PaginatedUsers, UserRole, UserStatus, UserProfile } from "@/types";
 import styles from "../styles/team.module.css";
 
@@ -22,15 +30,7 @@ function getStatusTone(status: UserStatus) {
   return "critical" as const;
 }
 
-function getRoleTone(role: UserRole) {
-  if (role === "ADMIN") {
-    return "critical" as const;
-  }
-  if (role === "MANAGER" || role === "LEADER") {
-    return "accent" as const;
-  }
-  return "neutral" as const;
-}
+
 
 export function UserTable({
   directory,
@@ -66,7 +66,7 @@ export function UserTable({
                   <th>Email</th>
                   <th>Vai trò</th>
                   <th>Trạng thái</th>
-                  <th>Công việc</th>
+                  <th>Phòng ban</th>
                   <th>Số điện thoại</th>
                   <th />
                 </tr>
@@ -132,8 +132,7 @@ export function UserTable({
                       </td>
                       <td>
                         <div className={styles.contactCell}>
-                          <span>{summaryByUser.open} task mở</span>
-                          <small>{summaryByUser.inProgress} task đang tiến hành</small>
+                          <span>{user.department || "Chưa có"}</span>
                         </div>
                       </td>
                       <td>{user.phoneNumber || "Chưa có"}</td>

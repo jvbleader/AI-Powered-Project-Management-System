@@ -1,17 +1,28 @@
 import math
 
 from sqlalchemy import desc, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.department_model import Department
+from app.models.project_model import Role
 from app.models.user_model import User
 
 
+def _base_query(db: Session):
+    return db.query(User).options(
+        joinedload(User.department),
+        joinedload(User.team),
+        joinedload(User.role_ref),
+    )
+
+
 def get_by_id(db: Session, user_id: int) -> User | None:
-    return db.query(User).filter(User.id == user_id).first()
+    return _base_query(db).filter(User.id == user_id).first()
+
 
 def get_by_email(db: Session, email: str) -> User | None:
-    return db.query(User).filter(User.email == email).first()
+    return _base_query(db).filter(User.email == email).first()
+
 
 def get_users(
     db: Session,
@@ -23,7 +34,7 @@ def get_users(
     page: int = 1,
     page_size: int = 10,
 ):
-    query = db.query(User)
+    query = _base_query(db)
 
     if user_ids is not None:
         if not user_ids:
@@ -41,36 +52,44 @@ def get_users(
 
     if status and status != "ALL":
         if status == "ACTIVE":
-            query = query.filter(User.is_active == True)
+            query = query.filter(User.is_active.is_(True))
         elif status == "INACTIVE":
-            query = query.filter(User.is_active == False)
+            query = query.filter(User.is_active.is_(False))
 
     if role and role != "ALL":
-        query = query.filter(User.role == role)
+        query = query.join(User.role_ref).filter(Role.name == role)
 
     if department and department != "ALL":
         if department == "UNASSIGNED":
-            query = query.filter(User.department_id == None)
+            query = query.filter(User.department_id.is_(None))
         else:
             query = query.join(User.department).filter(Department.name == department)
 
     total = query.count()
     total_pages = math.ceil(total / page_size) if total > 0 else 1
 
-    users = query.order_by(desc(User.created_at), desc(User.id)).offset((page - 1) * page_size).limit(page_size).all()
+    users = (
+        query.order_by(desc(User.created_at), desc(User.id))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
 
     return users, total, total_pages
+
 
 def create(db: Session, user: User) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return get_by_id(db, user.id)
+
 
 def commit_and_refresh(db: Session, user: User) -> User:
     db.commit()
     db.refresh(user)
-    return user
+    return get_by_id(db, user.id)
+
 
 def update_password(db: Session, user_id: int, hashed_new_password: str) -> None:
     db.query(User).filter(User.id == user_id).update({User.password_hash: hashed_new_password})

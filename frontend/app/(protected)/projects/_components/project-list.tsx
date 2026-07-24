@@ -1,7 +1,12 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState, ProgressBar, StatusPill, Surface } from "@/components/ui";
-import { formatRange, projectStatusLabel } from "@/lib/utils/format";
+import { FilterSelect } from "@/components/filter-select";
+import {
+  formatRange,
+  hasCompanywideProjectAccess,
+  projectStatusLabel,
+} from "@/lib/utils/format";
 import type { Project } from "@/types";
 import styles from "../../team/styles/team.module.css";
 
@@ -12,6 +17,7 @@ interface ProjectListProps {
   canManage: boolean;
   viewerId: string;
   viewerRole: string;
+  viewerDepartment?: string;
   onAddProjectClick?: () => void;
   onEditProjectClick?: (project: Project) => void;
 }
@@ -25,13 +31,14 @@ export function ProjectList({
   canManage,
   viewerId,
   viewerRole,
+  viewerDepartment,
   onAddProjectClick,
   onEditProjectClick,
 }: ProjectListProps) {
   void onSelectProject;
   const router = useRouter();
   const [page, setPage] = useState(1);
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+
 
   function openProjectOverview(projectId: string) {
     router.push(`/projects/${projectId}?tab=overview`);
@@ -53,14 +60,11 @@ export function ProjectList({
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PROJECTS_PER_PAGE));
   const validPage = Math.min(page, totalPages);
   const canEditProject = (project: Project) => {
-    if (viewerRole === "ADMIN" || project.managerId === viewerId) {
+    if (hasCompanywideProjectAccess(viewerRole, viewerDepartment) || project.managerId === viewerId) {
       return true;
     }
 
-    return (
-      (viewerRole === "MANAGER" || viewerRole === "LEADER") &&
-      project.memberIds.includes(viewerId)
-    );
+    return false;
   };
   
   const paginatedProjects = filteredProjects.slice(
@@ -82,70 +86,67 @@ export function ProjectList({
       }
     >
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", gap: "1rem", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: "0.5rem", flex: 1, minWidth: "250px" }}>
-          <input
-            type="text"
-            placeholder="Tìm kiếm dự án..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)", flex: 1 }}
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "1px solid var(--border)", background: "var(--surface-sunken)", color: "var(--foreground)" }}
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="ACTIVE">Đang triển khai</option>
-            <option value="PLANNING">Đang lập kế hoạch</option>
-            <option value="AT_RISK">Rủi ro trễ hạn</option>
-            <option value="COMPLETED">Đã hoàn thành</option>
-          </select>
-        </div>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button
-            type="button"
-            className="icon-button"
-            style={{ background: viewMode === "list" ? "var(--surface-raised)" : "transparent", border: "1px solid var(--border)", borderRadius: "4px", padding: "6px" }}
-            onClick={() => setViewMode("list")}
-            title="Danh sách"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6"></line>
-              <line x1="8" y1="12" x2="21" y2="12"></line>
-              <line x1="8" y1="18" x2="21" y2="18"></line>
-              <line x1="3" y1="6" x2="3.01" y2="6"></line>
-              <line x1="3" y1="12" x2="3.01" y2="12"></line>
-              <line x1="3" y1="18" x2="3.01" y2="18"></line>
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            style={{ background: viewMode === "grid" ? "var(--surface-raised)" : "transparent", border: "1px solid var(--border)", borderRadius: "4px", padding: "6px" }}
-            onClick={() => setViewMode("grid")}
-            title="Dạng lưới"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7"></rect>
-              <rect x="14" y="3" width="7" height="7"></rect>
-              <rect x="14" y="14" width="7" height="7"></rect>
-              <rect x="3" y="14" width="7" height="7"></rect>
-            </svg>
-          </button>
+        <div style={{ display: "flex", gap: "0.75rem", flex: 1, minWidth: "250px" }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <div style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--foreground-muted)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Tìm kiếm dự án..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.6rem 1rem 0.6rem 2.5rem",
+                borderRadius: "9999px",
+                border: "1px solid var(--border)",
+                background: "var(--surface-sunken)",
+                color: "var(--foreground)",
+                fontSize: "0.875rem",
+                outline: "none",
+                transition: "border-color 0.2s ease, box-shadow 0.2s ease"
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "var(--primary)";
+                e.target.style.boxShadow = "0 0 0 2px rgba(var(--primary-rgb), 0.2)";
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = "var(--border)";
+                e.target.style.boxShadow = "none";
+              }}
+            />
+          </div>
+          <div style={{ position: "relative", minWidth: "180px" }}>
+            <FilterSelect
+              value={statusFilter}
+              onChange={(val) => setStatusFilter(val)}
+              options={[
+                { value: "ALL", label: "Tất cả trạng thái" },
+                { value: "ACTIVE", label: "Đang triển khai" },
+                { value: "PLANNING", label: "Đang lập kế hoạch" },
+                { value: "AT_RISK", label: "Rủi ro trễ hạn" },
+                { value: "COMPLETED", label: "Đã hoàn thành" },
+                { value: "ON_HOLD", label: "Tạm dừng" },
+              ]}
+            />
+          </div>
         </div>
       </div>
 
       {filteredProjects.length ? (
         <>
-          {viewMode === "list" ? (
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
                 <thead>
                   <tr>
                     <th>Dự án</th>
                     <th>Mã dự án</th>
                     <th>Trạng thái</th>
+                    <th>Phòng ban</th>
                     <th style={{ width: "25%" }}>Tiến độ</th>
                     <th>Thời gian</th>
                     <th />
@@ -169,7 +170,7 @@ export function ProjectList({
                           <span className={styles.userCellCopy}>
                             <strong>{project.name}</strong>
                             <small>
-                              Người quản lý: {project.managerName || "Chưa rõ"}
+                              Manager: {project.managerName || "Chưa rõ"}
                             </small>
                           </span>
                         </button>
@@ -185,10 +186,13 @@ export function ProjectList({
                                 ? "watch"
                                 : project.status === "AT_RISK"
                                   ? "critical"
-                                  : "on-track"
+                                  : project.status === "ON_HOLD"
+                                    ? "neutral"
+                                    : "on-track"
                           }
                         />
                       </td>
+                      <td>{project.departmentName || "---"}</td>
                       <td>
                         <ProgressBar value={project.progress} label="Tiến độ triển khai" />
                       </td>
@@ -225,52 +229,7 @@ export function ProjectList({
                   ))}
                 </tbody>
               </table>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1rem" }}>
-              {paginatedProjects.map((project) => (
-                <div key={project.id} style={{ border: "1px solid var(--border)", borderRadius: "8px", padding: "1.5rem", background: "var(--surface-sunken)", display: "flex", flexDirection: "column", gap: "1rem", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }} onClick={() => openProjectOverview(project.id)}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      <span className={styles.avatarToken} style={{ width: "40px", height: "40px", fontSize: "1rem" }}>
-                        {project.name.charAt(0).toUpperCase()}
-                      </span>
-                      <div>
-                        <h3 style={{ margin: "0 0 0.25rem 0", fontSize: "1rem", fontWeight: 600 }}>{project.name}</h3>
-                        <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--foreground-muted)" }}>{project.code}</p>
-                      </div>
-                    </div>
-                    {onEditProjectClick && canEditProject(project) && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onEditProjectClick(project); }}
-                        style={{ background: "transparent", border: "none", color: "var(--foreground-muted)", cursor: "pointer", padding: "4px" }}
-                      >
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  <div>
-                    <StatusPill
-                      label={projectStatusLabel(project.status)}
-                      tone={
-                        project.status === "ACTIVE" ? "accent" : project.status === "PLANNING" ? "watch" : project.status === "AT_RISK" ? "critical" : "on-track"
-                      }
-                    />
-                  </div>
-                  <div>
-                    <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Quản lý: {project.managerName || "Chưa rõ"}</p>
-                    <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Thời gian: {formatRange(project.startDate, project.endDate)}</p>
-                  </div>
-                  <div style={{ marginTop: "auto" }}>
-                    <ProgressBar value={project.progress} label="Tiến độ" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          </div>
 
           {totalPages > 1 && (
             <div className={styles.paginationBar} style={{ marginTop: "1rem" }}>

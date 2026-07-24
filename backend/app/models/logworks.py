@@ -17,5 +17,6 @@ class LogWork(Base):
     work_content = Column(Text, nullable=False)
     comment = Column(Text)
     progress_percent = Column(Numeric, nullable=False, default=0)
+    status = Column(String(50), nullable=False, default="PENDING", index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

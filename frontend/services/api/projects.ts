@@ -24,6 +24,7 @@ export type BackendProject = Record<string, unknown> & {
   id: number | string;
   code: string;
   name: string;
+  projectType: "agile" | "waterfall";
   description?: string;
   status: Project["status"];
   progress: number;
@@ -41,56 +42,23 @@ type BackendProjectListResponse = {
 };
 
 function mapBackendProjectMember(data: ProjectMemberResponse): ProjectMemberResponse {
-  const normalizedRoleName = normalizeProjectRoleName(String(data.roleName || ""));
-
-  return {
-    ...data,
-    roleName: isSupportedProjectRoleName(normalizedRoleName)
-      ? normalizedRoleName
-      : data.roleName,
-  };
+  return data;
 }
 
 function normalizeProjectRoles(rawRoles: ProjectRoleResponse[]): ProjectRoleResponse[] {
-  const rolesByName = new Map<
-    string,
-    {
-      id: number;
-      name: string;
-      exactMatch: boolean;
-    }
-  >();
-
-  rawRoles.forEach((role) => {
-    const canonicalName = normalizeProjectRoleName(String(role.name || ""));
-    if (!isSupportedProjectRoleName(canonicalName)) {
-      return;
-    }
-
-    const exactMatch = String(role.name || "").trim().toUpperCase() === canonicalName;
-    const existingRole = rolesByName.get(canonicalName);
-
-    if (!existingRole || (exactMatch && !existingRole.exactMatch)) {
-      rolesByName.set(canonicalName, {
-        id: Number(role.id),
-        name: canonicalName,
-        exactMatch,
-      });
-    }
-  });
-
-  return PROJECT_ROLE_ORDER.map((roleName) => rolesByName.get(roleName))
-    .filter(Boolean)
-    .map((role) => ({ id: role!.id, name: role!.name }));
+  return rawRoles;
 }
 
 export function mapBackendProject(data: BackendProject): Project {
   return {
     ...data,
+    projectType: data.projectType || "agile",
     id: data.id.toString(),
     description: data.description || "",
     managerId: data.managerId ? `usr-${data.managerId}` : "",
     memberIds: data.memberIds ? data.memberIds.map((id: number) => `usr-${id}`) : [],
+    departmentId: data.departmentId as number | undefined,
+    departmentName: data.departmentName as string | null | undefined,
     startDate: data.startDate || "",
     endDate: data.endDate || "",
     currentSprintId: data.currentSprintId?.toString() || null,
@@ -146,8 +114,10 @@ export const projectApi = {
     const endpoint = apiEndpoints.projects.update(projectId);
     
     const backendPayload: Record<string, unknown> = { ...payload };
+    if (payload.projectType) backendPayload.project_type = payload.projectType;
     if (payload.startDate) backendPayload.start_date = payload.startDate;
     if (payload.endDate) backendPayload.end_date = payload.endDate;
+    if (payload.departmentId) backendPayload.department_id = payload.departmentId;
     
     const response = await requestApi<BackendProject>(endpoint, {
       body: JSON.stringify(backendPayload),

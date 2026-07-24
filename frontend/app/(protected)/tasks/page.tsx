@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-import { ProjectScopeSelect } from "@/components/project-scope-select";
+
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, Surface } from "@/components/ui";
 import { taskApi, workspaceApi, userApi } from "@/services/api";
@@ -14,10 +14,11 @@ import {
   type TaskPageState,
 } from "@/services/page-cache/tasks-page";
 import { normalizeViewer } from "@/lib/mock/permissions";
+import { hasCompanywideProjectAccess } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
 import type { WorkspaceShellData } from "@/types";
 import { TaskDetailModal } from "./_components/task-detail-modal";
-import { GroupedKanbanBoard } from "./_components/grouped-kanban-board";
+import { GroupedTaskList } from "./_components/grouped-task-list";
 
 function TasksPageContent() {
   const session = useAuthSession();
@@ -95,11 +96,11 @@ function TasksPageContent() {
       alertCount: 0,
     } satisfies WorkspaceShellData);
 
-  const filteredTasks = !taskState?.tasks
-    ? []
-    : selectedProjectId === "ALL"
-      ? taskState.tasks
-      : taskState.tasks.filter((task) => task.projectId === selectedProjectId);
+  // Lọc chỉ các task ĐƯỢC GÁN cho viewer (scope theo từng người)
+  const myTasks = taskState?.tasks?.filter(t => t.assigneeId === viewer.id) ?? [];
+  const filteredTasks = selectedProjectId === "ALL"
+    ? myTasks
+    : myTasks.filter((task) => task.projectId === selectedProjectId);
   const projectOptions = [
     { value: "ALL", label: "Tất cả dự án" },
     ...((taskState?.projects ?? []).map((project) => ({
@@ -109,54 +110,26 @@ function TasksPageContent() {
   ];
   const canManageSelectedTask = Boolean(
     selectedTask &&
-      (viewer.role === "ADMIN" ||
-        viewer.role === "MANAGER" ||
-        viewer.role === "LEADER" ||
+      (hasCompanywideProjectAccess(viewer.role, viewer.department) ||
         selectedTask.project.managerId === viewer.id),
   );
 
   return (
     <WorkspaceShell
       shellData={shellData}
-      heading="Điều phối công việc"
-      subheading="Kanban tổng hợp cho toàn bộ task trong phạm vi quyền hiện tại của bạn."
+      heading="Tiến độ cá nhân"
+      subheading="Danh sách nhiệm vụ được giao cho bạn trên tất cả dự án."
       highlightLabel="Task đang mở"
       highlightValue={`${filteredTasks.filter((task) => task.status !== "DONE").length}`}
-      headerAction={
-        <ProjectScopeSelect
-          label="Phạm vi dự án"
-          value={selectedProjectId}
-          onChange={setSelectedProjectId}
-          options={projectOptions}
-          disabled={!projectOptions.length}
-        />
-      }
     >
       <div
         style={{ display: "flex", flexDirection: "column", gap: "2rem", marginTop: "0.25rem" }}
       >
-        <GroupedKanbanBoard
+        <GroupedTaskList
           projects={taskState?.projects ?? []}
           tasks={filteredTasks}
           selectedProjectId={selectedProjectId}
-          onTaskUpdated={() => {
-            taskApi
-              .getEnrichedBoard(undefined, viewer, {
-                projects: taskState?.projects ?? [],
-                users: taskState?.users ?? [],
-              })
-              .then((res) => {
-                setTaskState((current) => {
-                  if (!current) {
-                    return null;
-                  }
-
-                  const nextState = { ...current, tasks: res.data };
-                  setTasksPageCache(viewer.id, nextState);
-                  return nextState;
-                });
-              });
-          }}
+          onTaskClick={(taskId) => router.push(`/tasks?taskId=${taskId}`)}
         />
 
         {filteredTasks.length === 0 && selectedProjectId === "ALL" && (

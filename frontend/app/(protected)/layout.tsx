@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { ProtectedRoute } from "@/components/protected-route";
 import { requireServerSession } from "@/services/auth/server";
+import { NotificationProvider } from "@/contexts/notification-context";
 
 export default async function ProtectedLayout({
   children,
@@ -10,5 +11,11 @@ export default async function ProtectedLayout({
 }>) {
   await requireServerSession();
 
-  return <ProtectedRoute>{children}</ProtectedRoute>;
+  return (
+    <ProtectedRoute>
+      <NotificationProvider>
+        {children}
+      </NotificationProvider>
+    </ProtectedRoute>
+  );
 }

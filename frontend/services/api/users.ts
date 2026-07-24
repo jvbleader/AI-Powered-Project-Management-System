@@ -29,6 +29,7 @@ import {
   USER_ADMIN_UNAVAILABLE_MESSAGE,
   wrapBackendResponse,
 } from "./core";
+import { ROLE_ADMIN } from "@/lib/utils/format";
 
 export const userApi = {
   async getDepartments(): Promise<ApiResponse<Department[]>> {
@@ -166,13 +167,12 @@ export const userApi = {
   ): Promise<ApiResponse<UserProfile>> {
     void _viewer;
     try {
-      const role = payload.roles.length > 0 ? payload.roles[0] : "MEMBER";
+      const role = payload.roles.length > 0 ? payload.roles[0] : "Lập trình viên";
       const result = await requestApi<BackendUserResponse>(
         apiEndpoints.users.updateRole(payload.userId),
         {
           body: JSON.stringify({
             role: role,
-            is_admin: role === "ADMIN",
             department: payload.department || null,
           }),
         },
@@ -189,9 +189,8 @@ export const userApi = {
         body: JSON.stringify({
           name: payload.name,
           email: payload.email,
-          role: payload.role || "MEMBER",
-          is_admin: payload.isAdmin || false,
-          password: payload.password || "default1234",
+          role: payload.role || "Lập trình viên",
+          password: payload.password || "123456",
           department: payload.department || null,
         }),
       });

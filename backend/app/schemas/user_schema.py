@@ -45,9 +45,8 @@ class UserProfile(BaseModel):
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
-    role: str = "MEMBER"
-    is_admin: bool = False
-    password: str = "default1234"
+    role: str = "Lập trình viên"
+    password: str = "123456"
     department: Optional[str] = None
 
 
@@ -66,7 +65,6 @@ class UserStatusUpdate(BaseModel):
 
 class UserRoleUpdate(BaseModel):
     role: str
-    is_admin: bool
     department: Optional[str] = None
 
 

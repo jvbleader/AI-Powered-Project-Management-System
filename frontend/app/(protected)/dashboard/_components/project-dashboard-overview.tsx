@@ -334,29 +334,45 @@ export function ProjectDashboardOverview({ overview }: { overview: DashboardOver
 
         <Surface title="Task Pulse" kicker="Workflow">
           <div className="dashboard-task-pulse">
-            <DonutChart
-              segments={taskSegments.map((segment) => ({ value: segment.value, tone: segment.tone }))}
-              centerLabel="Tasks"
-              centerValue={`${taskSummary.total}`}
-            />
-            <div className="dashboard-task-breakdown">
-              {taskSegments.map((segment) => (
-                <article key={segment.label} className="dashboard-task-mini">
-                  <StatusPill
-                    label={segment.label}
-                    tone={
-                      segment.tone === "todo"
-                        ? "todo"
-                        : segment.tone === "progress"
-                          ? "progress"
-                          : "done"
-                    }
-                  />
-                  <strong>{segment.value}</strong>
-                </article>
-              ))}
+            <div className="task-pulse-donut">
+              <DonutChart
+                segments={taskSegments.map((segment) => ({ value: segment.value, tone: segment.tone }))}
+                centerLabel="Tasks"
+                centerValue={`${taskSummary.total}`}
+              />
             </div>
-            <SegmentBar segments={taskSegments} showLegend={false} />
+            <div className="task-pulse-stats">
+              {taskSegments.map((segment) => {
+                const pct = taskSummary.total > 0 ? Math.round((segment.value / taskSummary.total) * 100) : 0;
+                const colorMap: Record<string, string> = {
+                  todo: "#f59e0b",
+                  progress: "#3b82f6",
+                  done: "#22c55e",
+                };
+                return (
+                  <div key={segment.label} className="task-pulse-stat-item">
+                    <div className="task-pulse-stat-header">
+                      <span
+                        className="task-pulse-dot"
+                        style={{ background: colorMap[segment.tone] ?? "#94a3b8" }}
+                      />
+                      <span className="task-pulse-label">{segment.label}</span>
+                      <span className="task-pulse-pct">{pct}%</span>
+                    </div>
+                    <div className="task-pulse-bar-track">
+                      <div
+                        className="task-pulse-bar-fill"
+                        style={{
+                          width: `${pct}%`,
+                          background: colorMap[segment.tone] ?? "#94a3b8",
+                        }}
+                      />
+                    </div>
+                    <span className="task-pulse-count">{segment.value} tasks</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </Surface>
       </section>

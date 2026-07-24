@@ -10,7 +10,7 @@ import {
   getLogworkTrackedUsers,
   normalizeViewer,
 } from "@/lib/mock/permissions";
-import { formatDate, formatHours } from "@/lib/utils/format";
+import { formatDate, formatHours, hasCompanywideProjectAccess } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
 import type { EnrichedTask, LogworkEntry, Project, UserProfile, WorkspaceShellData } from "@/types";
 
@@ -112,9 +112,7 @@ export default function LogworkPage() {
     ? Math.round((todayUserIds.size / trackedUsers.length) * 100)
     : 0;
   const canManageScopedLogwork =
-    viewer.role === "ADMIN" ||
-    viewer.role === "MANAGER" ||
-    viewer.role === "LEADER" ||
+    hasCompanywideProjectAccess(viewer.role, viewer.department) ||
     (pageState?.projects ?? []).some((project) => project.managerId === viewer.id);
 
   async function refreshLogwork(nextTaskId?: string) {

@@ -161,7 +161,7 @@ export function DonutChart({
   centerLabel,
   centerValue,
 }: {
-  segments: Array<{ value: number; tone: "todo" | "progress" | "done" | "outdate" }>;
+  segments: Array<{ value: number; tone: "todo" | "progress" | "done" | "outdate" | "neutral" }>;
   centerLabel: string;
   centerValue: string;
 }) {
@@ -171,7 +171,8 @@ export function DonutChart({
     progress: "#3b82f6",
     done: "#22c55e",
     outdate: "#ef4444",
-  } as const;
+    neutral: "#94a3b8",
+  } as Record<string, string>;
 
   const gradient = segments
     .reduce<Array<string>>((parts, segment, index) => {
@@ -268,7 +269,8 @@ export function ColumnChart({
               overflow: "hidden",
               textOverflow: "ellipsis",
               width: "100%",
-              lineHeight: 1.2
+              lineHeight: 1.2,
+              height: "2.4em"
             }} title={item.label}>
               {item.label}
             </span>

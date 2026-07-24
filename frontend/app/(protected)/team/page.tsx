@@ -7,6 +7,12 @@ import { projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
 import { updateSessionCurrentUser } from "@/services/auth/session";
 import { useAuthSession } from "@/hooks/use-session";
 import { normalizeViewer } from "@/lib/mock/permissions";
+import {
+  canAccessTeamDirectoryRole,
+  canManageUsers as canManageUsersByRole,
+  hasCompanywideProjectAccess,
+  ROLE_ADMIN,
+} from "@/lib/utils/format";
 import type {
   EnrichedTask,
   PaginatedUsers,
@@ -62,7 +68,7 @@ export default function TeamPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusDraft, setStatusDraft] = useState<UserStatus>("ACTIVE");
-  const [roleDraft, setRoleDraft] = useState<UserRole[]>(["MEMBER"]);
+  const [roleDraft, setRoleDraft] = useState<UserRole[]>(["Lập trình viên"]);
   const [departmentDraft, setDepartmentDraft] = useState<string>("");
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -71,30 +77,22 @@ export default function TeamPage() {
   const [addName, setAddName] = useState("");
   const [addEmail, setAddEmail] = useState("");
   const [addDepartment, setAddDepartment] = useState("");
-  const [addRole, setAddRole] = useState<UserRole>("MEMBER");
-  const [addPassword, setAddPassword] = useState("default1234");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [addRole, setAddRole] = useState<UserRole>("Lập trình viên");
+  const [addPassword, setAddPassword] = useState("123456");
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [canAccessTeamPage, setCanAccessTeamPage] = useState<boolean | null>(
-    currentActor?.role === "ADMIN" ||
-      currentActor?.role === "MANAGER" ||
-      currentActor?.role === "LEADER"
-      ? true
-      : null,
+    canAccessTeamDirectoryRole(currentActor.role, currentActor.department) ? true : null,
   );
-  const canManageUsers = currentActor?.role === "ADMIN";
+  const canManageUsers = canManageUsersByRole(currentActor.role);
+  const canFilterDepartment = hasCompanywideProjectAccess(currentActor.role, currentActor.department) || canManageUsers;
   const router = useRouter();
 
   useEffect(() => {
     let isCancelled = false;
 
     async function resolveTeamAccess() {
-      if (
-        currentActor.role === "ADMIN" ||
-        currentActor.role === "MANAGER" ||
-        currentActor.role === "LEADER"
-      ) {
+      if (canAccessTeamDirectoryRole(currentActor.role, currentActor.department)) {
         setCanAccessTeamPage(true);
         return;
       }
@@ -177,7 +175,7 @@ export default function TeamPage() {
             search,
             status: statusFilter,
             role: roleFilter,
-            department: departmentFilter,
+            department: canFilterDepartment ? departmentFilter : (currentActor.department ?? "ALL"),
             page,
             pageSize,
           },
@@ -292,9 +290,9 @@ export default function TeamPage() {
     setNotice(null);
     setIsResettingPassword(true);
     try {
-      await userApi.resetPassword({ email: selectedUser.email, newPassword: "default1234" });
+      await userApi.resetPassword({ email: selectedUser.email, newPassword: "123456" });
       setNotice(
-        `Đã khôi phục mật khẩu của ${selectedUser.name || selectedUser.email} về mặc định (default1234).`,
+        `Đã khôi phục mật khẩu của ${selectedUser.name || selectedUser.email} về mặc định (123456).`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể đặt lại mật khẩu.");
@@ -316,8 +314,8 @@ export default function TeamPage() {
         name: addName.trim(),
         email: addEmail.trim(),
         role: addRole,
-        isAdmin,
-        password: addPassword || "default1234",
+        isAdmin: addRole === ROLE_ADMIN,
+        password: addPassword || "123456",
         department: addDepartment,
       });
       const newUser = response.data;
@@ -328,9 +326,8 @@ export default function TeamPage() {
       setAddName("");
       setAddEmail("");
       setAddDepartment("");
-      setAddRole("MEMBER");
-      setAddPassword("default1234");
-      setIsAdmin(false);
+      setAddRole("Lập trình viên");
+      setAddPassword("123456");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể thêm nhân sự.");
     } finally {
@@ -369,6 +366,8 @@ export default function TeamPage() {
             setPage(1);
           }}
           departments={departments}
+          canFilterDepartment={canFilterDepartment}
+          currentDepartment={currentActor.department || ""}
         />
 
         <UserTable
@@ -428,8 +427,6 @@ export default function TeamPage() {
         onAddRoleChange={setAddRole}
         addPassword={addPassword}
         onAddPasswordChange={setAddPassword}
-        isAdmin={isAdmin}
-        onIsAdminChange={setIsAdmin}
         isAddingUser={isAddingUser}
         onSave={handleAddUser}
         error={error}

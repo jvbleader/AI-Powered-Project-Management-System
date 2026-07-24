@@ -1,29 +1,44 @@
 import { Sprint, SprintFilters, UserProfile } from "@/types";
-import { filterSprints, getSprint, respond } from "./core";
-import { sprints } from "@/lib/mock/data";
+import { apiEndpoints, requestApi, respond } from "./core";
 
 export const sprintApi = {
   async list(filters?: SprintFilters, viewer?: UserProfile | null) {
-    return respond(filterSprints(filters, viewer), 90);
+    if (filters?.projectId) {
+      const endpoint = apiEndpoints.sprints.list(filters.projectId);
+      return requestApi<Sprint[]>(endpoint, undefined);
+    }
+    const endpoint = { method: "GET" as const, path: "/api/sprints" };
+    return requestApi<Sprint[]>(endpoint, undefined);
   },
 
   async get(sprintId: string, viewer?: UserProfile | null) {
-    const accessibleSprint =
-      filterSprints(undefined, viewer).find((sprint) => sprint.id === sprintId) ??
-      getSprint(sprintId);
-    return respond(accessibleSprint, 80);
+    return requestApi<Sprint>(apiEndpoints.sprints.detail(sprintId));
   },
 
-  async create(payload: Omit<Sprint, "id">) {
-    const created: Sprint = { ...payload, id: `spr-${sprints.length + 1}` };
-    sprints.unshift(created);
-    return respond(created, 160);
+  async create(projectId: string, payload: Omit<Sprint, "id" | "projectId">) {
+    const backendPayload = {
+      name: payload.name,
+      goal: payload.goal,
+      start_date: payload.plannedStart,
+      end_date: payload.plannedEnd,
+      status: payload.status?.toLowerCase(),
+    };
+    return requestApi<Sprint>(apiEndpoints.sprints.create(projectId), {
+      body: JSON.stringify(backendPayload),
+    });
   },
 
   async update(sprintId: string, payload: Partial<Sprint>) {
-    const index = sprints.findIndex((sprint) => sprint.id === sprintId);
-    const updated = { ...sprints[index], ...payload };
-    sprints[index] = updated;
-    return respond(updated, 150);
+    const backendPayload: any = {};
+    if (payload.name !== undefined) backendPayload.name = payload.name;
+    if (payload.goal !== undefined) backendPayload.goal = payload.goal;
+    if (payload.plannedStart !== undefined) backendPayload.start_date = payload.plannedStart;
+    if (payload.plannedEnd !== undefined) backendPayload.end_date = payload.plannedEnd;
+    if (payload.status !== undefined) backendPayload.status = payload.status.toLowerCase();
+    
+    return requestApi<Sprint>(apiEndpoints.sprints.update(sprintId), {
+      body: JSON.stringify(backendPayload),
+    });
   },
 };
+

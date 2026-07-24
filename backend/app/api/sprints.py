@@ -17,7 +17,14 @@ def get_sprints(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return sprint_service.list_sprints(db, project_id, current_user.id)
+    return sprint_service.list_accessible_sprints(db, current_user.id, project_id)
+
+@router_root.get("", response_model=List[SprintResponse])
+def get_all_sprints(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return sprint_service.list_accessible_sprints(db, current_user.id)
 
 @router.post("", response_model=SprintResponse, status_code=status.HTTP_201_CREATED)
 def create_sprint(

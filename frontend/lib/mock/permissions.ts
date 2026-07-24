@@ -2,10 +2,13 @@ import { logworkEntries, projects, sprints, tasks, users } from "@/lib/mock/data
 import { getDirectoryUserByEmail, getDirectoryUserById } from "@/services/users/directory";
 import type { LogworkEntry, Project, Sprint, Task, UserProfile, UserRole } from "@/types";
 
-export const DEMO_TODAY = "2026-06-29";
+import {
+  hasCompanywideProjectAccess,
+  isAdminRole,
+  canManageProjectsByRole,
+} from "@/lib/utils/format";
 
-const privilegedRoles = new Set<UserRole>(["ADMIN", "MANAGER", "LEADER"]);
-const projectManagementRoles = new Set<UserRole>(["MANAGER", "LEADER"]);
+export const DEMO_TODAY = "2026-06-29";
 
 export function getDemoUserByEmail(email?: string | null) {
   if (!email) {
@@ -46,15 +49,16 @@ export function normalizeViewer(viewer?: UserProfile | null) {
 }
 
 export function isPrivilegedUser(viewer?: UserProfile | null) {
-  return privilegedRoles.has(normalizeViewer(viewer).role);
+  const currentViewer = normalizeViewer(viewer);
+  return isAdminRole(currentViewer.role) || canManageProjectsByRole(currentViewer.role, currentViewer.department);
 }
 
 export function isAdminUser(viewer?: UserProfile | null) {
-  return normalizeViewer(viewer).role === "ADMIN";
+  return isAdminRole(normalizeViewer(viewer).role);
 }
 
 export function canAccessTeamDirectory(viewer?: UserProfile | null) {
-  return privilegedRoles.has(normalizeViewer(viewer).role);
+  return isPrivilegedUser(viewer);
 }
 
 export function canManageProject(viewer: UserProfile, project: Project) {
@@ -71,17 +75,21 @@ export function canManageProject(viewer: UserProfile, project: Project) {
     return false;
   }
 
-  if (project.managerId === currentViewer.id) {
+  if (hasCompanywideProjectAccess(currentViewer.role, currentViewer.department)) {
     return true;
   }
 
-  return projectManagementRoles.has(currentViewer.role);
+  return canManageProjectsByRole(currentViewer.role, currentViewer.department);
 }
 
 export function getAccessibleProjects(viewer?: UserProfile | null) {
   const currentViewer = normalizeViewer(viewer);
 
-  if (currentViewer.role === "ADMIN") {
+  if (isAdminRole(currentViewer.role)) {
+    return []; // Admin no longer sees projects
+  }
+  
+  if (hasCompanywideProjectAccess(currentViewer.role, currentViewer.department)) {
     return [...projects];
   }
 
@@ -143,11 +151,11 @@ export function getLogworkTrackedUsers(viewer?: UserProfile | null) {
   const currentViewer = normalizeViewer(viewer);
 
   if (isAdminUser(currentViewer)) {
-    return users.filter((user) => user.role !== "ADMIN");
+    return users.filter((user) => !isAdminRole(user.role));
   }
 
   if (canManageAnyProject(currentViewer)) {
-    return getManagedProjectUsers(currentViewer).filter((user) => user.role !== "ADMIN");
+    return getManagedProjectUsers(currentViewer).filter((user) => !isAdminRole(user.role));
   }
 
   return [currentViewer];
@@ -163,7 +171,7 @@ export function getAccessibleSprints(viewer?: UserProfile | null) {
     return sprints.filter((sprint) => accessibleProjectIds.has(sprint.projectId));
   }
 
-  if (projectManagementRoles.has(currentViewer.role)) {
+  if (canManageProjectsByRole(currentViewer.role, currentViewer.department)) {
     return sprints.filter((sprint) => accessibleProjectIds.has(sprint.projectId));
   }
 
@@ -332,6 +340,6 @@ export function getSuggestedActiveSprint(viewer?: UserProfile | null, projectId?
     : getAccessibleSprints(viewer);
 
   return (
-    scopedSprints.find((sprint) => sprint.status === "ACTIVE") ?? scopedSprints[0] ?? sprints[0]
+    scopedSprints.find((sprint) => sprint.status?.toUpperCase() === "ACTIVE") ?? scopedSprints[0] ?? sprints[0]
   );
 }

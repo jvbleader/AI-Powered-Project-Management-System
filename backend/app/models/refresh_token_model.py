@@ -4,8 +4,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 
 from app.core.connection import Base
+from app.config.settings import get_settings
 
-EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS"))
+settings = get_settings()
+
+EXPIRE_DAYS = settings.refresh_token_expire_days
 
 
 class RefreshToken(Base):

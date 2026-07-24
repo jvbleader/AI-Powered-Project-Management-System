@@ -39,14 +39,23 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
   const totalTasks = taskSummary.total;
   const taskCompletionRate = totalTasks > 0 ? Math.round((taskSummary.done / totalTasks) * 100) : 0;
 
-  // Calculate project health distribution
-  const healthCounts = projectHealths.reduce(
-    (acc, ph) => {
-      acc[ph.health]++;
-      return acc;
-    },
-    { "on-track": 0, watch: 0, critical: 0 }
-  );
+  // Calculate top projects by task count
+  const sortedProjectsByTasks = [...overview.projectHealths].sort((a, b) => b.totalTasks - a.totalTasks);
+  const topProjects = sortedProjectsByTasks.slice(0, 3);
+  const otherProjectsTasks = sortedProjectsByTasks.slice(3).reduce((sum, p) => sum + p.totalTasks, 0);
+
+  const projectTaskSegments = topProjects.map((p, idx) => ({
+    value: p.totalTasks,
+    tone: idx === 0 ? "progress" : idx === 1 ? "todo" : "done",
+    label: p.name
+  }));
+  if (otherProjectsTasks > 0) {
+    projectTaskSegments.push({
+      value: otherProjectsTasks,
+      tone: "neutral",
+      label: "Dự án khác"
+    });
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
@@ -135,6 +144,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
       </div>
 
       {/* Visual Charts Row */}
+      {/* Visual Charts Row */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
         {/* Task Distribution Donut Chart */}
         <Surface title="Phân bổ nhiệm vụ">
@@ -176,42 +186,28 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           </div>
         </Surface>
 
-        {/* Project Health Donut Chart */}
-        <Surface title="Sức khỏe dự án (Health)">
+        {/* Task Density by Project Donut Chart */}
+        <Surface title="Tỷ trọng công việc theo Dự án">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "2rem", padding: "1rem" }}>
             <div style={{ flex: 1, maxWidth: "200px" }}>
               <DonutChart
-                segments={[
-                  { value: healthCounts["on-track"], tone: "done" },
-                  { value: healthCounts.watch, tone: "todo" },
-                  { value: healthCounts.critical, tone: "outdate" },
-                ]}
-                centerLabel="Đang chạy"
-                centerValue={String(activeProjects)}
+                segments={projectTaskSegments as any}
+                centerLabel="Tổng Tasks"
+                centerValue={String(totalTasks)}
               />
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#22c55e" }}></div>
-                  <span style={{ fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Tốt (On-track)</span>
+              {projectTaskSegments.length > 0 ? projectTaskSegments.map((seg, idx) => (
+                <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, overflow: "hidden" }}>
+                    <div style={{ width: 12, height: 12, borderRadius: "50%", flexShrink: 0, background: seg.tone === "progress" ? "#3b82f6" : seg.tone === "todo" ? "#facc15" : seg.tone === "done" ? "#22c55e" : "#94a3b8" }}></div>
+                    <span style={{ fontSize: "0.875rem", color: "var(--foreground-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={seg.label}>{seg.label}</span>
+                  </div>
+                  <strong style={{ fontSize: "1rem", paddingLeft: "1rem" }}>{seg.value}</strong>
                 </div>
-                <strong style={{ fontSize: "1rem" }}>{healthCounts["on-track"]}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#facc15" }}></div>
-                  <span style={{ fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Lưu ý (Watch)</span>
-                </div>
-                <strong style={{ fontSize: "1rem" }}>{healthCounts.watch}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#ef4444" }}></div>
-                  <span style={{ fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Rủi ro (Critical)</span>
-                </div>
-                <strong style={{ fontSize: "1rem" }}>{healthCounts.critical}</strong>
-              </div>
+              )) : (
+                <div style={{ fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Chưa có dữ liệu</div>
+              )}
             </div>
           </div>
         </Surface>
@@ -241,7 +237,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
 
         {/* Upcoming Deadlines */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", height: "100%" }}>
-          <Surface title="Deadline sắp tới toàn hệ thống" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <Surface title="Cảnh báo" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", flex: 1 }}>
               {upcomingDeadlines.length > 0 ? upcomingDeadlines.map((task) => (
                 <Link key={task.id} href={`/projects/${task.projectId || ""}?tab=gantt&highlightTaskId=${task.id}&highlightColor=blue`} style={{ textDecoration: "none", color: "inherit", display: "flex", flexDirection: "column", gap: "0.25rem", padding: "0.75rem", border: "1px solid rgba(148,163,184,0.2)", borderRadius: "8px", background: "var(--surface)", cursor: "pointer", transition: "background-color 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(241,245,249,0.8)"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "var(--surface)"}>

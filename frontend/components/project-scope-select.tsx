@@ -1,4 +1,6 @@
-type ProjectScopeOption = {
+import { FilterSelect } from "./filter-select";
+
+export type ProjectScopeOption = {
   value: string;
   label: string;
 };
@@ -19,26 +21,16 @@ export function ProjectScopeSelect({
   disabled = false,
 }: ProjectScopeSelectProps) {
   return (
-    <label className="topbar-select">
+    <div className="topbar-select" style={{ pointerEvents: disabled ? "none" : "auto", opacity: disabled ? 0.7 : 1 }}>
       <span>{label}</span>
-      <div className="topbar-select-control">
-        <span className="topbar-select-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5h18M6 12h12m-9 4.5h6" />
-          </svg>
-        </span>
-        <select
+      <div style={{ minWidth: "220px" }}>
+        <FilterSelect
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          disabled={disabled}
-        >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          onChange={onChange}
+          options={options.map((opt) => ({ value: opt.value, label: opt.label }))}
+          placeholder="-- Chọn dự án --"
+        />
       </div>
-    </label>
+    </div>
   );
 }
