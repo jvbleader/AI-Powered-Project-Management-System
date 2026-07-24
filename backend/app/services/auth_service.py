@@ -23,6 +23,12 @@ def authenticate_user(db: Session, user: UserLogin) -> dict:
             detail="Email hoặc mật khẩu không chính xác",
         )
 
+    if not db_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tài khoản của bạn đã bị khóa hoặc vô hiệu hóa",
+        )
+
     is_password_valid = verify_password(user.password, db_user.password_hash)
     if not is_password_valid:
         raise HTTPException(
@@ -62,9 +68,24 @@ def refresh_tokens(db: Session, refresh_token: str) -> dict:
             detail="Refresh Token không hợp lệ hoặc đã bị thu hồi",
         )
 
+    # Revoke old refresh token
+    refresh_token_repository.revoke_token(db, refresh_token)
+
+    # Generate new tokens
     new_access_token = create_access_token(data={"id": user_id})
+    new_refresh_token = create_refresh_token(data={"id": user_id})
+
+    # Store new refresh token
+    if new_refresh_token:
+        jti = uuid.uuid4().hex
+        new_rf_token = RefreshToken(
+            user_id=user_id, token_hash=new_refresh_token, jti=jti
+        )
+        refresh_token_repository.create(db, new_rf_token)
+
     return {
         "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
         "user_id": user_id,
     }
 

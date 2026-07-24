@@ -13,7 +13,7 @@ from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
 revision: str = '4d6782b4f019'
-down_revision: Union[str, Sequence[str], None] = 'd2adf26bb8c4'
+down_revision: Union[str, Sequence[str], None] = '2f7c9c4de1ab'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

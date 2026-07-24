@@ -50,19 +50,25 @@ export default function ProjectsPage() {
     let isCancelled = false;
 
     async function loadProjects() {
-      const [{ data: shellData }, { data: projects }] = await Promise.all([
-        workspaceApi.getShellData(viewer),
-        projectApi.list(undefined, viewer),
-      ]);
+      try {
+        const [{ data: shellData }, { data: projects }] = await Promise.all([
+          workspaceApi.getShellData(viewer),
+          projectApi.list(undefined, viewer),
+        ]);
 
-      if (isCancelled) {
-        return;
+        if (isCancelled) {
+          return;
+        }
+
+        const nextState = { shellData, projects };
+        projectsPageCache = { viewerId: viewer.id, data: nextState };
+        setProjectsState(nextState);
+        setSelectedProjectId((current) => current ?? projects[0]?.id ?? null);
+      } catch (err) {
+        if (!isCancelled) {
+          console.error("Failed to load projects:", err);
+        }
       }
-
-      const nextState = { shellData, projects };
-      projectsPageCache = { viewerId: viewer.id, data: nextState };
-      setProjectsState(nextState);
-      setSelectedProjectId((current) => current ?? projects[0]?.id ?? null);
     }
 
     void loadProjects();

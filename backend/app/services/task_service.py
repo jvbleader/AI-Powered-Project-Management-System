@@ -4,7 +4,7 @@ from datetime import timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.project_model import ProjectMember
+from app.models.project_model import Project, ProjectMember
 from app.models.task_model import Task
 from app.repositories import project_repository, task_repository
 from app.schemas.task_schema import LogWorkCreate, TaskAttachmentCreate, TaskCreate, TaskUpdate

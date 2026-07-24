@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 from datetime import date, datetime, timezone
 from pydantic import field_validator
@@ -102,7 +102,7 @@ class TaskBase(BaseModel):
 
         stripped = value.strip()
         if not stripped:
-            raise ValueError("Mô tả không được để trống.")
+            return None
         return stripped
 
 
@@ -114,7 +114,14 @@ class TaskBase(BaseModel):
         return value
 
 class TaskCreate(TaskBase):
-    assignee_user_ids: List[str] = Field(default_factory=list)
+    assignee_user_ids: List[Union[str, int]] = Field(default_factory=list)
+
+    @field_validator("assignee_user_ids", mode="before")
+    @classmethod
+    def normalize_assignee_user_ids(cls, values):
+        if isinstance(values, list):
+            return [str(v) for v in values if v is not None]
+        return values
 
     @field_validator("deadline")
     @classmethod

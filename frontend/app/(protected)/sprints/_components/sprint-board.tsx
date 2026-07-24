@@ -59,6 +59,7 @@ export function SprintBoard({ tasks, onTaskClick, onStatusDrop }: SprintBoardPro
                   task={task}
                   onClick={() => onTaskClick(task.id)}
                   onDragStart={(event) => {
+                    event.stopPropagation();
                     event.dataTransfer.setData("text/plain", task.id);
                   }}
                 />

@@ -28,6 +28,7 @@ export default function LoginForm() {
           onChange={(event) => setEmailInput(event.target.value)}
           required
           type="email"
+          placeholder="Nhập email của bạn"
         />
       </label>
 
@@ -40,6 +41,7 @@ export default function LoginForm() {
           isVisible={isPasswordVisible}
           onToggleVisibility={togglePasswordVisibility}
           autoComplete="current-password"
+          placeholder="Nhập mật khẩu"
         />
       </label>
 

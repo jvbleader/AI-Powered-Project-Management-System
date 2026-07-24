@@ -40,14 +40,31 @@ function mapQuickResponse(data: BackendQuickResponse): AiQuickResponse {
   };
 }
 
+type BackendClassifyIntentResponse = {
+  intent: string;
+};
+
 export const aiApi = {
-  async quickResponse(payload: AiQuickResponseRequest) {
-    const response = await requestApi<BackendQuickResponse>(apiEndpoints.ai.quickResponse, {
+  async classifyIntent(payload: AiQuickResponseRequest) {
+    const response = await requestApi<BackendClassifyIntentResponse>(apiEndpoints.ai.classifyIntent, {
       body: JSON.stringify({
         action: payload.action,
         prompt: payload.prompt,
         project_id: payload.projectId ? Number(payload.projectId) : null,
         task_id: payload.taskId ? Number(payload.taskId) : null,
+      }),
+    });
+    return response.data;
+  },
+
+  async executeAi(payload: AiQuickResponseRequest & { intent: string }) {
+    const response = await requestApi<BackendQuickResponse>(apiEndpoints.ai.executeAi, {
+      body: JSON.stringify({
+        action: payload.action,
+        prompt: payload.prompt,
+        project_id: payload.projectId ? Number(payload.projectId) : null,
+        task_id: payload.taskId ? Number(payload.taskId) : null,
+        intent: payload.intent,
       }),
     });
 

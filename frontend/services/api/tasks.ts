@@ -17,7 +17,7 @@ import {
   wrapBackendResponse,
 } from "./core";
 import { projectApi } from "./projects";
-
+import { userApi } from "./users";
 type BoardContext = {
   projects?: Project[];
   users?: UserProfile[];
@@ -167,7 +167,7 @@ export const taskApi = {
       estimated_hours: payload.estimateHours > 0 ? payload.estimateHours : null,
       sprint_id: payload.sprintId ? parseInt(payload.sprintId) : null,
       parent_task_id: payload.parentTaskId ? parseInt(payload.parentTaskId) : null,
-      assignee_user_ids: payload.assigneeId ? [payload.assigneeId] : [],
+      assignee_user_ids: payload.assigneeId ? [payload.assigneeId.replace("usr-", "")] : [],
     };
 
     const response = await requestApi<any>(endpoint, {
@@ -270,7 +270,7 @@ export const taskApi = {
           : projectApi.list(undefined, viewer),
         context?.users?.length
           ? Promise.resolve({ data: context.users } as ApiResponse<UserProfile[]>)
-          : Promise.resolve(emptyUsersResponse()),
+          : userApi.list(viewer),
         this.list(filters, viewer),
       ]);
       const projects = projectsRes.data;
@@ -298,7 +298,7 @@ export const taskApi = {
         : projectApi.get(filters.projectId),
       context?.users?.length
         ? Promise.resolve({ data: context.users } as ApiResponse<UserProfile[]>)
-        : Promise.resolve(emptyUsersResponse()),
+        : userApi.list(viewer),
     ]);
 
     const tasks = tasksRes.data;

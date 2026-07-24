@@ -28,6 +28,7 @@ class User(Base):
     updated_at = Column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
     @property
     def role(self) -> str:

@@ -1,4 +1,5 @@
 import { Surface } from "@/components/ui";
+import { FilterSelect } from "@/components/filter-select";
 
 import { roleLabel, userStatusLabel } from "@/lib/utils/format";
 import { SYSTEM_ROLE_OPTIONS, type UserDirectoryFilters, type UserStatus } from "@/types";
@@ -47,55 +48,51 @@ export function TeamFilter({
 
         <label className={styles.filterField}>
           <span>Trạng thái</span>
-          <select
+          <FilterSelect
             value={statusFilter ?? "ALL"}
-            onChange={(event) =>
-              onStatusFilterChange(event.target.value as UserDirectoryFilters["status"])
-            }
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            {STATUS_OPTIONS.map((status) => (
-              <option key={status} value={status}>
-                {userStatusLabel(status)}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => onStatusFilterChange(value as UserDirectoryFilters["status"])}
+            options={[
+              { value: "ALL", label: "Tất cả trạng thái" },
+              ...STATUS_OPTIONS.map((status) => ({
+                value: status,
+                label: userStatusLabel(status),
+              })),
+            ]}
+          />
         </label>
 
         <label className={styles.filterField}>
           <span>Vai trò</span>
-          <select
+          <FilterSelect
             value={roleFilter ?? "ALL"}
-            onChange={(event) =>
-              onRoleFilterChange(event.target.value as UserDirectoryFilters["role"])
-            }
-          >
-            <option value="ALL">Tất cả vai trò</option>
-            {SYSTEM_ROLE_OPTIONS.map((role) => (
-              <option key={role} value={role}>
-                {roleLabel(role)}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => onRoleFilterChange(value as UserDirectoryFilters["role"])}
+            options={[
+              { value: "ALL", label: "Tất cả vai trò" },
+              ...SYSTEM_ROLE_OPTIONS.map((role) => ({
+                value: role,
+                label: roleLabel(role),
+              })),
+            ]}
+          />
         </label>
 
         <label className={styles.filterField}>
           <span>Phòng ban</span>
           {canFilterDepartment ? (
-            <select
+            <FilterSelect
               value={departmentFilter ?? "ALL"}
-              onChange={(event) =>
-                onDepartmentFilterChange(event.target.value as UserDirectoryFilters["department"])
+              onChange={(value) =>
+                onDepartmentFilterChange(value as UserDirectoryFilters["department"])
               }
-            >
-              <option value="ALL">Tất cả phòng ban</option>
-              <option value="UNASSIGNED">Chưa cập nhật phòng ban</option>
-              {departments.map((dept) => (
-                <option key={dept.id} value={dept.name}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "ALL", label: "Tất cả phòng ban" },
+                { value: "UNASSIGNED", label: "Chưa cập nhật phòng ban" },
+                ...departments.map((dept) => ({
+                  value: dept.name,
+                  label: dept.name,
+                })),
+              ]}
+            />
           ) : (
             <input
               type="text"

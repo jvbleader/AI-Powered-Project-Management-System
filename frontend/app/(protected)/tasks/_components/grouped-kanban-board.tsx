@@ -36,11 +36,17 @@ export function GroupedKanbanBoard({
   const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
 
   useEffect(() => {
-    setLocalTasks(tasks);
+    const sortedTasks = [...tasks].sort((a, b) => {
+      return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
+    });
+    setLocalTasks(sortedTasks);
   }, [tasks]);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    e.stopPropagation();
+    e.dataTransfer.setData("text/plain", taskId);
     e.dataTransfer.effectAllowed = "move";
+    // Defer state update to allow browser to capture drag ghost
     setTimeout(() => {
       setDraggedTaskId(taskId);
     }, 0);
@@ -63,7 +69,10 @@ export function GroupedKanbanBoard({
     setDraggedTaskId(null);
     if (task && toWorkflowTaskStatus(task.status) !== statusId) {
       try {
-        setLocalTasks(prev => prev.map(t => t.id === draggedTaskId ? { ...t, status: statusId as EnrichedTask["status"] } : t));
+        setLocalTasks(prev => {
+          const filtered = prev.filter(t => t.id !== draggedTaskId);
+          return [...filtered, { ...task, status: statusId as EnrichedTask["status"] }];
+        });
         await taskApi.updateStatus(draggedTaskId, statusId as EnrichedTask["status"]);
         onTaskUpdated();
       } catch (err: unknown) {

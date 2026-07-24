@@ -3,7 +3,7 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ProjectScopeSelect } from "@/components/project-scope-select";
+
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { dashboardApi, projectApi, sprintApi, taskApi, workspaceApi, userApi } from "@/services/api";
 import { normalizeViewer } from "@/lib/mock/permissions";
@@ -178,19 +178,6 @@ export default function ProjectDetailPage() {
       highlightLabel="Số lượng Task"
       highlightValue={`${state?.tasks.length ?? 0}`}
       assistantProjectId={projectId || null}
-      headerAction={
-        <ProjectScopeSelect
-          label="Chuyển dự án"
-          value={projectId}
-          onChange={(value) => {
-            if (value && value !== projectId) {
-              router.push(buildProjectDetailHref(value, activeTab));
-            }
-          }}
-          options={projectOptions}
-          disabled={!projectOptions.length}
-        />
-      }
     >
       <div style={{ marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <button type="button" className="secondary-button" onClick={() => router.push("/projects")}>

@@ -63,6 +63,7 @@ def to_frontend_status(db_status: str) -> str:
         "inactive": "PLANNING",
         "completed": "COMPLETED",
         "at_risk": "AT_RISK",
+        "on_hold": "ON_HOLD",
     }
     return mapping.get((db_status or "").lower(), "ACTIVE")
 
@@ -73,6 +74,7 @@ def to_db_status(frontend_status: str) -> str:
         "PLANNING": "inactive",
         "COMPLETED": "completed",
         "AT_RISK": "at_risk",
+        "ON_HOLD": "on_hold",
     }
     return mapping.get((frontend_status or "").upper(), "active")
 
@@ -217,10 +219,10 @@ def user_is_project_member(db: Session, project_id: int, user_id: int) -> bool:
 
 
 def list_accessible_project_ids(db: Session, user: User | None) -> list[int]:
-    if not user or is_admin_user(user):
+    if not user:
         return []
 
-    if has_companywide_project_access(user):
+    if is_admin_user(user) or has_companywide_project_access(user):
         return sorted(project_repository.list_all_project_ids(db))
 
     if user_role_requires_manager_scope(user):
@@ -230,24 +232,28 @@ def list_accessible_project_ids(db: Session, user: User | None) -> list[int]:
 
 
 def list_managed_project_ids(db: Session, user: User | None) -> list[int]:
-    if not user or is_admin_user(user):
+    if not user:
         return []
+
+    if is_admin_user(user) or has_companywide_project_access(user):
+        return sorted(project_repository.list_all_project_ids(db))
+
     return sorted(project_repository.list_member_project_ids(db, user.id, manager_only=True))
 
 
 def user_can_access_team_directory(db: Session, user: User | None) -> bool:
-    if is_admin_user(user):
-        return True
-    if has_companywide_project_access(user):
+    if not user:
+        return False
+    if is_admin_user(user) or has_companywide_project_access(user):
         return True
     return bool(list_managed_project_ids(db, user))
 
 
 def user_can_access_project(db: Session, project_id: int, user: User | None) -> bool:
-    if not user or is_admin_user(user):
+    if not user:
         return False
 
-    if has_companywide_project_access(user):
+    if is_admin_user(user) or has_companywide_project_access(user):
         return True
 
     membership = project_repository.get_project_member(db, project_id, user.id)
@@ -255,8 +261,11 @@ def user_can_access_project(db: Session, project_id: int, user: User | None) -> 
 
 
 def user_can_manage_project(db: Session, project_id: int, user: User | None) -> bool:
-    if not user or is_admin_user(user):
+    if not user:
         return False
+
+    if is_admin_user(user) or has_companywide_project_access(user):
+        return True
 
     membership = project_repository.get_project_member(db, project_id, user.id)
     return bool(membership) and user_role_requires_manager_scope(user)

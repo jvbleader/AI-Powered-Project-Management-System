@@ -27,15 +27,21 @@ export default function DashboardPage() {
     let isCancelled = false;
 
     async function loadDashboard() {
-      const { data: overview } = await dashboardApi.getGlobalOverview();
+      try {
+        const { data: overview } = await dashboardApi.getGlobalOverview();
 
-      if (isCancelled) {
-        return;
+        if (isCancelled) {
+          return;
+        }
+
+        setDashboardState({
+          overview,
+        });
+      } catch (err) {
+        if (!isCancelled) {
+          console.error("Failed to load dashboard:", err);
+        }
       }
-
-      setDashboardState({
-        overview,
-      });
     }
 
     void loadDashboard();

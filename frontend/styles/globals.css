@@ -112,6 +112,15 @@ h3 {
   font-weight: 650;
 }
 
+select {
+  color-scheme: light;
+}
+
+select option {
+  background: #ffffff;
+  color: var(--ink);
+}
+
 p {
   margin: 0;
   color: var(--muted);
@@ -1781,27 +1790,73 @@ p {
 }
 
 .dashboard-task-pulse {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2rem;
+}
+
+.task-pulse-donut {
+  flex-shrink: 0;
+}
+
+.task-pulse-stats {
+  flex: 1;
+  display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.dashboard-task-breakdown {
-  gap: 0.75rem;
+.task-pulse-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 }
 
-.dashboard-task-mini {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.task-pulse-stat-header {
+  display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.8rem 0.9rem;
-  border-radius: 18px;
-  background: rgba(248, 250, 252, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  gap: 0.5rem;
 }
 
-.dashboard-task-mini strong {
-  font-size: 1.35rem;
+.task-pulse-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.task-pulse-label {
+  flex: 1;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-text-secondary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.task-pulse-pct {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text-primary, #1e293b);
+}
+
+.task-pulse-bar-track {
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(148, 163, 184, 0.15);
+  overflow: hidden;
+}
+
+.task-pulse-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.task-pulse-count {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #94a3b8);
 }
 
 .dashboard-analytics-grid {
@@ -2881,8 +2936,8 @@ p {
 
 .assistant-panel {
   position: relative;
-  width: min(585px, calc(100vw - 32px));
-  height: min(800px, calc(100vh - 52px));
+  width: min(480px, calc(100vw - 32px));
+  height: min(700px, calc(100vh - 52px));
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -3410,4 +3465,16 @@ p {
 
 .highlight-flash {
   animation: flashOutlineGreen 2.5s ease-out forwards;
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
 }

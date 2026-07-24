@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-import { ProjectScopeSelect } from "@/components/project-scope-select";
+
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, Surface } from "@/components/ui";
 import { taskApi, workspaceApi, userApi } from "@/services/api";
@@ -121,15 +121,6 @@ function TasksPageContent() {
       subheading="Danh sách nhiệm vụ được giao cho bạn trên tất cả dự án."
       highlightLabel="Task đang mở"
       highlightValue={`${filteredTasks.filter((task) => task.status !== "DONE").length}`}
-      headerAction={
-        <ProjectScopeSelect
-          label="Phạm vi dự án"
-          value={selectedProjectId}
-          onChange={setSelectedProjectId}
-          options={projectOptions}
-          disabled={!projectOptions.length}
-        />
-      }
     >
       <div
         style={{ display: "flex", flexDirection: "column", gap: "2rem", marginTop: "0.25rem" }}

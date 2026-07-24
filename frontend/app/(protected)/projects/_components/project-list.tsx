@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { EmptyState, ProgressBar, StatusPill, Surface } from "@/components/ui";
+import { FilterSelect } from "@/components/filter-select";
 import {
   formatRange,
   hasCompanywideProjectAccess,
@@ -37,7 +38,7 @@ export function ProjectList({
   void onSelectProject;
   const router = useRouter();
   const [page, setPage] = useState(1);
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+
 
   function openProjectOverview(projectId: string) {
     router.push(`/projects/${projectId}?tab=overview`);
@@ -120,85 +121,26 @@ export function ProjectList({
             />
           </div>
           <div style={{ position: "relative", minWidth: "180px" }}>
-            <select
+            <FilterSelect
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{
-                appearance: "none",
-                width: "100%",
-                padding: "0.6rem 2.5rem 0.6rem 1.25rem",
-                borderRadius: "9999px",
-                border: "1px solid var(--border)",
-                background: "var(--surface-sunken)",
-                color: "var(--foreground)",
-                fontSize: "0.875rem",
-                fontWeight: 500,
-                cursor: "pointer",
-                outline: "none",
-                transition: "border-color 0.2s ease, box-shadow 0.2s ease"
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = "var(--primary)";
-                e.target.style.boxShadow = "0 0 0 2px rgba(var(--primary-rgb), 0.2)";
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = "var(--border)";
-                e.target.style.boxShadow = "none";
-              }}
-            >
-              <option value="ALL">Tất cả trạng thái</option>
-              <option value="ACTIVE">Đang triển khai</option>
-              <option value="PLANNING">Đang lập kế hoạch</option>
-              <option value="AT_RISK">Rủi ro trễ hạn</option>
-              <option value="COMPLETED">Đã hoàn thành</option>
-              <option value="ON_HOLD">Tạm dừng</option>
-            </select>
-            <div style={{ position: "absolute", right: "14px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--foreground-muted)" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </div>
+              onChange={(val) => setStatusFilter(val)}
+              options={[
+                { value: "ALL", label: "Tất cả trạng thái" },
+                { value: "ACTIVE", label: "Đang triển khai" },
+                { value: "PLANNING", label: "Đang lập kế hoạch" },
+                { value: "AT_RISK", label: "Rủi ro trễ hạn" },
+                { value: "COMPLETED", label: "Đã hoàn thành" },
+                { value: "ON_HOLD", label: "Tạm dừng" },
+              ]}
+            />
           </div>
-        </div>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button
-            type="button"
-            className="icon-button"
-            style={{ background: viewMode === "list" ? "var(--surface-raised)" : "transparent", border: "1px solid var(--border)", borderRadius: "4px", padding: "6px" }}
-            onClick={() => setViewMode("list")}
-            title="Danh sách"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6"></line>
-              <line x1="8" y1="12" x2="21" y2="12"></line>
-              <line x1="8" y1="18" x2="21" y2="18"></line>
-              <line x1="3" y1="6" x2="3.01" y2="6"></line>
-              <line x1="3" y1="12" x2="3.01" y2="12"></line>
-              <line x1="3" y1="18" x2="3.01" y2="18"></line>
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            style={{ background: viewMode === "grid" ? "var(--surface-raised)" : "transparent", border: "1px solid var(--border)", borderRadius: "4px", padding: "6px" }}
-            onClick={() => setViewMode("grid")}
-            title="Dạng lưới"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7"></rect>
-              <rect x="14" y="3" width="7" height="7"></rect>
-              <rect x="14" y="14" width="7" height="7"></rect>
-              <rect x="3" y="14" width="7" height="7"></rect>
-            </svg>
-          </button>
         </div>
       </div>
 
       {filteredProjects.length ? (
         <>
-          {viewMode === "list" ? (
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
                 <thead>
                   <tr>
                     <th>Dự án</th>
@@ -287,53 +229,7 @@ export function ProjectList({
                   ))}
                 </tbody>
               </table>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "1rem" }}>
-              {paginatedProjects.map((project) => (
-                <div key={project.id} style={{ border: "1px solid var(--border)", borderRadius: "8px", padding: "1.5rem", background: "var(--surface-sunken)", display: "flex", flexDirection: "column", gap: "1rem", cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }} onClick={() => openProjectOverview(project.id)}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      <span className={styles.avatarToken} style={{ width: "40px", height: "40px", fontSize: "1rem" }}>
-                        {project.name.charAt(0).toUpperCase()}
-                      </span>
-                      <div>
-                        <h3 style={{ margin: "0 0 0.25rem 0", fontSize: "1rem", fontWeight: 600 }}>{project.name}</h3>
-                        <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--foreground-muted)" }}>{project.code}</p>
-                      </div>
-                    </div>
-                    {onEditProjectClick && canEditProject(project) && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onEditProjectClick(project); }}
-                        style={{ background: "transparent", border: "none", color: "var(--foreground-muted)", cursor: "pointer", padding: "4px" }}
-                      >
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  <div>
-                    <StatusPill
-                      label={projectStatusLabel(project.status)}
-                      tone={
-                        project.status === "ACTIVE" ? "accent" : project.status === "PLANNING" ? "watch" : project.status === "AT_RISK" ? "critical" : "on-track"
-                      }
-                    />
-                  </div>
-                  <div>
-                    <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Phòng ban: {project.departmentName || "Chưa rõ"}</p>
-                    <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Manager: {project.managerName || "Chưa rõ"}</p>
-                    <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.875rem", color: "var(--foreground-muted)" }}>Thời gian: {formatRange(project.startDate, project.endDate)}</p>
-                  </div>
-                  <div style={{ marginTop: "auto" }}>
-                    <ProgressBar value={project.progress} label="Tiến độ" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          </div>
 
           {totalPages > 1 && (
             <div className={styles.paginationBar} style={{ marginTop: "1rem" }}>

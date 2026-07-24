@@ -293,13 +293,45 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
         <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="3"><path d="M9 18l6-6-6-6" /></svg>
       );
 
-      // Task icon (generic box)
-      const TaskIcon = (
-        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.5">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <path d="M3 9h18" />
-        </svg>
-      );
+      // Task icon by level
+      const taskIcon = (() => {
+        switch (node.level) {
+          case 0:
+            // Cấp 0 (Epic / Task chính): Icon Folder / Layer - tím nhạt
+            return (
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#6366f1" }}>
+                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+              </svg>
+            );
+          case 1:
+            // Cấp 1 (Task con cấp 1): Icon Card / Task - xanh dương
+            return (
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#0284c7" }}>
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <path d="M3 9h18" />
+                <path d="M9 15h6" />
+              </svg>
+            );
+          case 2:
+            // Cấp 2 (Sub-task cấp 2): Icon File / Document - xanh lá
+            return (
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#10b981" }}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+            );
+          default:
+            // Cấp 3+ (Micro-task): Icon Clock / Circle - cam
+            return (
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#f59e0b" }}>
+                <circle cx="12" cy="12" r="9" />
+                <polyline points="12 8 12 12 15 15" />
+              </svg>
+            );
+        }
+      })();
 
       return (
         <React.Fragment key={node.task.id}>
@@ -317,9 +349,9 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
                     {ToggleIcon}
                   </button>
                 ) : (
-                  <span style={{ width: 22, display: "inline-block" }}></span>
+                  <span className={styles.expandPlaceholder} />
                 )}
-                <span className={styles.taskIcon}>{TaskIcon}</span>
+                <span className={styles.taskIcon}>{taskIcon}</span>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {node.task.title}
                 </span>

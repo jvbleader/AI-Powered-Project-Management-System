@@ -1,10 +1,13 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, status
+import asyncio
+from fastapi import APIRouter, Depends, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.connection import get_db
 from app.api.auth import get_current_user
 from app.models.user_model import User
+from app.models.notification_model import Notification
+from app.services.websocket_manager import manager
 from app.schemas.task_schema import (
     TaskResponse, TaskCreate, TaskUpdate, 
     TaskAttachmentResponse, TaskAttachmentCreate,
@@ -141,10 +144,48 @@ def update_task(
 def add_assignee(
     task_id: int,
     req: AssigneeRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     task_service.add_assignee(db, task_id, req.user_id, current_user.id)
+    task = task_service.task_repository.get_task_by_id(db, task_id)
+    
+    target_user_id_str = req.user_id.replace("usr-", "") if req.user_id else ""
+    
+    if target_user_id_str:
+        target_user_id = int(target_user_id_str)
+        if target_user_id != current_user.id:
+            notification = Notification(
+                user_id=target_user_id,
+                type="TASK_ASSIGNED",
+                title="Bạn được giao một Task mới",
+                content=f"Task: {task.title if task else f'#{task_id}'}",
+                link=f"/tasks"
+            )
+            db.add(notification)
+            db.commit()
+            db.refresh(notification)
+
+            async def send_ws():
+                await manager.send_personal_message(
+                    {
+                        "type": "NEW_NOTIFICATION",
+                        "data": {
+                            "id": notification.id,
+                            "type": notification.type,
+                            "title": notification.title,
+                            "content": notification.content,
+                            "link": notification.link,
+                            "is_read": False,
+                            "created_at": notification.created_at.isoformat()
+                        }
+                    }, 
+                    target_user_id
+                )
+            background_tasks.add_task(send_ws)
+
+    _hydrate_task_response(db, task)
     return {"message": "Success"}
 
 @router_root.get("/{task_id}/attachments", response_model=List[TaskAttachmentResponse])
@@ -196,10 +237,46 @@ def get_logworks(
 def create_logwork(
     task_id: int,
     logwork_in: LogWorkCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return task_service.add_logwork(db, task_id, current_user.id, logwork_in)
+    lw = task_service.add_logwork(db, task_id, current_user.id, logwork_in)
+    
+    task = task_service.task_repository.get_task_by_id(db, task_id)
+    if task:
+        project = task_service.project_repository.get_project_by_id(db, task.project_id)
+        if project and project.manager_id and project.manager_id != current_user.id:
+            notification = Notification(
+                user_id=project.manager_id,
+                type="LOGWORK_SUBMITTED",
+                title="Yêu cầu duyệt Log Work",
+                content=f"{current_user.full_name} vừa log {logwork_in.hours_spent}h vào '{task.title}'",
+                link="/logwork-approvals"
+            )
+            db.add(notification)
+            db.commit()
+            db.refresh(notification)
+
+            async def send_ws():
+                await manager.send_personal_message(
+                    {
+                        "type": "NEW_NOTIFICATION",
+                        "data": {
+                            "id": notification.id,
+                            "type": notification.type,
+                            "title": notification.title,
+                            "content": notification.content,
+                            "link": notification.link,
+                            "is_read": False,
+                            "created_at": notification.created_at.isoformat()
+                        }
+                    }, 
+                    project.manager_id
+                )
+            background_tasks.add_task(send_ws)
+
+    return lw
 
 
 @router_root.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

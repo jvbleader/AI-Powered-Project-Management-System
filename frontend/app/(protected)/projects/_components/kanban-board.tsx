@@ -25,7 +25,10 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
   }, [tasks]);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    e.stopPropagation();
+    e.dataTransfer.setData("text/plain", taskId);
     e.dataTransfer.effectAllowed = "move";
+    // Defer state update to allow browser to capture drag ghost
     setTimeout(() => {
       setDraggedTaskId(taskId);
     }, 0);

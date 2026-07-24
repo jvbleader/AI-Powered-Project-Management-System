@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { taskApi } from "@/services/api";
 import Link from "next/link";
 import { EnrichedTask, Sprint } from "@/types";
 import { StatusPill } from "@/components/ui";
+import { FilterSelect, type FilterOption } from "@/components/filter-select";
 import { taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
 import styles from "./project-kanban-board.module.css";
 
@@ -21,6 +22,54 @@ const KANBAN_COLUMNS = [
   { id: "DONE", label: "Đã hoàn thành" },
 ];
 
+// Helper to extract clean base topic from task title for grouping related tasks
+function getTaskTopic(title: string): string {
+  let clean = title.replace(/^\[(Epic|Feature|Bug|Task)\]\s*/i, "");
+  clean = clean.replace(/^(US|Task|Feature|Bug|Technical debt):\s*/i, "");
+  clean = clean.replace(/(\s*-\s*Part\s*\d+|\s*Part\s*\d+|\s*Phần\s*\d+|\s*#\d+)/i, "");
+  return clean.trim().toLowerCase();
+}
+
+function sortBacklogTasks(tasks: EnrichedTask[]): EnrichedTask[] {
+  const taskMap = new Map<string, EnrichedTask>(tasks.map((t) => [t.id, t]));
+  const childrenByParent = new Map<string, EnrichedTask[]>();
+  const rootTasks: EnrichedTask[] = [];
+
+  tasks.forEach((t) => {
+    if (t.parentTaskId && taskMap.has(t.parentTaskId)) {
+      const list = childrenByParent.get(t.parentTaskId) || [];
+      list.push(t);
+      childrenByParent.set(t.parentTaskId, list);
+    } else {
+      rootTasks.push(t);
+    }
+  });
+
+  // Sort root tasks by topic & title
+  rootTasks.sort((a, b) => {
+    const topicA = getTaskTopic(a.title);
+    const topicB = getTaskTopic(b.title);
+    if (topicA !== topicB) {
+      return topicA.localeCompare(topicB, "vi", { sensitivity: "base" });
+    }
+    return a.title.localeCompare(b.title, "vi", { numeric: true, sensitivity: "base" });
+  });
+
+  // Flatten tree recursively
+  const result: EnrichedTask[] = [];
+
+  function addWithChildren(task: EnrichedTask) {
+    result.push(task);
+    const children = childrenByParent.get(task.id) || [];
+    children.sort((a, b) => a.title.localeCompare(b.title, "vi", { numeric: true, sensitivity: "base" }));
+    children.forEach(addWithChildren);
+  }
+
+  rootTasks.forEach(addWithChildren);
+
+  return result;
+}
+
 export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, onTaskClick }: ProjectKanbanBoardProps) {
   const searchParams = useSearchParams();
   const highlightTaskId = searchParams.get("highlightTaskId");
@@ -30,7 +79,10 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
   const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
 
   useEffect(() => {
-    setLocalTasks(tasks);
+    const sortedTasks = [...tasks].sort((a, b) => {
+      return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
+    });
+    setLocalTasks(sortedTasks);
   }, [tasks]);
 
   const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
@@ -71,10 +123,14 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
   // Kanban tasks: belong to selected sprint
   const kanbanTasks = selectedSprint ? localTasks.filter((t) => String(t.sprintId) === String(selectedSprint.id)) : [];
   
+
+
   // Backlog tasks: don't belong to ANY sprint (strict backlog)
-  const backlogTasks = localTasks.filter((t) => !t.sprintId);
+  const rawBacklogTasks = useMemo(() => localTasks.filter((t) => !t.sprintId), [localTasks]);
+  const backlogTasks = useMemo(() => sortBacklogTasks(rawBacklogTasks), [rawBacklogTasks]);
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    e.stopPropagation();
     e.dataTransfer.setData("text/plain", taskId);
     e.dataTransfer.effectAllowed = "move";
     // Defer state update to allow browser to capture drag ghost
@@ -114,7 +170,10 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
       if (targetId === "BACKLOG") {
         // Move to backlog
         if (task.sprintId) {
-          setLocalTasks(prev => prev.map(t => t.id === task.id ? { ...t, sprintId: null, status: "TODO", assigneeId: "", assignee: undefined as any } : t));
+          setLocalTasks(prev => {
+            const filtered = prev.filter(t => t.id !== task.id);
+            return [...filtered, { ...task, sprintId: null, status: "TODO", assigneeId: "", assignee: undefined as any }];
+          });
           await taskApi.update(task.id, { sprintId: null, status: "TODO" });
           await taskApi.updateAssignee(task.id, "");
           onTaskUpdated();
@@ -128,28 +187,34 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
         
         const newStatus = targetId as EnrichedTask["status"];
         if (String(task.sprintId) !== String(selectedSprint.id) || toWorkflowTaskStatus(task.status) !== targetId) {
-          setLocalTasks(prev => prev.map(t => {
-            if (t.id === task.id) {
-              const updatedTask = { ...t, sprintId: String(selectedSprint.id), status: newStatus };
-              // Luôn tự động gán cho người kéo khi di chuyển trong Kanban
-              if (viewerId) {
-                updatedTask.assigneeId = viewerId;
-                // We mock the assignee object so it renders immediately
-                updatedTask.assignee = { 
-                  id: viewerId, 
-                  name: "Bạn", // temporary name until re-fetch
-                  email: "", 
-                  role: "Developer",
-                } as any;
-              }
-              return updatedTask;
+          setLocalTasks(prev => {
+            const filtered = prev.filter(t => t.id !== task.id);
+            const updatedTask = { ...task, sprintId: String(selectedSprint.id), status: newStatus };
+            if (viewerId) {
+              updatedTask.assigneeId = viewerId;
+              updatedTask.assignee = { 
+                ...(task.assignee || {}),
+                id: viewerId, 
+                name: task.assignee?.name || "Bạn",
+                email: task.assignee?.email || "",
+                role: task.assignee?.role || "MEMBER",
+                roles: task.assignee?.roles || ["MEMBER"],
+                title: task.assignee?.title || "",
+                initials: task.assignee?.initials || "B",
+                presence: task.assignee?.presence || "online",
+                capacityHours: task.assignee?.capacityHours || 40,
+                workloadHours: task.assignee?.workloadHours || 0,
+                focusScore: task.assignee?.focusScore || 100,
+                isActive: task.assignee?.isActive ?? true,
+                status: task.assignee?.status || "ACTIVE",
+              };
             }
-            return t;
-          }));
+            return [...filtered, updatedTask];
+          });
           
           await taskApi.update(task.id, { sprintId: String(selectedSprint.id), status: newStatus });
           if (viewerId) {
-            await taskApi.updateAssignee(task.id, `usr-${viewerId}`);
+            await taskApi.updateAssignee(task.id, viewerId);
           }
           onTaskUpdated();
         }
@@ -184,8 +249,19 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
       <div className={styles.cardFooter}>
         <div>
           {!isBacklog && (task.assignee ? (
-            <div className={styles.assigneeAvatar} title={task.assignee.name}>
-              {task.assignee.name.charAt(0).toUpperCase()}
+            <div 
+              className={styles.assigneeAvatar} 
+              title={task.assignee.name}
+              style={{
+                background: task.assignee.avatarUrl ? "transparent" : "var(--accent)",
+                overflow: "hidden"
+              }}
+            >
+              {task.assignee.avatarUrl ? (
+                <img src={task.assignee.avatarUrl} alt={task.assignee.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                task.assignee.name.charAt(0).toUpperCase()
+              )}
             </div>
           ) : (
             <div className={styles.unassignedAvatar} title="Chưa phân công">?</div>
@@ -213,20 +289,20 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
             Kanban Board
           </h2>
           {sprints && sprints.length > 0 && (
-            <select
-              className={styles.sprintSelect}
-              value={selectedSprintId || ""}
-              onChange={(e) => setSelectedSprintId(e.target.value)}
-            >
-              {sprints.map(s => {
-                const status = s.status?.toUpperCase() || "";
-                return (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.name} {status === "ACTIVE" ? "(Active)" : status === "PLANNING" ? "(Planning)" : "(Closed)"}
-                  </option>
-                );
-              })}
-            </select>
+            <div style={{ width: "220px" }}>
+              <FilterSelect
+                value={selectedSprintId || ""}
+                onChange={(val) => setSelectedSprintId(val)}
+                options={sprints.map((s): FilterOption => {
+                  const status = s.status?.toUpperCase() || "";
+                  return {
+                    value: String(s.id),
+                    label: `${s.name} ${status === "ACTIVE" ? "(Active)" : status === "PLANNING" ? "(Planning)" : "(Closed)"}`
+                  };
+                })}
+                placeholder="-- Chọn Sprint --"
+              />
+            </div>
           )}
         </div>
 

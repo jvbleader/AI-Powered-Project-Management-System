@@ -1,5 +1,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 
+import { KeyValueList, StatusPill } from "@/components/ui";
+import { AssigneeSelect } from "@/components/assignee-select";
 import { taskApi } from "@/services/api";
 import { formatDate, formatDateTime } from "@/lib/utils/format";
 import type { EnrichedTask, Task, TaskLogworkEntry, UserProfile } from "@/types";
@@ -507,24 +509,18 @@ export function TaskDetailModal({
 
             <label className="task-detail-field">
               <span className="task-detail-field-label">Người thực hiện</span>
-              <select
+              <AssigneeSelect
                 className="task-detail-control task-detail-select"
                 value={isBacklog ? "" : (task?.assigneeId || "")}
-                onChange={(event) => void handleAssigneeChange(event.target.value)}
+                onChange={(val) => void handleAssigneeChange(val)}
                 disabled={isLoading || isSaving || !canEditAssignee}
                 title={
                   isAgile 
                     ? "Trong mô hình Agile, người thực hiện được tự động gán khi kéo thả Task trên bảng Kanban." 
                     : (!canManage ? "Chỉ quản lý mới có quyền phân công người thực hiện trong dự án Waterfall." : "")
                 }
-              >
-                <option value="">-- Chưa phân công --</option>
-                {assigneeOptions.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
+                options={assigneeOptions}
+              />
             </label>
 
             <label className="task-detail-field">

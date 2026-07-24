@@ -1,5 +1,6 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.core.connection import get_db
 from app.api.auth import get_current_user
@@ -7,6 +8,8 @@ from app.models.user_model import User
 from app.models.logworks import LogWork
 from app.models.task_model import Task
 from app.models.project_model import ProjectMember, Project
+from app.models.notification_model import Notification
+from app.services.websocket_manager import manager
 from app.schemas.task_schema import LogWorkResponse
 from sqlalchemy import or_
 from app.utils.project_helpers import has_companywide_project_access, user_role_requires_manager_scope, user_can_manage_project
@@ -66,6 +69,7 @@ def get_pending_logworks(
 @router.patch("/{logwork_id}/approve", response_model=LogWorkResponse)
 def approve_logwork(
     logwork_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -91,11 +95,42 @@ def approve_logwork(
         if user:
             logwork.user_name = user.full_name
             
+            if user.id != current_user.id:
+                notification = Notification(
+                    user_id=user.id,
+                    type="LOGWORK_APPROVED",
+                    title="Logwork đã được duyệt",
+                    content=f"Logwork {logwork.hours_spent}h của bạn ở '{task.title}' đã được duyệt.",
+                    link=f"/projects/{task.project_id}?tab=gantt&highlightTaskId={task.id}"
+                )
+                db.add(notification)
+                db.commit()
+                db.refresh(notification)
+
+                async def send_ws():
+                    await manager.send_personal_message(
+                        {
+                            "type": "NEW_NOTIFICATION",
+                            "data": {
+                                "id": notification.id,
+                                "type": notification.type,
+                                "title": notification.title,
+                                "content": notification.content,
+                                "link": notification.link,
+                                "is_read": False,
+                                "created_at": notification.created_at.isoformat()
+                            }
+                        },
+                        user.id
+                    )
+                background_tasks.add_task(send_ws)
+            
     return logwork
 
 @router.patch("/{logwork_id}/reject", response_model=LogWorkResponse)
 def reject_logwork(
     logwork_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -120,5 +155,35 @@ def reject_logwork(
         user = db.query(User).filter(User.id == member.user_id).first()
         if user:
             logwork.user_name = user.full_name
+            
+            if user.id != current_user.id:
+                notification = Notification(
+                    user_id=user.id,
+                    type="LOGWORK_REJECTED",
+                    title="Logwork bị từ chối",
+                    content=f"Logwork {logwork.hours_spent}h của bạn ở '{task.title}' đã bị từ chối.",
+                    link=f"/projects/{task.project_id}?tab=gantt&highlightTaskId={task.id}"
+                )
+                db.add(notification)
+                db.commit()
+                db.refresh(notification)
+
+                async def send_ws():
+                    await manager.send_personal_message(
+                        {
+                            "type": "NEW_NOTIFICATION",
+                            "data": {
+                                "id": notification.id,
+                                "type": notification.type,
+                                "title": notification.title,
+                                "content": notification.content,
+                                "link": notification.link,
+                                "is_read": False,
+                                "created_at": notification.created_at.isoformat()
+                            }
+                        },
+                        user.id
+                    )
+                background_tasks.add_task(send_ws)
             
     return logwork

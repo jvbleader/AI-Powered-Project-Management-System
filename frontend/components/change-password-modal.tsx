@@ -37,20 +37,12 @@ export function ChangePasswordModal({ session, onClose }: ChangePasswordModalPro
       return;
     }
 
-    const hasLetter = Array.from(newPassword).some(
-      (character) => character.toLocaleLowerCase() !== character.toLocaleUpperCase(),
-    );
-    const hasNumber = Array.from(newPassword).some((character) => /\d/u.test(character));
-
-    if (!hasLetter || !hasNumber) {
-      setPasswordError("Mật khẩu phải chứa chữ cái và chữ số.");
-      return;
-    }
-
     if (newPassword !== confirmPassword) {
       setPasswordError("Mật khẩu xác nhận chưa khớp.");
       return;
     }
+
+
 
     setIsChangingPassword(true);
 

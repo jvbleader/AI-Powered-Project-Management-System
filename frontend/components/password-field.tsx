@@ -10,6 +10,7 @@ type PasswordFieldProps = {
   required?: boolean;
   minLength?: number;
   autoComplete?: string;
+  placeholder?: string;
 };
 
 export function PasswordField({
@@ -20,6 +21,7 @@ export function PasswordField({
   required,
   minLength,
   autoComplete,
+  placeholder,
 }: PasswordFieldProps) {
   return (
     <div className="password-input-shell">
@@ -30,6 +32,7 @@ export function PasswordField({
         required={required}
         type={isVisible ? "text" : "password"}
         autoComplete={autoComplete}
+        placeholder={placeholder}
       />
       <button
         type="button"

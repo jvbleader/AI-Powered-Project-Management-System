@@ -7,6 +7,7 @@ import { hasCompanywideProjectAccess, isAdminRole, isLeaderRole, isManagerRole, 
 import { userApi } from "@/services/api";
 import { storeUserAvatar } from "@/lib/utils/avatar";
 import type { UserProfile } from "@/types";
+import { AvatarCropper } from "./avatar-cropper";
 import styles from "../styles/profile.module.css";
 
 interface ProfileHeroProps {
@@ -17,6 +18,7 @@ interface ProfileHeroProps {
 export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const roleTone = isAdminRole(user.role)
     ? "critical"
     : hasCompanywideProjectAccess(user.role, user.department)
@@ -53,18 +55,8 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
         return;
       }
 
-      try {
-        storeUserAvatar(user.id, nextAvatarUrl);
-        const { data: updatedProfile } = await userApi.updateCurrentAvatar(user, nextAvatarUrl);
-        onUpdate(updatedProfile);
-        setAvatarNotice("Đã cập nhật ảnh đại diện.");
-      } catch (error) {
-        setAvatarNotice(
-          error instanceof Error ? error.message : "Không thể cập nhật ảnh đại diện.",
-        );
-      } finally {
-        event.target.value = "";
-      }
+      setCropImageSrc(nextAvatarUrl);
+      event.target.value = "";
     };
 
     reader.onerror = () => {
@@ -73,6 +65,20 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
     };
 
     reader.readAsDataURL(file);
+  }
+
+  async function handleCropSave(croppedBase64: string) {
+    setCropImageSrc(null);
+    try {
+      storeUserAvatar(user.id, croppedBase64);
+      const { data: updatedProfile } = await userApi.updateCurrentAvatar(user, croppedBase64);
+      onUpdate(updatedProfile);
+      setAvatarNotice("Đã cập nhật ảnh đại diện.");
+    } catch (error) {
+      setAvatarNotice(
+        error instanceof Error ? error.message : "Không thể cập nhật ảnh đại diện.",
+      );
+    }
   }
 
   return (
@@ -126,6 +132,14 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
         </div>
         {avatarNotice ? <p className={styles.avatarNotice}>{avatarNotice}</p> : null}
       </div>
+
+      {cropImageSrc && (
+        <AvatarCropper
+          imageSrc={cropImageSrc}
+          onSave={handleCropSave}
+          onCancel={() => setCropImageSrc(null)}
+        />
+      )}
     </div>
   );
 }

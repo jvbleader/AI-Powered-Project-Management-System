@@ -18,6 +18,7 @@ from app.schemas.user_schema import (
     UserRoleUpdate,
     UserStatusUpdate,
 )
+from app.services.azure_blob_service import azure_blob_service
 from app.utils.project_helpers import (
     is_admin_user,
     list_accessible_project_ids,
@@ -73,9 +74,13 @@ def update_phone(db: Session, current_user: User, data: UpdatePhone) -> User:
 
 
 def update_avatar(db: Session, current_user: User, data: UpdateAvatar) -> User:
-    current_user.avatar_url = data.avatar_url
+    avatar_url = azure_blob_service.upload_base64_avatar(data.avatar_url, current_user.id)
+    
+    current_user.avatar_url = avatar_url
     current_user.updated_at = datetime.now(timezone.utc)
-    return user_repository.commit_and_refresh(db, current_user)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
 
 
 def create_user(db: Session, current_user: User, data: UserCreate) -> User:

@@ -1,13 +1,23 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useAuthSession } from "@/hooks/use-session";
 import { LogworkApprovalsClient } from "./logwork-approvals-client";
 import { WorkspaceShell } from "@/components/workspace-shell";
+import { canManageProjectsByRole } from "@/lib/utils/format";
 
 export default function LogworkApprovalsPage() {
   const session = useAuthSession();
+  const router = useRouter();
 
-  if (!session?.currentUser) {
+  useEffect(() => {
+    if (session?.currentUser && !canManageProjectsByRole(session.currentUser.role, session.currentUser.department)) {
+      router.replace("/dashboard");
+    }
+  }, [session, router]);
+
+  if (!session?.currentUser || !canManageProjectsByRole(session.currentUser.role, session.currentUser.department)) {
     return null;
   }
 

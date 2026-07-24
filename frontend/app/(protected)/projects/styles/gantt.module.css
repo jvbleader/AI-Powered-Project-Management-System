@@ -277,6 +277,14 @@
   transition: background-color 0.2s, color 0.2s;
 }
 
+.expandPlaceholder {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
 .expandBtn:hover {
   background-color: #e2e8f0;
   color: #0f172a;

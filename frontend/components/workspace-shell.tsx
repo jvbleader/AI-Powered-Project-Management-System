@@ -12,6 +12,8 @@ import { AssistantBubble } from "@/components/assistant-bubble";
 import { useAuthSession } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
 import { ChangePasswordModal } from "@/components/change-password-modal";
+import { SignOutModal } from "@/components/sign-out-modal";
+import { useNotifications } from "@/contexts/notification-context";
 import {
   canAccessTeamDirectoryRole,
   isAdminRole,
@@ -34,8 +36,9 @@ function classNames(...values: Array<string | false | null | undefined>) {
 export function WorkspaceShell({
   shellData,
   heading,
+  subheading,
   highlightLabel,
-  highlightValue,
+  highlightValue = "",
   headerAction,
   assistantProjectId,
   children,
@@ -52,13 +55,37 @@ export function WorkspaceShell({
   const pathname = usePathname();
   const router = useRouter();
   const session = useAuthSession();
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [canViewTeamNavigation, setCanViewTeamNavigation] = useState(
-    canAccessTeamDirectoryRole(shellData.currentUser.role, shellData.currentUser.department),
-  );
-  const [canViewLogworkApprovals, setCanViewLogworkApprovals] = useState(false);
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [canViewTeamNavigation, setCanViewTeamNavigation] = useState(() => {
+    const isGlobal = canAccessTeamDirectoryRole(shellData.currentUser.role, shellData.currentUser.department);
+    if (typeof window !== "undefined") {
+      const cached = sessionStorage.getItem("canViewTeamNavigation");
+      if (cached !== null) return cached === "true";
+    }
+    return isGlobal;
+  });
+  const [canViewLogworkApprovals, setCanViewLogworkApprovals] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("canViewLogworkApprovals") === "true";
+    }
+    return false;
+  });
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setIsNotifOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const activeShellData = session
     ? {
@@ -101,11 +128,15 @@ export function WorkspaceShell({
           );
           setCanViewTeamNavigation(isGlobalTeamViewer || isManagerOfAny);
           setCanViewLogworkApprovals(isManagerOfAny || isLeaderOfAny);
+          sessionStorage.setItem("canViewTeamNavigation", String(isGlobalTeamViewer || isManagerOfAny));
+          sessionStorage.setItem("canViewLogworkApprovals", String(isManagerOfAny || isLeaderOfAny));
         }
       } catch {
         if (!isCancelled) {
           setCanViewTeamNavigation(isGlobalTeamViewer);
           setCanViewLogworkApprovals(false);
+          sessionStorage.setItem("canViewTeamNavigation", String(isGlobalTeamViewer));
+          sessionStorage.setItem("canViewLogworkApprovals", "false");
         }
       }
     }
@@ -171,16 +202,9 @@ export function WorkspaceShell({
     void primeTasksPageData(currentUser);
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setIsProfileMenuOpen(false);
-    await signOut();
-    router.push("/login");
-  };
-
-  const handleSignOutAll = async () => {
-    setIsProfileMenuOpen(false);
-    await signOutAll();
-    router.push("/login");
+    setIsSignOutModalOpen(true);
   };
 
   const handleOpenPasswordModal = () => {
@@ -216,7 +240,11 @@ export function WorkspaceShell({
                     unoptimized
                   />
                 ) : (
-                  activeShellData.currentUser.initials
+                  activeShellData.currentUser.avatarUrl ? (
+                    <img src={activeShellData.currentUser.avatarUrl} alt={activeShellData.currentUser.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    activeShellData.currentUser.initials
+                  )
                 )}
               </span>
               <div className="sidebar-profile-copy">
@@ -284,24 +312,7 @@ export function WorkspaceShell({
                   </span>
                 </button>
 
-                <button
-                  type="button"
-                  className="profile-menu-item profile-menu-button"
-                  role="menuitem"
-                  onClick={handleSignOutAll}
-                  style={{ color: "var(--danger-foreground)" }}
-                >
-                  <span className="profile-menu-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                    </svg>
-                  </span>
-                  <span className="profile-menu-copy">
-                    <strong>Đăng xuất tất cả</strong>
-                    <small>Thoát khỏi tất cả các thiết bị</small>
-                  </span>
-                </button>
+
               </div>
             ) : null}
           </div>
@@ -332,9 +343,112 @@ export function WorkspaceShell({
           </div>
           <div className="topbar-actions">
             {headerAction}
-            <div className="quick-chip">
-              <span>{highlightLabel}</span>
-              <strong>{highlightValue}</strong>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <div ref={notifRef} style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  title="Thông báo"
+                  onClick={() => setIsNotifOpen(!isNotifOpen)}
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border-subtle)",
+                    borderRadius: "50%",
+                    width: "48px",
+                    height: "48px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    color: "var(--ink)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)" }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)" }}
+                >
+                  <div style={{ position: "relative" }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                    </svg>
+                    {unreadCount > 0 && (
+                      <span style={{ 
+                        position: "absolute", 
+                        top: -4, 
+                        right: -1, 
+                        minWidth: "14px", 
+                        height: "14px", 
+                        background: "var(--critical)", 
+                        borderRadius: "7px", 
+                        border: "1px solid var(--surface)",
+                        color: "white",
+                        fontSize: "0.55rem",
+                        fontWeight: "bold",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "0 3px",
+                        animation: "pulse-glow 2s infinite"
+                      }}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                {isNotifOpen && (
+                  <div style={{
+                    position: "absolute", top: "calc(100% + 8px)", right: 0,
+                    width: "320px", background: "#fff", border: "1px solid var(--border)",
+                    borderRadius: "8px", boxShadow: "0 10px 25px rgba(0,0,0,0.1)", zIndex: 100,
+                    display: "flex", flexDirection: "column"
+                  }}>
+                    <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>Thông báo</h3>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllAsRead} style={{ background: "none", border: "none", color: "var(--accent)", fontSize: "0.8rem", cursor: "pointer", fontWeight: 500 }}>
+                          Đánh dấu đã đọc
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ maxHeight: "360px", overflowY: "auto" }}>
+                      {notifications.length === 0 ? (
+                        <div style={{ padding: "24px", textAlign: "center", color: "var(--foreground-muted)", fontSize: "0.9rem" }}>
+                          Bạn không có thông báo nào.
+                        </div>
+                      ) : (
+                        notifications.map(notif => (
+                          <div 
+                            key={notif.id} 
+                            onClick={() => {
+                              markAsRead(notif.id);
+                              router.push(notif.link);
+                              setIsNotifOpen(false);
+                            }}
+                            style={{ 
+                              padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer",
+                              background: notif.is_read ? "#fff" : "#eff6ff",
+                              transition: "background 0.2s"
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = notif.is_read ? "var(--surface-sunken)" : "#dbeafe"}
+                            onMouseLeave={e => e.currentTarget.style.background = notif.is_read ? "#fff" : "#eff6ff"}
+                          >
+                            <div style={{ fontSize: "0.85rem", fontWeight: notif.is_read ? 500 : 600, color: "var(--ink)", marginBottom: "4px" }}>
+                              {notif.title}
+                            </div>
+                            <div style={{ fontSize: "0.8rem", color: "var(--foreground-muted)", lineHeight: 1.4 }}>
+                              {notif.content}
+                            </div>
+                            <div style={{ fontSize: "0.7rem", color: "var(--foreground-muted)", marginTop: "6px", opacity: 0.8 }}>
+                              {new Date(notif.created_at + (!notif.created_at.endsWith('Z') ? 'Z' : '')).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
@@ -345,6 +459,10 @@ export function WorkspaceShell({
 
       {isPasswordModalOpen ? (
         <ChangePasswordModal session={session} onClose={() => setIsPasswordModalOpen(false)} />
+      ) : null}
+
+      {isSignOutModalOpen ? (
+        <SignOutModal onClose={() => setIsSignOutModalOpen(false)} />
       ) : null}
     </div>
   );

@@ -279,7 +279,8 @@ export const apiEndpoints = {
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
   },
   ai: {
-    quickResponse: { method: "POST" as EndpointMethod, path: "/api/ai/quick-response" },
+    classifyIntent: { method: "POST" as EndpointMethod, path: "/api/ai/classify-intent" },
+    executeAi: { method: "POST" as EndpointMethod, path: "/api/ai/execute" },
     quickQuery: { method: "POST" as EndpointMethod, path: "/api/ai/query" },
     reports: { method: "GET" as EndpointMethod, path: "/api/ai/reports" },
     memory: { method: "GET" as EndpointMethod, path: "/api/ai/memory" },
@@ -334,10 +335,24 @@ axiosInstance.interceptors.request.use((config) => {
   return config;
 });
 
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (reason?: any) => void }> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
     
     // Nếu gặp lỗi 401 và không phải là các API Auth thì sẽ gọi refresh
     if (
@@ -345,12 +360,32 @@ axiosInstance.interceptors.response.use(
       originalRequest &&
       !originalRequest.url?.endsWith("/refresh") &&
       !originalRequest.url?.endsWith("/login") &&
-      !originalRequest.url?.endsWith("/logout")
+      !originalRequest.url?.endsWith("/logout") &&
+      !originalRequest._retry
     ) {
+      if (isRefreshing) {
+        return new Promise(function (resolve, reject) {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(() => {
+            return axiosInstance(originalRequest);
+          })
+          .catch((err) => {
+            return Promise.reject(err);
+          });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
       try {
         await axios.get(`${getApiBaseUrl()}/refresh`, { withCredentials: true });
+        isRefreshing = false;
+        processQueue(null);
         return axiosInstance(originalRequest);
       } catch (e) {
+        isRefreshing = false;
+        processQueue(e);
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("flowpilot-session-expired"));
         }

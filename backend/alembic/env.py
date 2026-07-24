@@ -3,14 +3,8 @@ import sys
 from logging.config import fileConfig
 
 from alembic import context
-from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
-
-# Add the backend directory to sys.path
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
-load_dotenv()
-
+from app.config.settings import get_settings
 from app.core.connection import Base
 from app.models.ai_model import AiConversation, AiMessage
 from app.models.department_model import Department
@@ -20,11 +14,13 @@ from app.models.refresh_token_model import RefreshToken
 from app.models.sprint_model import Sprint
 from app.models.task_model import Task, TaskAssignees, TaskAttachment
 from app.models.user_model import User
+from app.models.notification_model import Notification
 
 config = context.config
 
 
-database_url = os.getenv("DATABASE_URL")
+settings = get_settings()
+database_url = settings.database_url
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 

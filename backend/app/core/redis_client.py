@@ -1,11 +1,10 @@
-import os
 import redis
-from dotenv import load_dotenv
+from app.config.settings import get_settings
 
-load_dotenv()
+settings = get_settings()
 
-REDIS_HOST = os.environ["REDIS_HOST"]
-REDIS_PORT = int(os.environ["REDIS_PORT"])
+REDIS_HOST = settings.redis_host
+REDIS_PORT = settings.redis_port
 
 pool = redis.ConnectionPool(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 redis_client = redis.Redis(connection_pool=pool)

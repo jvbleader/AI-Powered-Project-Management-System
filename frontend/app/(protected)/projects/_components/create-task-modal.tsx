@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { taskApi } from "@/services/api";
+import { AssigneeSelect } from "@/components/assignee-select";
 import type { EnrichedTask, UserProfile } from "@/types";
 
 interface CreateTaskModalProps {
@@ -293,25 +294,12 @@ export function CreateTaskModal({
                   <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
                     Người thực hiện
                   </label>
-                  <select
+                  <AssigneeSelect
                     value={assigneeId}
-                    onChange={(event) => setAssigneeId(event.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "0.85rem 1rem",
-                      borderRadius: "14px",
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-sunken)",
-                      color: "var(--foreground)",
-                    }}
-                  >
-                    <option value="">-- Chưa phân công --</option>
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setAssigneeId(val)}
+                    options={users}
+                    className=""
+                  />
 
                 </div>
 
