@@ -1,7 +1,7 @@
-from app.core.connection import Base, engine
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import ai, auth, dashboard, projects, sprints, tasks, users, logworks, notifications
+
+from app.api import ai, auth, dashboard, logworks, notifications, projects, sprints, tasks, users
 
 app = FastAPI()
 
@@ -27,6 +27,5 @@ app.include_router(tasks.router)
 app.include_router(tasks.router_root)
 app.include_router(sprints.router)
 app.include_router(sprints.router_root)
-from app.api import logworks
 app.include_router(logworks.router)
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])

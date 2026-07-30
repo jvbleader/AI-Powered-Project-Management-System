@@ -37,7 +37,8 @@ export type AiQuickResponseAction =
   | "follow_up_members"
   | "leader_brief"
   | "task_health"
-  | "general_qna";
+  | "general_qna"
+  | "out_of_scope";
 
 export interface AiQuickResponseEntity {
   type: "task" | "user" | "project";

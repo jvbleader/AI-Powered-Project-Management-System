@@ -636,8 +636,8 @@ export default function SprintsPage() {
                   onChange={(event) => setStatusFilter(event.target.value as TaskStatus | "ALL")}
                 >
                   <option value="ALL">Tất cả</option>
-                  <option value="TODO">Cần thực hiện</option>
-                  <option value="IN_PROGRESS">Đang xử lý</option>
+                  <option value="TODO">Cần làm</option>
+                  <option value="IN_PROGRESS">Đang tiến hành</option>
                   <option value="DONE">Hoàn thành</option>
                 </select>
               </label>

@@ -5,11 +5,12 @@ Revises: 9f0f5d4f65b7
 Create Date: 2026-07-12 16:10:00.000000
 
 """
+
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c53a6b09f71b"
@@ -29,25 +30,21 @@ def upgrade() -> None:
         server_default=sa.true(),
     )
 
-    op.execute(
-        """
+    op.execute("""
         UPDATE project_members
         SET is_active = TRUE
         WHERE is_active IS NULL
-        """
-    )
+        """)
 
     has_any_active = bind.execute(
         sa.text("SELECT 1 FROM project_members WHERE is_active = TRUE LIMIT 1")
     ).scalar()
     if not has_any_active:
-        op.execute(
-            """
+        op.execute("""
             UPDATE project_members
             SET is_active = TRUE
             WHERE is_active = FALSE
-            """
-        )
+            """)
 
 
 def downgrade() -> None:

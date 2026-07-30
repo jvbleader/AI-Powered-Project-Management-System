@@ -54,6 +54,6 @@ export async function hasValidServerSession() {
 
 export async function requireServerSession() {
   if (!(await hasValidServerSession())) {
-    redirect("/login");
+    redirect("/unauthorized");
   }
 }

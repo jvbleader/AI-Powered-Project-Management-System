@@ -1,13 +1,14 @@
-from typing import Iterable, Optional
 from datetime import timedelta
+from typing import Iterable, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.project_model import Project, ProjectMember
+from app.models.project_model import ProjectMember
 from app.models.task_model import Task
 from app.repositories import project_repository, task_repository
 from app.schemas.task_schema import LogWorkCreate, TaskAttachmentCreate, TaskCreate, TaskUpdate
+from app.utils.dashboard_helpers import normalize_task_status
 from app.utils.project_helpers import (
     has_companywide_project_access,
     list_accessible_project_ids,
@@ -15,7 +16,6 @@ from app.utils.project_helpers import (
     user_can_access_project,
     user_can_manage_project,
 )
-from app.utils.dashboard_helpers import normalize_task_status
 
 
 def _get_current_user(db: Session, user_id: int):
@@ -38,9 +38,11 @@ def _sort_tasks(tasks: Iterable[Task]) -> list[Task]:
     return sorted(
         tasks,
         key=lambda task: (
-            getattr(task, "created_at", None).timestamp()
-            if getattr(task, "created_at", None)
-            else 0,
+            (
+                getattr(task, "created_at", None).timestamp()
+                if getattr(task, "created_at", None)
+                else 0
+            ),
             task.id,
         ),
         reverse=True,
@@ -247,7 +249,7 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
             new_estimate = float(update_data["estimated_hours"] or 0)
             diff_hours = new_estimate - old_estimate
             diff_days = round(diff_hours / 8.0)
-            
+
             if diff_days != 0 and task.deadline:
                 update_data["deadline"] = task.deadline + timedelta(days=diff_days)
 
@@ -260,7 +262,7 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
             )
 
     task = task_repository.update_task(db, task, update_data)
-    
+
     if "status" in update_data and update_data["status"] == "DONE" and task.parent_task_id:
         siblings = task_repository.get_tasks_by_parent_id(db, task.parent_task_id)
         if siblings and all(normalize_task_status(s.status) == "DONE" for s in siblings):
@@ -276,17 +278,17 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 def add_assignee(db: Session, task_id: int, user_id_to_assign: str, current_user_id: int):
     task = get_task(db, task_id, current_user_id)
     actor_user = _require_project_access(db, task.project_id, current_user_id)
-    
+
     is_manager = _can_manage_project_tasks(db, task.project_id, current_user_id)
     target_user_id = str(user_id_to_assign).replace("usr-", "") if user_id_to_assign else ""
-    
+
     if not is_manager:
         if target_user_id and target_user_id != str(current_user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Bạn chỉ có thể tự nhận task cho chính mình. Chỉ Quản lý/Leader mới được giao việc cho người khác.",
             )
-            
+
     actor_member = _get_or_create_actor_member(db, task.project_id, actor_user.id)
 
     if not user_id_to_assign:
@@ -316,14 +318,16 @@ def get_attachments(db: Session, task_id: int, current_user_id: int):
     return task_repository.list_task_attachments(db, task.id)
 
 
-def add_attachment(db: Session, task_id: int, current_user_id: int, attachment_in: TaskAttachmentCreate):
+def add_attachment(
+    db: Session, task_id: int, current_user_id: int, attachment_in: TaskAttachmentCreate
+):
     task = get_task(db, task_id, current_user_id)
     actor_member = _get_or_create_actor_member(db, task.project_id, current_user_id)
-    
+
     attachment_data = attachment_in.model_dump()
     attachment_data["task_id"] = task_id
     attachment_data["uploaded_by"] = actor_member.id
-    
+
     attachment = task_repository.create_task_attachment(db, attachment_data)
     db.commit()
     db.refresh(attachment)
@@ -337,7 +341,9 @@ def get_logworks(db: Session, task_id: int, current_user_id: int):
 
 def add_logwork(db: Session, task_id: int, current_user_id: int, logwork_in: LogWorkCreate):
     task = get_task(db, task_id, current_user_id)
-    if not _can_manage_project_tasks(db, task.project_id, current_user_id) and not task_repository.is_task_assignee(
+    if not _can_manage_project_tasks(
+        db, task.project_id, current_user_id
+    ) and not task_repository.is_task_assignee(
         db,
         task.id,
         current_user_id,

@@ -89,9 +89,9 @@ export function WorkspaceShell({
 
   const activeShellData = session
     ? {
-        ...shellData,
-        currentUser: session.currentUser,
-      }
+      ...shellData,
+      currentUser: session.currentUser,
+    }
     : shellData;
   const currentUser = activeShellData.currentUser;
   const currentUserId = activeShellData.currentUser.id;
@@ -118,7 +118,7 @@ export function WorkspaceShell({
 
     async function resolveTeamNavigationAccess() {
       const isGlobalTeamViewer = canAccessTeamDirectoryRole(currentUser.role, currentUser.department);
-      
+
       try {
         const { data: projects } = await projectApi.list(undefined, currentUser);
         if (!isCancelled) {
@@ -220,105 +220,7 @@ export function WorkspaceShell({
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-profile-panel">
-          <div className="profile-dropdown" ref={profileMenuRef}>
-            <button
-              type="button"
-              className="user-chip sidebar-user-chip sidebar-profile-trigger"
-              aria-haspopup="menu"
-              aria-expanded={isProfileMenuOpen}
-              onClick={() => setIsProfileMenuOpen((current) => !current)}
-            >
-              <span className="avatar-token">
-                {activeShellData.currentUser.avatarUrl ? (
-                  <Image
-                    src={activeShellData.currentUser.avatarUrl}
-                    alt={activeShellData.currentUser.name}
-                    className="avatar-image"
-                    width={46}
-                    height={46}
-                    unoptimized
-                  />
-                ) : (
-                  activeShellData.currentUser.avatarUrl ? (
-                    <img src={activeShellData.currentUser.avatarUrl} alt={activeShellData.currentUser.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : (
-                    activeShellData.currentUser.initials
-                  )
-                )}
-              </span>
-              <div className="sidebar-profile-copy">
-                <strong>{activeShellData.currentUser.name}</strong>
-                <p>{sidebarUserTitle}</p>
-              </div>
-              <span className="profile-chevron" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </span>
-            </button>
-
-            {isProfileMenuOpen ? (
-              <div className="profile-menu" role="menu" aria-label="Profile actions">
-                <button
-                  type="button"
-                  className="profile-menu-item profile-menu-button"
-                  role="menuitem"
-                  onClick={handleOpenProfile}
-                >
-                  <span className="profile-menu-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.8-6 4v1h12v-1c0-2.2-2.7-4-6-4Z" />
-                    </svg>
-                  </span>
-                  <span className="profile-menu-copy">
-                    <strong>Profile</strong>
-                    <small>Xem thông tin cá nhân</small>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="profile-menu-item profile-menu-button"
-                  role="menuitem"
-                  onClick={handleOpenPasswordModal}
-                >
-                  <span className="profile-menu-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M17 9V7a5 5 0 0 0-10 0v2H5v11h14V9Zm-8 0V7a3 3 0 0 1 6 0v2Zm2 4h2v4h-2Z" />
-                    </svg>
-                  </span>
-                  <span className="profile-menu-copy">
-                    <strong>Đổi mật khẩu</strong>
-                    <small>Cập nhật thông tin bảo mật</small>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="profile-menu-item profile-menu-button"
-                  role="menuitem"
-                  onClick={handleSignOut}
-                >
-                  <span className="profile-menu-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M10 17v-2h4V9h-4V7h7v10Zm-1-3-3-3 3-3v2h5v2H9Z" />
-                      <path d="M4 5h7v2H6v10h5v2H4Z" />
-                    </svg>
-                  </span>
-                  <span className="profile-menu-copy">
-                    <strong>Đăng xuất</strong>
-                    <small>Thoát khỏi phiên hiện tại</small>
-                  </span>
-                </button>
-
-
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <nav className="sidebar-nav" aria-label="Primary">
+        <nav className="sidebar-nav" aria-label="Primary" style={{ marginTop: "1rem" }}>
           {filteredNavigation.map((item) => (
             <Link
               key={item.href}
@@ -350,21 +252,18 @@ export function WorkspaceShell({
                   title="Thông báo"
                   onClick={() => setIsNotifOpen(!isNotifOpen)}
                   style={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border-subtle)",
-                    borderRadius: "50%",
-                    width: "48px",
-                    height: "48px",
+                    background: "transparent",
+                    border: "none",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: "pointer",
                     color: "var(--ink)",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                    transition: "all 0.2s ease"
+                    transition: "all 0.2s ease",
+                    padding: "0.2rem"
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)" }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.1)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}
                 >
                   <div style={{ position: "relative" }}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -372,14 +271,14 @@ export function WorkspaceShell({
                       <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
                     </svg>
                     {unreadCount > 0 && (
-                      <span style={{ 
-                        position: "absolute", 
-                        top: -4, 
-                        right: -1, 
-                        minWidth: "14px", 
-                        height: "14px", 
-                        background: "var(--critical)", 
-                        borderRadius: "7px", 
+                      <span style={{
+                        position: "absolute",
+                        top: -4,
+                        right: -1,
+                        minWidth: "14px",
+                        height: "14px",
+                        background: "var(--critical)",
+                        borderRadius: "7px",
                         border: "1px solid var(--surface)",
                         color: "white",
                         fontSize: "0.55rem",
@@ -418,14 +317,14 @@ export function WorkspaceShell({
                         </div>
                       ) : (
                         notifications.map(notif => (
-                          <div 
-                            key={notif.id} 
+                          <div
+                            key={notif.id}
                             onClick={() => {
                               markAsRead(notif.id);
                               router.push(notif.link);
                               setIsNotifOpen(false);
                             }}
-                            style={{ 
+                            style={{
                               padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer",
                               background: notif.is_read ? "#fff" : "#eff6ff",
                               transition: "background 0.2s"
@@ -448,6 +347,95 @@ export function WorkspaceShell({
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="profile-dropdown" ref={profileMenuRef}>
+                <button
+                  type="button"
+                  className="user-chip sidebar-profile-trigger"
+                  aria-haspopup="menu"
+                  aria-expanded={isProfileMenuOpen}
+                  onClick={() => setIsProfileMenuOpen((current) => !current)}
+                  style={{ background: "transparent", display: "flex", alignItems: "center", padding: "0.2rem", borderRadius: "50%", border: "none", cursor: "pointer", transition: "transform 0.2s ease" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)" }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = "none" }}
+                >
+                  <span className="avatar-token" style={{ width: "42px", height: "42px" }}>
+                    {activeShellData.currentUser.avatarUrl ? (
+                      <Image
+                        src={activeShellData.currentUser.avatarUrl}
+                        alt={activeShellData.currentUser.name}
+                        className="avatar-image"
+                        width={42}
+                        height={42}
+                        unoptimized
+                      />
+                    ) : (
+                      activeShellData.currentUser.initials
+                    )}
+                  </span>
+                </button>
+
+                {isProfileMenuOpen ? (
+                  <div className="profile-menu" role="menu" aria-label="Profile actions" style={{ right: 0, minWidth: "260px" }}>
+                    <div style={{ padding: "0.35rem 0.95rem 0.85rem 0.95rem", borderBottom: "1px solid rgba(0,0,0,0.06)", marginBottom: "0.35rem" }}>
+                      <strong style={{ display: "block", color: "var(--ink)", fontSize: "0.95rem" }}>{activeShellData.currentUser.name}</strong>
+                      <span style={{ display: "block", color: "var(--foreground-muted)", fontSize: "0.8rem", marginTop: "4px" }}>{sidebarUserTitle}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="profile-menu-item profile-menu-button"
+                      role="menuitem"
+                      onClick={handleOpenProfile}
+                    >
+                      <span className="profile-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                          <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.3 0-6 1.8-6 4v1h12v-1c0-2.2-2.7-4-6-4Z" />
+                        </svg>
+                      </span>
+                      <span className="profile-menu-copy">
+                        <strong>Profile</strong>
+                        <small>Xem thông tin cá nhân</small>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="profile-menu-item profile-menu-button"
+                      role="menuitem"
+                      onClick={handleOpenPasswordModal}
+                    >
+                      <span className="profile-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                          <path d="M17 9V7a5 5 0 0 0-10 0v2H5v11h14V9Zm-8 0V7a3 3 0 0 1 6 0v2Zm2 4h2v4h-2Z" />
+                        </svg>
+                      </span>
+                      <span className="profile-menu-copy">
+                        <strong>Đổi mật khẩu</strong>
+                        <small>Cập nhật thông tin bảo mật</small>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="profile-menu-item profile-menu-button"
+                      role="menuitem"
+                      onClick={handleSignOut}
+                    >
+                      <span className="profile-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                          <path d="M10 17v-2h4V9h-4V7h7v10Zm-1-3-3-3 3-3v2h5v2H9Z" />
+                          <path d="M4 5h7v2H6v10h5v2H4Z" />
+                        </svg>
+                      </span>
+                      <span className="profile-menu-copy">
+                        <strong>Đăng xuất</strong>
+                        <small>Thoát khỏi phiên hiện tại</small>
+                      </span>
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

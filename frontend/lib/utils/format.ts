@@ -267,7 +267,7 @@ export function getTaskBgColor(status: TaskStatus) {
 
 export function taskStatusLabel(status: TaskStatus) {
   return {
-    TODO: "Cần thực hiện",
+    TODO: "Cần làm",
     IN_PROGRESS: "Đang tiến hành",
     DONE: "Hoàn thành",
   }[toWorkflowTaskStatus(status)];

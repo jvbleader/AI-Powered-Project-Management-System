@@ -47,13 +47,12 @@ def build_task_progress_map(logworks: Iterable[LogWork]) -> dict[int, float]:
         if existing is None or timestamp >= existing[0]:
             latest_progress_by_task[entry.task_id] = (timestamp, current_progress)
 
-    return {
-        task_id: progress
-        for task_id, (_, progress) in latest_progress_by_task.items()
-    }
+    return {task_id: progress for task_id, (_, progress) in latest_progress_by_task.items()}
 
 
-def resolve_task_progress_percent(task: Task, task_progress_map: dict[int, float] | None = None) -> float:
+def resolve_task_progress_percent(
+    task: Task, task_progress_map: dict[int, float] | None = None
+) -> float:
     # Progress is effort-based: only completed leaf tasks contribute.
     del task_progress_map
     normalized_status = normalize_task_status(task.status)
@@ -117,13 +116,18 @@ def list_overdue_tasks(
     return [
         task
         for task in task_list
-        if task.deadline and task.deadline < current_day and normalize_task_status(task.status) != "done"
+        if task.deadline
+        and task.deadline < current_day
+        and normalize_task_status(task.status) != "done"
     ]
 
 
 def sum_estimated_hours(tasks: Sequence[Task]) -> float:
     return round(
-        sum(decimal_to_float(getattr(task, "estimated_hours", None)) for task in list_leaf_tasks(tasks)),
+        sum(
+            decimal_to_float(getattr(task, "estimated_hours", None))
+            for task in list_leaf_tasks(tasks)
+        ),
         1,
     )
 
@@ -189,7 +193,9 @@ def calculate_elapsed_progress(
     return round((elapsed_days / total_days) * 100)
 
 
-def resolve_health_tone(actual_progress: int, planned_progress: int, status: str | None = None) -> str:
+def resolve_health_tone(
+    actual_progress: int, planned_progress: int, status: str | None = None
+) -> str:
     normalized_status = (status or "").strip().lower()
     if normalized_status in {"closed", "completed", "done"}:
         return "on-track"

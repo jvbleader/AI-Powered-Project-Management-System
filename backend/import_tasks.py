@@ -1,15 +1,15 @@
-import sys
 import os
 import random
+import sys
 from datetime import datetime, timedelta, timezone
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.core.connection import SessionLocal
 from app.models.project_model import Project, ProjectMember, Role
-from app.models.user_model import User
 from app.models.task_model import Task, TaskAssignees
-from app.models.sprint_model import Sprint
+from app.models.user_model import User
+
 
 def run_import():
     db = SessionLocal()
@@ -33,7 +33,7 @@ def run_import():
                 status="active",
                 start_date=datetime.now(timezone.utc).date(),
                 end_date=(datetime.now(timezone.utc) + timedelta(days=90)).date(),
-                created_by=admin_user.id
+                created_by=admin_user.id,
             )
             db.add(project)
             db.commit()
@@ -44,18 +44,26 @@ def run_import():
         # Ensure role exists
         pm_role = db.query(Role).filter(Role.name == "Project Manager").first()
         member_role = db.query(Role).filter(Role.name == "Team Member").first()
-        
+
         # Ensure project members
         for user in users:
-            member = db.query(ProjectMember).filter(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id).first()
+            member = (
+                db.query(ProjectMember)
+                .filter(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id)
+                .first()
+            )
             if not member:
                 role_id = pm_role.id if user.id == admin_user.id else member_role.id
                 db.add(ProjectMember(project_id=project.id, user_id=user.id, role_id=role_id))
         db.commit()
 
-        project_members = db.query(ProjectMember).filter(ProjectMember.project_id == project.id).all()
+        project_members = (
+            db.query(ProjectMember).filter(ProjectMember.project_id == project.id).all()
+        )
         member_ids = [m.id for m in project_members]
-        pm_member = next((m for m in project_members if m.user_id == admin_user.id), project_members[0])
+        pm_member = next(
+            (m for m in project_members if m.user_id == admin_user.id), project_members[0]
+        )
 
         with open("tasks_data.tsv", "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -65,11 +73,11 @@ def run_import():
 
         count = 0
         for line in lines:
-            line = line.strip('\n')
+            line = line.strip("\n")
             if not line:
                 continue
-            cols = line.split('\t')
-            
+            cols = line.split("\t")
+
             col1 = cols[0].strip() if len(cols) > 0 else ""
             col2 = cols[1].strip() if len(cols) > 1 else ""
             col3 = cols[2].strip() if len(cols) > 2 else ""
@@ -81,7 +89,7 @@ def run_import():
 
             if col1:
                 current_epic = col1
-            
+
             if col2:
                 # Create Parent Task
                 title = f"[{current_epic}] {col2}" if current_epic else col2
@@ -94,10 +102,10 @@ def run_import():
                     priority="high",
                     start_date=datetime.now(timezone.utc).date(),
                     deadline=(datetime.now(timezone.utc) + timedelta(days=30)).date(),
-                    estimated_hours=random.randint(10, 40)
+                    estimated_hours=random.randint(10, 40),
                 )
                 db.add(task)
-                db.flush() # To get ID
+                db.flush()  # To get ID
                 current_parent_task_id = task.id
                 count += 1
                 print(f"Created Parent Task: {title}")
@@ -106,7 +114,7 @@ def run_import():
                 # Create Subtask
                 if not current_parent_task_id:
                     continue
-                
+
                 status = random.choice(["todo", "in_progress", "done"])
                 estimated_hours = random.randint(2, 10)
                 subtask = Task(
@@ -119,7 +127,7 @@ def run_import():
                     priority=random.choice(["low", "medium", "high"]),
                     start_date=datetime.now(timezone.utc).date(),
                     deadline=(datetime.now(timezone.utc) + timedelta(days=14)).date(),
-                    estimated_hours=estimated_hours
+                    estimated_hours=estimated_hours,
                 )
                 if status == "done":
                     subtask.completed_at = datetime.now(timezone.utc)
@@ -127,7 +135,7 @@ def run_import():
                 db.add(subtask)
                 db.flush()
                 count += 1
-                
+
                 # Randomly assign
                 assign = random.choice([True, True, False])
                 if assign:
@@ -135,7 +143,7 @@ def run_import():
                     task_assignee = TaskAssignees(
                         task_id=subtask.id,
                         project_member_id=assignee_id,
-                        assigned_by_member_id=pm_member.id
+                        assigned_by_member_id=pm_member.id,
                     )
                     db.add(task_assignee)
 
@@ -146,6 +154,7 @@ def run_import():
         db.rollback()
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     run_import()

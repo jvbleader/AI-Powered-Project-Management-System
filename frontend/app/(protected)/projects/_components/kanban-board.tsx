@@ -79,15 +79,10 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
             style={{
               flex: "1",
               minWidth: "320px",
-              background: "var(--surface-sunken)",
-              borderRadius: "8px",
-              padding: "1rem",
               display: "flex",
               flexDirection: "column",
               gap: "1rem",
             }}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, col.id)}
           >
             <h3
               style={{
@@ -96,6 +91,7 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                padding: "0 0.5rem",
               }}
             >
               {col.label}
@@ -103,14 +99,31 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
                 style={{
                   fontSize: "0.875rem",
                   color: "var(--foreground-muted)",
-                  background: "var(--surface)",
+                  background: "#ffffff",
                   padding: "0.125rem 0.5rem",
                   borderRadius: "12px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                 }}
               >
                 {colTasks.length}
               </span>
             </h3>
+
+            <div
+              style={{
+                flex: "1",
+                background: "#ffffff",
+                borderRadius: "12px",
+                padding: "1rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1rem",
+                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.04)",
+                minHeight: "200px",
+              }}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, col.id)}
+            >
 
             {colTasks.map((task) => (
               <div
@@ -225,16 +238,26 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
             {colTasks.length === 0 && (
               <div
                 style={{
-                  padding: "2rem 1rem",
+                  padding: "3rem 1rem",
                   textAlign: "center",
                   color: "var(--foreground-muted)",
-                  border: "1px dashed var(--border)",
-                  borderRadius: "6px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "100%",
+                  gap: "0.75rem",
                 }}
               >
-                Kéo thả công việc vào đây
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span style={{ fontSize: "0.875rem" }}>Kéo thả công việc vào đây</span>
               </div>
             )}
+            </div>
           </div>
         );
       })}

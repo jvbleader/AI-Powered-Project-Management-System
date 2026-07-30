@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.connection import get_db
@@ -71,10 +71,8 @@ def logout_all(
     db.commit()
 
     async def send_force_logout():
-        await manager.send_personal_message(
-            {"type": "FORCE_LOGOUT"}, 
-            current_user.id
-        )
+        await manager.send_personal_message({"type": "FORCE_LOGOUT"}, current_user.id)
+
     background_tasks.add_task(send_force_logout)
 
     response.delete_cookie(key="access_token", httponly=True, samesite="lax")
@@ -103,7 +101,7 @@ def refresh_access_token(
         samesite="lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
-    
+
     if "refresh_token" in auth_data and auth_data["refresh_token"]:
         response.set_cookie(
             key="refresh_token",
@@ -124,7 +122,7 @@ def change_password(
     db: Session = Depends(get_db),
 ):
     auth_service.change_user_password(db, current_user, data)
-    
+
     response.delete_cookie(key="access_token", httponly=True, samesite="lax")
     response.delete_cookie(key="refresh_token", httponly=True, samesite="lax")
 

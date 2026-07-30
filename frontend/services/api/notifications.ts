@@ -11,3 +11,7 @@ export function markNotificationAsRead(id: number) {
 export function getWsToken() {
   return requestApi<{ token: string }>({ method: "GET", path: "/api/notifications/ws-token" });
 }
+
+export function markAllNotificationsAsRead() {
+  return requestApi<any>({ method: "PUT", path: "/api/notifications/read-all" });
+}

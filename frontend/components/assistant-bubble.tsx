@@ -3,8 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import ReactMarkdown from "react-markdown";
+
 import { aiApi, projectApi } from "@/services/api";
-import type { AiQuickResponse, AiQuickResponseAction } from "@/types";
+import { getApiBaseUrl } from "@/services/api/core";
+import {
+  AiQuickResponse,
+  AiQuickResponseAction,
+  AiQuickResponseRequest,
+} from "@/types";
+import { TaskDraftConfirm } from "./task-draft-confirm";
 
 type SuggestedPrompt = {
   action: AiQuickResponseAction;
@@ -18,6 +26,13 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   response?: AiQuickResponse;
+};
+
+type ChatSession = {
+  id: string;
+  title: string;
+  createdAt: string;
+  messages: ChatMessage[];
 };
 
 const suggestedPrompts: SuggestedPrompt[] = [
@@ -95,11 +110,7 @@ function createUserMessage(content: string): ChatMessage {
 }
 
 function initialMessages(): ChatMessage[] {
-  return [
-    createAssistantMessage(
-      "Tôi sẵn sàng hỗ trợ nhanh dự án của bạn. Bạn có thể hỏi theo kiểu chatbot, ví dụ: hôm nay nên chú ý việc gì, ai cần nhắc, hoặc task nào đang trễ hạn đáng lo nhất.",
-    ),
-  ];
+  return [];
 }
 
 export function AssistantBubble({
@@ -111,9 +122,16 @@ export function AssistantBubble({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPortalReady, setIsPortalReady] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => initialMessages());
+  const [view, setView] = useState<"chat" | "history">("chat");
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  
+  const activeSession = useMemo(() => sessions.find(s => s.id === activeSessionId), [sessions, activeSessionId]);
+  const messages = activeSession?.messages || [];
+
   const [draft, setDraft] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const messageStackRef = useRef<HTMLDivElement | null>(null);
   const scrollTargetMessageIdRef = useRef<string | null>(null);
 
@@ -121,7 +139,125 @@ export function AssistantBubble({
 
   useEffect(() => {
     setIsPortalReady(true);
+    // Tải danh sách sessions từ API
+    aiApi.getSessions().then((data: any[]) => {
+      if (data.length > 0) {
+        const mappedSessions: ChatSession[] = data.map(s => ({
+          id: String(s.id),
+          title: s.title,
+          createdAt: s.created_at,
+          messages: []
+        }));
+        setSessions(mappedSessions);
+        setActiveSessionId(mappedSessions[0].id);
+      } else {
+        createNewSession();
+      }
+    }).catch(e => {
+      console.error("Lỗi khi tải session từ DB", e);
+      // Fallback
+      const initSession: ChatSession = {
+        id: `sess-${Date.now()}`,
+        title: "Cuộc trò chuyện mới",
+        createdAt: new Date().toISOString(),
+        messages: initialMessages()
+      };
+      setSessions([initSession]);
+      setActiveSessionId(initSession.id);
+    });
   }, []);
+
+  useEffect(() => {
+    if (activeSessionId) {
+      const active = sessions.find(s => s.id === activeSessionId);
+      // Nếu session chưa có tin nhắn nào và chưa fetch (tránh infinite loop)
+      if (active && active.messages.length === 0 && !active.id.startsWith("sess-") && !(active as any).hasFetched) {
+        // Mark as fetching to prevent race condition
+        setSessions(curr => curr.map(s => s.id === activeSessionId ? { ...s, hasFetched: true } : s));
+        
+        aiApi.getSessionMessages(activeSessionId).then((data: any[]) => {
+           if (data && data.length > 0) {
+             const messages: ChatMessage[] = data.map(m => ({
+               id: String(m.id),
+               role: m.sender,
+               content: m.content
+             }));
+             setSessions(curr => curr.map(s => {
+                if (s.id === activeSessionId && s.messages.length === 0) {
+                   return { ...s, messages };
+                }
+                return s;
+             }));
+           }
+        }).catch(console.error);
+      }
+    }
+  }, [activeSessionId, sessions]);
+
+  async function createNewSession() {
+    const currentActive = sessions.find(s => s.id === activeSessionId);
+    if (currentActive && currentActive.messages.length === 0) {
+      setView("chat");
+      return;
+    }
+    try {
+      const dbSession = await aiApi.createSession("Cuộc trò chuyện mới");
+      const newSession: ChatSession = {
+        id: String(dbSession.id),
+        title: dbSession.title,
+        createdAt: dbSession.created_at,
+        messages: initialMessages()
+      };
+      setSessions(curr => [newSession, ...curr]);
+      setActiveSessionId(newSession.id);
+      setView("chat");
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function deleteSession(id: string) {
+    if (!id.startsWith("sess-")) {
+       await aiApi.clearSession(id).catch(console.error);
+    }
+    setSessions(curr => {
+      const updated = curr.filter(s => s.id !== id);
+      if (updated.length === 0) {
+        createNewSession();
+        return updated;
+      }
+      if (activeSessionId === id) {
+        setActiveSessionId(updated[0].id);
+      }
+      return updated;
+    });
+  }
+
+  function setMessages(updater: (current: ChatMessage[]) => ChatMessage[], overrideSessionId?: string) {
+    setSessions(curr => {
+      const targetId = overrideSessionId || activeSessionId;
+      if (!targetId) return curr;
+      return curr.map(session => {
+        if (session.id === targetId) {
+          const newMessages = updater(session.messages);
+          let newTitle = session.title;
+          if (newTitle === "Cuộc trò chuyện mới" && newMessages.length > 0) {
+             const firstUserMsg = newMessages.find(m => m.role === "user");
+             if (firstUserMsg) {
+                const words = firstUserMsg.content.trim().split(/\s+/);
+                newTitle = words.slice(0, 6).join(" ") + (words.length > 6 ? "..." : "");
+                // Sync to DB (fire and forget)
+                if (!targetId.startsWith("sess-")) {
+                   aiApi.updateSession(targetId, newTitle).catch(console.error);
+                }
+             }
+          }
+          return { ...session, title: newTitle, messages: newMessages };
+        }
+        return session;
+      });
+    });
+  }
 
   useEffect(() => {
     if (!isOpen || !messageStackRef.current) {
@@ -155,105 +291,162 @@ export function AssistantBubble({
     setMessages((current) => [...current, message]);
   }
 
-  async function submitPrompt(rawPrompt: string, forcedAction?: AiQuickResponseAction) {
+  async function submitPrompt(rawPrompt: string) {
     const cleanPrompt = rawPrompt.trim();
-    if (!cleanPrompt) {
+    if (!cleanPrompt || !activeSessionId) {
       return;
     }
 
     setIsOpen(true);
     setDraft("");
-    setMessages((current) => [...current, createUserMessage(cleanPrompt)]);
 
-    const taskId = extractTaskId(cleanPrompt);
     const scopeProjectId = projectId || null;
 
     const loadingMessageId = `assistant-loading-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     scrollTargetMessageIdRef.current = loadingMessageId;
     setIsLoading(true);
-    setMessages((current) => [
-      ...current,
-      {
-        id: loadingMessageId,
-        role: "assistant",
-        content: `Đang phân tích ý định...`,
-      },
-    ]);
+    
+    const controller = new AbortController();
+    setAbortController(controller);
+    
+    let targetSessionId = activeSessionId;
 
     try {
-      const classifyResponse = await aiApi.classifyIntent({
-        action: forcedAction || null,
-        prompt: cleanPrompt,
-        projectId: scopeProjectId,
-        taskId: taskId,
-      });
-      const intent = classifyResponse.intent;
-
-      if (intent === "out_of_scope") {
-        setMessages((current) =>
-            current.map((message) =>
-              message.id === loadingMessageId
-                ? {
-                    ...createAssistantMessage("Hệ thống này không hỗ trợ trả lời câu hỏi này.", {
-                      action: "out_of_scope",
-                      title: "Ngoài phạm vi hỗ trợ",
-                      summary: "Hệ thống này không hỗ trợ trả lời câu hỏi này.",
-                      evidence: [],
-                      recommendations: [],
-                      entities: [],
-                      generatedAt: new Date().toISOString(),
-                      dataFreshnessNote: ""
-                    }),
-                    id: loadingMessageId,
-                  }
-                : message,
-          ),
-        );
-        return;
+      if (targetSessionId.startsWith("sess-")) {
+         const dbSession = await aiApi.createSession("Cuộc trò chuyện mới");
+         targetSessionId = String(dbSession.id);
+         setActiveSessionId(targetSessionId);
+         setSessions(curr => curr.map(s => s.id === activeSessionId ? { ...s, id: targetSessionId } : s));
       }
 
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === loadingMessageId
-            ? {
-                ...message,
-                content: intent === "qna" ? "Đang đọc dữ liệu dự án..." : "Đang tính toán phân chia công việc...",
-              }
-            : message,
-        ),
-      );
+      setMessages((current) => [...current, createUserMessage(cleanPrompt)], targetSessionId);
+      
+      setMessages((current) => [
+        ...current,
+        {
+          id: loadingMessageId,
+          role: "assistant",
+          content: "",
+        },
+      ], targetSessionId);
 
-      const { data } = await aiApi.executeAi({
-        action: forcedAction || null,
-        prompt: cleanPrompt,
-        projectId: scopeProjectId,
-        taskId: taskId,
-        intent,
+      let response = await fetch(`${getApiBaseUrl()}${aiApi.streamChatUrl}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        signal: controller.signal,
+        body: JSON.stringify({
+          session_id: targetSessionId,
+          message: cleanPrompt,
+          project_id: scopeProjectId ? Number(scopeProjectId) : null,
+        }),
       });
 
+      if (response.status === 401) {
+        // Token có thể đã hết hạn, gọi 1 API axios bất kỳ để trigger auto-refresh
+        await aiApi.classifyIntent({ action: null, prompt: "ping" }).catch(() => {});
+        // Retry
+        response = await fetch(`${getApiBaseUrl()}${aiApi.streamChatUrl}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          signal: controller.signal,
+          body: JSON.stringify({
+            session_id: targetSessionId,
+            message: cleanPrompt,
+            project_id: scopeProjectId ? Number(scopeProjectId) : null,
+          }),
+        });
+      }
+
+      if (!response.ok) {
+        throw new Error(`Lỗi kết nối tới AI (Mã lỗi: ${response.status})`);
+      }
+
+      if (!response.body) throw new Error("No response body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantContent = "";
+      let toolCallStr = "";
+
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        while (buffer.includes("\n\n")) {
+          const splitIndex = buffer.indexOf("\n\n");
+          const line = buffer.slice(0, splitIndex);
+          buffer = buffer.slice(splitIndex + 2);
+          
+          if (line.startsWith("data: ")) {
+            const dataStr = line.substring(6);
+            if (dataStr === "[DONE]") {
+              continue;
+            }
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.chunk) {
+                toolCallStr = ""; // Clear tool text when real answer streams
+                assistantContent += data.chunk;
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === loadingMessageId
+                      ? { ...message, content: toolCallStr + assistantContent }
+                      : message
+                  )
+                , targetSessionId);
+              } else if (data.tool_call) {
+                toolCallStr = `_[Đang gọi công cụ ${data.tool_call}...]_\n\n`;
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === loadingMessageId
+                      ? { ...message, content: toolCallStr + assistantContent }
+                      : message
+                  )
+                , targetSessionId);
+              } else if (data.error) {
+                assistantContent += `\n\n**Lỗi:** ${data.error}`;
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === loadingMessageId
+                      ? { ...message, content: assistantContent }
+                      : message
+                  )
+                , targetSessionId);
+              }
+            } catch (e) {
+              // Ignore JSON parse errors for incomplete chunks (shouldn't happen with proper buffer)
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        return;
+      }
+      const errorMsg = error instanceof Error ? error.message : "Không thể kết nối với AI.";
       setMessages((current) =>
-          current.map((message) =>
-            message.id === loadingMessageId
-              ? {
-                  ...createAssistantMessage(data.summary, data),
-                  id: loadingMessageId,
-                }
-              : message,
+        current.map((message) =>
+          message.id === loadingMessageId ? { ...message, content: errorMsg } : message
         ),
+        targetSessionId
       );
-    } catch (error) {
+    } finally {
+      setAbortController(null);
+      // Fix: Rename the ID to a permanent one so it saves to localStorage
       setMessages((current) =>
         current.map((message) =>
           message.id === loadingMessageId
-            ? createAssistantMessage(
-                error instanceof Error
-                  ? error.message
-                  : "Không thể lấy phân tích nhanh từ trợ lý AI.",
-              )
-            : message,
+            ? { ...message, id: `assistant-${Date.now()}` }
+            : message
         ),
+        targetSessionId
       );
-    } finally {
       setIsLoading(false);
     }
   }
@@ -267,29 +460,64 @@ export function AssistantBubble({
       onPointerDown={(event) => event.stopPropagation()}
     >
       <header className="assistant-panel-header">
-        <div>
-          <span className="eyebrow">Trợ lý AI</span>
-          <h2>Quick Response Chat</h2>
-          <p>Hỏi nhanh về task, deadline, logwork và ai cần được follow-up.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#1e3a8a', fontSize: '1.2rem', fontWeight: '700' }}>
+          <svg style={{width: 20, height: 20, fill: '#2563eb'}} viewBox="0 0 24 24"><path d="M12 2 15 9l7 3-7 3-3 7-3-7-7-3 7-3z"/></svg>
+          AI Assistant
         </div>
-        <button
-          type="button"
-          className="assistant-close"
-          aria-label="Đóng trợ lý AI"
-          onClick={() => setIsOpen(false)}
-        >
-          ×
-        </button>
+        <div className="assistant-header-actions">
+          {view === "history" ? (
+            <button type="button" className="assistant-action-btn" onClick={() => setView("chat")}>
+              Quay lại
+            </button>
+          ) : (
+            <>
+              <button type="button" className="assistant-icon-btn assistant-icon-primary" onClick={createNewSession} title="Cuộc trò chuyện mới">
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect width="24" height="24" rx="6"/><path d="M12 7v10M7 12h10" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+              <button type="button" className="assistant-icon-btn assistant-icon-secondary" onClick={() => setView("history")} title="Lịch sử">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className="assistant-icon-btn assistant-icon-secondary"
+            aria-label="Đóng trợ lý AI"
+            onClick={() => setIsOpen(false)}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
       </header>
 
-      <div className="assistant-memory-note">
-        <strong>Scope hiện tại</strong>
-        <p className="assistant-scope-note">
-          {projectId
-            ? `Đang tập trung phân tích dự án #${projectId}.`
-            : "Đang phân tích tổng hợp trên TẤT CẢ các dự án bạn tham gia."}
-        </p>
-      </div>
+      {view === "history" ? (
+        <div className="assistant-history-view">
+          <div className="assistant-history-list">
+            {sessions.map(session => (
+              <div 
+                key={session.id} 
+                className={classNames("assistant-history-item", session.id === activeSessionId && "active")}
+                onClick={() => { setActiveSessionId(session.id); setView("chat"); }}
+              >
+                <div className="assistant-history-info">
+                  <strong>{session.title}</strong>
+                  <small>{formatGeneratedAt(session.createdAt)}</small>
+                </div>
+                <button 
+                  type="button" 
+                  className="assistant-history-delete"
+                  onClick={(e) => { e.stopPropagation(); deleteSession(session.id); aiApi.clearSession(session.id); }}
+                >
+                  Xóa
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
+
+
 
       <div ref={messageStackRef} className="assistant-message-stack">
         {messages.map((message) => (
@@ -305,90 +533,64 @@ export function AssistantBubble({
           >
             <span>{message.role === "assistant" ? "AI" : "Bạn"}</span>
 
-            {message.response ? (
-              <div className="assistant-message-content">
-                <strong className="assistant-message-title">{message.response.title}</strong>
-                <p>{message.response.summary}</p>
-
-                {message.response.evidence.length ? (
-                  <div className="assistant-detail-block">
-                    <strong className="assistant-section-heading">Dữ kiện</strong>
-                    <ul className="assistant-detail-list">
-                      {message.response.evidence.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {message.response.recommendations.length ? (
-                  <div className="assistant-detail-block">
-                    <strong className="assistant-section-heading">Gợi ý hành động</strong>
-                    <ul className="assistant-detail-list">
-                      {message.response.recommendations.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {message.response.entities.length ? (
-                  <div className="assistant-detail-block">
-                    <strong className="assistant-section-heading">Liên quan</strong>
-                    <div className="assistant-entity-row">
-                      {message.response.entities.map((entity) => (
-                        <span key={`${entity.type}-${entity.id}`} className="assistant-entity-chip">
-                          <strong>{entity.label}</strong>
-                          {entity.meta ? <small>{entity.meta}</small> : null}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <p className="assistant-data-note">
-                  {message.response.dataFreshnessNote} · {formatGeneratedAt(message.response.generatedAt)}
-                </p>
-              </div>
-            ) : (
-              <p>{message.content}</p>
-            )}
+            <div className="assistant-message-content">
+              <ReactMarkdown
+                components={{
+                  code({ node, inline, className, children, ...props }: any) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    if (!inline && match && match[1] === "json_task_draft") {
+                      return <TaskDraftConfirm draft={String(children)} projectId={projectId} />;
+                    }
+                    return (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    );
+                  }
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+              {isLoading && message.id.startsWith("assistant-loading") && (
+                <span className="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+              )}
+            </div>
           </article>
         ))}
       </div>
 
-      {messages.length === 1 ? (
-        <div className="assistant-prompt-grid">
-          {promptChips.map((item) => (
-            <button
-              key={item.prompt}
-              type="button"
-              className="assistant-prompt-chip"
-              disabled={isLoading}
-              onClick={() => void submitPrompt(item.prompt, item.action)}
-            >
-              {item.prompt}
-            </button>
-          ))}
-        </div>
-      ) : null}
+
 
       <form
         className="assistant-compose"
         onSubmit={(event) => {
           event.preventDefault();
+          if (isLoading) return;
           void submitPrompt(draft);
         }}
       >
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Đặt câu hỏi cho trợ lý AI..."
+          placeholder="Ask me anything..."
         />
-        <button type="submit" disabled={isLoading}>
-          {isLoading ? "Đang xử lý..." : "Gửi"}
-        </button>
+        {isLoading ? (
+          <button
+            type="button"
+            className="assistant-send-btn"
+            onClick={() => abortController?.abort()}
+            title="Dừng AI"
+          >
+             <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="7" width="10" height="10" fill="#ef4444" stroke="none" rx="1" ry="1"></rect></svg>
+          </button>
+        ) : (
+          <button type="submit" className="assistant-send-btn">
+             <svg viewBox="0 0 24 24" fill="#2563eb" stroke="none"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+          </button>
+        )}
       </form>
+      </>
+      )}
     </section>
   );
 

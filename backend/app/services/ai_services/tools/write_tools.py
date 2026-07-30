@@ -6,22 +6,27 @@ from app.models.task_model import Task
 from app.models.user_model import User
 from app.repositories import task_repository, project_repository
 
-def execute_create_tasks(db: Session, current_user: User, project_id: int, tasks_data: List[Dict[str, Any]]) -> List[Task]:
+def execute_create_tasks(db: Session, current_user: User, project_id: int | None, tasks_data: List[Dict[str, Any]]) -> List[Task]:
     """
     Thực thi việc tạo các task sau khi người dùng (Project Manager) đã confirm bản nháp.
-    - tasks_data là danh sách các dict chứa thông tin: title, description, assignee_id, priority, type...
+    - tasks_data là danh sách các dict chứa thông tin: title, description, assignee_id, priority, type, project_id...
     """
-    # Lấy project_member của người dùng hiện tại (người tạo task)
-    creator_member = project_repository.get_project_member(db, project_id, current_user.id)
-    if not creator_member:
-        raise ValueError("Bạn không phải là thành viên của dự án này.")
-        
     created_tasks = []
     
     for td in tasks_data:
+        # Lấy project_id từ payload chung hoặc từ từng task
+        pid = project_id or td.get("project_id")
+        if not pid:
+            raise ValueError(f"Không xác định được dự án (project_id) để tạo task: '{td.get('title')}'.")
+            
+        # Kiểm tra quyền tạo trong project này
+        creator_member = project_repository.get_project_member(db, int(pid), current_user.id)
+        if not creator_member:
+            raise ValueError(f"Bạn không phải là thành viên của dự án (ID: {pid}).")
+
         # Chuẩn bị dữ liệu cho bảng tasks
         task_data = {
-            "project_id": project_id,
+            "project_id": pid,
             "title": td.get("title", "Không có tiêu đề"),
             "description": td.get("description", ""),
             "created_by_member_id": creator_member.id,

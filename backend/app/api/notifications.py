@@ -1,21 +1,22 @@
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import desc
-from typing import List
+from sqlalchemy.orm import Session
 
 from app.core.connection import get_db
-from app.models.notification_model import Notification
 from app.core.dependencies import get_current_user
+from app.models.notification_model import Notification
 from app.models.user_model import User
 from app.services.websocket_manager import manager
-from app.utils.jwt_handler import decode_token, create_access_token
+from app.utils.jwt_handler import create_access_token, decode_token
 
 router = APIRouter()
+
 
 @router.get("/ws-token")
 def get_ws_token(current_user: User = Depends(get_current_user)):
     token = create_access_token(data={"sub": str(current_user.id)})
     return {"token": token}
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
@@ -44,7 +45,7 @@ def get_my_notifications(
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get persistent notifications for the logged in user."""
     notifications = (
@@ -55,7 +56,7 @@ def get_my_notifications(
         .limit(limit)
         .all()
     )
-    
+
     # Manually serialize to dict
     return [
         {
@@ -65,7 +66,7 @@ def get_my_notifications(
             "content": n.content,
             "link": n.link,
             "is_read": n.is_read,
-            "created_at": n.created_at.isoformat()
+            "created_at": n.created_at.isoformat(),
         }
         for n in notifications
     ]
@@ -75,13 +76,27 @@ def get_my_notifications(
 def mark_as_read(
     notification_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    notification = db.query(Notification).filter(
-        Notification.id == notification_id,
-        Notification.user_id == current_user.id
-    ).first()
+    notification = (
+        db.query(Notification)
+        .filter(Notification.id == notification_id, Notification.user_id == current_user.id)
+        .first()
+    )
     if notification:
         notification.is_read = True
         db.commit()
+    return {"status": "ok"}
+
+
+@router.put("/read-all")
+def mark_all_as_read(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.is_read == False
+    ).update({"is_read": True})
+    db.commit()
     return {"status": "ok"}

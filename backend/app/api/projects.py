@@ -1,14 +1,12 @@
 from datetime import date
 
-import asyncio
-from fastapi import APIRouter, Depends, Query, status, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.connection import get_db
 from app.core.dependencies import get_current_user
-from app.models.user_model import User
 from app.models.notification_model import Notification
-from app.services.websocket_manager import manager
+from app.models.user_model import User
 from app.schemas.project_schema import (
     PaginatedProjectsResponse,
     ProjectCreate,
@@ -21,6 +19,7 @@ from app.schemas.project_schema import (
     RoleResponse,
 )
 from app.services import project_service
+from app.services.websocket_manager import manager
 from app.utils.project_helpers import build_member_response, build_project_response
 
 router = APIRouter()
@@ -67,7 +66,9 @@ def list_projects(
     }
 
 
-@router.post("/api/projects", response_model=ProjectDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/projects", response_model=ProjectDetailResponse, status_code=status.HTTP_201_CREATED
+)
 def create_project(
     data: ProjectCreate,
     current_user: User = Depends(get_current_user),
@@ -122,7 +123,7 @@ def add_project_member(
     db: Session = Depends(get_db),
 ):
     member, user, role = project_service.add_project_member(db, current_user, project_id, data)
-    
+
     numeric_id = project_service.parse_project_id(project_id)
     project = project_service.project_repository.get_project_by_id(db, numeric_id)
     if project and user.id != current_user.id:
@@ -131,7 +132,7 @@ def add_project_member(
             type="PROJECT_MEMBER_ADDED",
             title="Bạn đã được thêm vào dự án mới",
             content=f"Bạn vừa được thêm vào dự án '{project.name}'.",
-            link=f"/projects/{project_id}"
+            link=f"/projects/{project_id}",
         )
         db.add(notification)
         db.commit()
@@ -148,13 +149,14 @@ def add_project_member(
                         "content": notification.content,
                         "link": notification.link,
                         "is_read": False,
-                        "created_at": notification.created_at.isoformat()
-                    }
+                        "created_at": notification.created_at.isoformat(),
+                    },
                 },
-                user.id
+                user.id,
             )
+
         background_tasks.add_task(send_ws)
-        
+
     return build_member_response(member, user, role)
 
 
@@ -169,11 +171,15 @@ def update_project_member(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    member, user, role = project_service.update_project_member(db, current_user, project_id, member_id, data)
+    member, user, role = project_service.update_project_member(
+        db, current_user, project_id, member_id, data
+    )
     return build_member_response(member, user, role)
 
 
-@router.delete("/api/projects/{project_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/api/projects/{project_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def remove_project_member(
     project_id: str,
     member_id: int,

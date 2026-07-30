@@ -55,17 +55,17 @@ class Settings(BaseSettings):
             raise ValueError("must not be empty")
         return stripped
 
-    @field_validator(
-        "access_token_expire_minutes",
-        "refresh_token_expire_days",
-        "redis_port",
-    )
-    @classmethod
-    def validate_positive_numbers(cls, value: int) -> int:
-        """Require a positive number."""
-        if value <= 0:
-            raise ValueError("must be positive")
-        return value
+    # @field_validator(
+    #     "access_token_expire_minutes",
+    #     "refresh_token_expire_days",
+    #     "redis_port",
+    # )
+    # @classmethod
+    # def validate_positive_numbers(cls, value: int) -> int:
+    #     """Require a positive number."""
+    #     if value <= 0:
+    #         raise ValueError("must be positive")
+    #     return value
 
 
 # Cached so the .env file is only read once

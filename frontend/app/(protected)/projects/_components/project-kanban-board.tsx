@@ -79,8 +79,20 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
   const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
 
   useEffect(() => {
+    const priorityWeight: Record<string, number> = {
+      "CRITICAL": 4,
+      "HIGH": 3,
+      "MEDIUM": 2,
+      "LOW": 1,
+    };
+
     const sortedTasks = [...tasks].sort((a, b) => {
-      return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
+      const weightA = priorityWeight[a.priority] || 0;
+      const weightB = priorityWeight[b.priority] || 0;
+      if (weightA !== weightB) {
+        return weightB - weightA; // Higher priority first
+      }
+      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime(); // Newer activity first as secondary
     });
     setLocalTasks(sortedTasks);
   }, [tasks]);

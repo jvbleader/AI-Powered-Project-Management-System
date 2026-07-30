@@ -208,15 +208,21 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
       return { dates: [], minDateStr: "", months: [] };
     }
 
-    let min = new Date(tasks[0].startDate).getTime();
-    let max = new Date(tasks[0].dueDate).getTime();
+    let min = Infinity;
+    let max = -Infinity;
 
     tasks.forEach((task) => {
-      const start = new Date(task.startDate).getTime();
-      const end = new Date(task.dueDate).getTime();
-      if (start < min) min = start;
-      if (end > max) max = end;
+      const start = task.startDate ? new Date(task.startDate).getTime() : NaN;
+      const end = task.dueDate ? new Date(task.dueDate).getTime() : (isNaN(start) ? NaN : start);
+      
+      if (!isNaN(start) && start < min) min = start;
+      if (!isNaN(end) && end > max) max = end;
     });
+
+    if (min === Infinity || max === -Infinity) {
+      min = Date.now();
+      max = Date.now();
+    }
 
     const minDate = new Date(min);
     minDate.setDate(minDate.getDate() - 15); // Add padding before

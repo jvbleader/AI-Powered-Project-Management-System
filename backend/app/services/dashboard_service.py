@@ -29,8 +29,8 @@ from app.utils.dashboard_helpers import (
     count_overdue_tasks,
     count_task_statuses,
     decimal_to_float,
-    list_overdue_tasks,
     list_leaf_tasks,
+    list_overdue_tasks,
     normalize_task_status,
     resolve_health_tone,
     sum_estimated_hours,
@@ -89,7 +89,9 @@ def _select_active_sprint(sprints: list[Sprint]) -> Sprint | None:
     return sprints[0]
 
 
-def _build_task_preview(task, assignee_name: str | None, sprint_name: str | None = None, project=None):
+def _build_task_preview(
+    task, assignee_name: str | None, sprint_name: str | None = None, project=None
+):
     return DashboardTaskPreviewResponse(
         id=task.id,
         key=f"TASK-{task.id}",
@@ -114,22 +116,31 @@ def get_dashboard_overview(
     if not selected_project:
         return DashboardOverviewResponse()
 
-    accessible_project_responses = [build_project_response(db, project) for project in accessible_projects]
+    accessible_project_responses = [
+        build_project_response(db, project) for project in accessible_projects
+    ]
     selected_project_response = next(
         (project for project in accessible_project_responses if project.id == selected_project.id),
         build_project_response(db, selected_project),
     )
 
-    portfolio_progress = round(
-        sum(project.progress for project in accessible_project_responses) / len(accessible_project_responses)
-    ) if accessible_project_responses else 0
+    portfolio_progress = (
+        round(
+            sum(project.progress for project in accessible_project_responses)
+            / len(accessible_project_responses)
+        )
+        if accessible_project_responses
+        else 0
+    )
     open_tasks_in_scope = sum(
         max(0, project.metrics.totalTasks - project.metrics.completedTasks)
         for project in accessible_project_responses
     )
 
     project_tasks = task_repository.list_tasks(db, project_id=selected_project.id)
-    project_logwork_rows = task_repository.list_project_logworks_with_context(db, selected_project.id)
+    project_logwork_rows = task_repository.list_project_logworks_with_context(
+        db, selected_project.id
+    )
     project_logworks = [row[0] for row in project_logwork_rows]
     task_progress_map = build_task_progress_map(project_logworks)
     leaf_tasks = list_leaf_tasks(project_tasks)
@@ -142,7 +153,9 @@ def get_dashboard_overview(
     )
     estimated_hours_remaining = max(0.0, round(estimated_hours_total - estimated_hours_done, 1))
 
-    assignee_rows = task_repository.list_task_assignee_users(db, [task.id for task in project_tasks])
+    assignee_rows = task_repository.list_task_assignee_users(
+        db, [task.id for task in project_tasks]
+    )
     assignee_by_task_id = {
         task_id: {
             "user_id": user_id,
@@ -185,11 +198,17 @@ def get_dashboard_overview(
 
     active_sprint_model = _select_active_sprint(sprint_rows)
     active_sprint = next(
-        (summary for summary in sprint_summaries if active_sprint_model and summary.id == active_sprint_model.id),
+        (
+            summary
+            for summary in sprint_summaries
+            if active_sprint_model and summary.id == active_sprint_model.id
+        ),
         None,
     )
 
-    members = project_repository.list_project_members(db, selected_project.id, include_inactive=False)
+    members = project_repository.list_project_members(
+        db, selected_project.id, include_inactive=False
+    )
     member_user_ids = [user.id for _, user, _ in members]
     current_day = datetime.now(timezone.utc).date()
     members_logged_today = len(
@@ -312,56 +331,59 @@ def get_dashboard_overview(
         recentLogwork=recent_logwork,
     )
 
+
 def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverviewResponse:
     from app.models.task_model import Task
-    
+
     accessible_projects = _load_accessible_projects(db, current_user)
     project_ids = [p.id for p in accessible_projects]
-    
+
     if not project_ids:
         return GlobalDashboardOverviewResponse()
-    
+
     # Pre-fetch all tasks
     all_tasks = db.query(Task).filter(Task.project_id.in_(project_ids)).all()
     tasks_by_project = defaultdict(list)
     for t in all_tasks:
         tasks_by_project[t.project_id].append(t)
-        
+
     global_todo = 0
     global_in_progress = 0
     global_done = 0
     global_total = 0
     global_overdue = 0
-    
+
     project_healths = []
     upcoming_deadlines = []
     global_overdue_tasks_list = []
     global_completed_tasks_list = []
-    
+
     for project in accessible_projects:
         project_tasks = tasks_by_project[project.id]
         leaf_tasks = list_leaf_tasks(project_tasks)
         counts = count_task_statuses(leaf_tasks)
-        
+
         global_todo += counts["todo"]
         global_in_progress += counts["in_progress"]
         global_done += counts["done"]
         global_total += len(leaf_tasks)
-        
+
         overdue_list = list_overdue_tasks(leaf_tasks)
         global_overdue += len(overdue_list)
         for ot in overdue_list:
             global_overdue_tasks_list.append((ot, project))
-        
+
         project_logworks = task_repository.list_project_logworks(db, project.id)
-        progress = calculate_progress_percent(project_tasks, build_task_progress_map(project_logworks))
-        
+        progress = calculate_progress_percent(
+            project_tasks, build_task_progress_map(project_logworks)
+        )
+
         health = "on-track"
         if progress < 20 and len(overdue_list) > 0:
             health = "critical"
         elif len(overdue_list) > 0:
             health = "watch"
-            
+
         project_healths.append(
             ProjectHealthPreviewResponse(
                 id=project.id,
@@ -370,10 +392,10 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
                 status=project.status or "ACTIVE",
                 progress=progress,
                 totalTasks=len(leaf_tasks),
-                health=health
+                health=health,
             )
         )
-        
+
         for task in leaf_tasks:
             status_norm = normalize_task_status(task.status)
             if task.deadline and status_norm != "done":
@@ -381,9 +403,12 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
                 upcoming_deadlines.append((task, project))
             elif status_norm == "done":
                 global_completed_tasks_list.append((task, project))
-                
-    global_logwork_rows = task_repository.list_project_logworks_with_context(db, project_ids=project_ids)
+
+    global_logwork_rows = task_repository.list_project_logworks_with_context(
+        db, project_ids=project_ids
+    )
     from app.schemas.dashboard_schema import DashboardRecentLogworkResponse
+
     recent_logworks = [
         DashboardRecentLogworkResponse(
             id=logwork.id,
@@ -402,29 +427,33 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
 
     upcoming_deadlines.sort(key=lambda item: item[0].deadline)
     top_upcoming = upcoming_deadlines[:10]
-    
+
     global_overdue_tasks_list.sort(key=lambda item: item[0].deadline)
     top_overdue = global_overdue_tasks_list[:50]
-    
+
     global_completed_tasks_list.sort(key=lambda item: item[0].id, reverse=True)
     top_completed = global_completed_tasks_list[:50]
-    
+
     task_summary = DashboardTaskSummaryResponse(
         todo=global_todo,
         inProgress=global_in_progress,
         done=global_done,
         total=global_total,
-        overdue=global_overdue
+        overdue=global_overdue,
     )
-    
+
     return GlobalDashboardOverviewResponse(
         totalProjects=len(accessible_projects),
-        activeProjects=sum(1 for p in accessible_projects if (p.status or "ACTIVE").upper() == "ACTIVE"),
-        completedProjects=sum(1 for p in accessible_projects if (p.status or "").upper() == "COMPLETED"),
+        activeProjects=sum(
+            1 for p in accessible_projects if (p.status or "ACTIVE").upper() == "ACTIVE"
+        ),
+        completedProjects=sum(
+            1 for p in accessible_projects if (p.status or "").upper() == "COMPLETED"
+        ),
         taskSummary=task_summary,
         projectHealths=project_healths,
         upcomingDeadlines=[_build_task_preview(t, None, None, p) for t, p in top_upcoming],
         overdueTasks=[_build_task_preview(t, None, None, p) for t, p in top_overdue],
         completedTasks=[_build_task_preview(t, None, None, p) for t, p in top_completed],
-        recentLogworks=recent_logworks
+        recentLogworks=recent_logworks,
     )

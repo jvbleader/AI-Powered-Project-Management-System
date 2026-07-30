@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useAuthSession } from "@/hooks/use-session";
 import { getApiBaseUrl } from "@/services/api/core";
-import { getNotifications, markNotificationAsRead, getWsToken } from "@/services/api/notifications";
+import { getNotifications, markNotificationAsRead, getWsToken, markAllNotificationsAsRead } from "@/services/api/notifications";
 import { forceSignOut } from "@/services/auth/session";
 
 export type NotificationType = "TASK_ASSIGNED" | "LOGWORK_SUBMITTED";
@@ -106,9 +106,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   };
 
   const markAllAsRead = () => {
-    // In a real app, you'd also call an API to mark all as read
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
+    if (session) {
+      markAllNotificationsAsRead().catch(err => console.error("Failed to mark all as read", err));
+    }
   };
 
   return (
