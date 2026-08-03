@@ -114,32 +114,30 @@ export function WbsTable({ tasks }: WbsTableProps) {
                   switch (node.level) {
                     case 0:
                       return (
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#6366f1", flexShrink: 0 }}>
-                          <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" style={{ color: "#0047B3", flexShrink: 0 }} title="Epic">
+                          <polygon points="12 2 22 12 12 22 2 12 12 2" />
                         </svg>
                       );
                     case 1:
                       return (
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#0284c7", flexShrink: 0 }}>
-                          <rect x="3" y="3" width="18" height="18" rx="3" />
-                          <path d="M3 9h18" />
-                          <path d="M9 15h6" />
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#2684FF", flexShrink: 0 }} title="Task">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                          <path d="M9 12l2 2 4-4" />
                         </svg>
                       );
                     case 2:
                       return (
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#10b981", flexShrink: 0 }}>
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                          <polyline points="14 2 14 8 20 8" />
-                          <line x1="12" y1="18" x2="12" y2="12" />
-                          <line x1="9" y1="15" x2="15" y2="15" />
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#36B37E", flexShrink: 0 }} title="Subtask">
+                          <polyline points="15 10 20 15 15 20" />
+                          <path d="M4 4v7a4 4 0 0 0 4 4h12" />
                         </svg>
                       );
                     default:
                       return (
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.8" style={{ color: "#f59e0b", flexShrink: 0 }}>
-                          <circle cx="12" cy="12" r="9" />
-                          <polyline points="12 8 12 12 15 15" />
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#8993A4", flexShrink: 0 }} title="Sub-subtask">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="12" y1="8" x2="12" y2="16" />
+                          <line x1="8" y1="12" x2="16" y2="12" />
                         </svg>
                       );
                   }

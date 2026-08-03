@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
 import { createPortal } from "react-dom";
 
 import ReactMarkdown from "react-markdown";
@@ -112,6 +112,25 @@ function createUserMessage(content: string): ChatMessage {
 function initialMessages(): ChatMessage[] {
   return [];
 }
+
+const MemoizedMarkdown = memo(({ content, messageId, projectId }: { content: string, messageId: string, projectId?: string | null }) => {
+  const components = useMemo(() => ({
+    code({ node, inline, className, children, ...props }: any) {
+      const match = /language-json_task_draft(?:_(confirmed|rejected))?/.exec(className || "");
+      if (!inline && match) {
+        const initialStatus = match[1] || "pending"; // "confirmed" | "rejected" | "pending"
+        return <TaskDraftConfirm draft={String(children)} projectId={projectId} messageId={messageId} initialStatus={initialStatus as any} />;
+      }
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+  }), [messageId, projectId]);
+
+  return <ReactMarkdown components={components}>{content}</ReactMarkdown>;
+});
 
 export function AssistantBubble({
   alertCount,
@@ -534,23 +553,7 @@ export function AssistantBubble({
             <span>{message.role === "assistant" ? "AI" : "Bạn"}</span>
 
             <div className="assistant-message-content">
-              <ReactMarkdown
-                components={{
-                  code({ node, inline, className, children, ...props }: any) {
-                    const match = /language-(\w+)/.exec(className || "");
-                    if (!inline && match && match[1] === "json_task_draft") {
-                      return <TaskDraftConfirm draft={String(children)} projectId={projectId} />;
-                    }
-                    return (
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    );
-                  }
-                }}
-              >
-                {message.content}
-              </ReactMarkdown>
+              <MemoizedMarkdown content={message.content} messageId={message.id} projectId={projectId} />
               {isLoading && message.id.startsWith("assistant-loading") && (
                 <span className="typing-dots"><span>.</span><span>.</span><span>.</span></span>
               )}

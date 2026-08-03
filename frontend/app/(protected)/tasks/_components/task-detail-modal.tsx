@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { KeyValueList, StatusPill } from "@/components/ui";
 import { AssigneeSelect } from "@/components/assignee-select";
 import { taskApi } from "@/services/api";
+import { CustomSelect } from "@/components/custom-select";
 import { formatDate, formatDateTime } from "@/lib/utils/format";
 import type { EnrichedTask, Task, TaskLogworkEntry, UserProfile } from "@/types";
 import { LogworkModal } from "./logwork-modal";
@@ -373,6 +374,8 @@ export function TaskDetailModal({
                     fontSize: "0.95rem",
                     lineHeight: "1.7",
                     color: task?.description ? "var(--ink)" : "var(--foreground-muted)",
+                    maxHeight: "35vh",
+                    overflowY: "auto",
                   }}
                   onClick={() => canEditTask && setIsEditingDesc(true)}
                   title={canEditTask ? "Bấm để sửa mô tả" : undefined}
@@ -390,39 +393,41 @@ export function TaskDetailModal({
             }}>
             <label className="task-detail-field">
               <span className="task-detail-field-label">Trạng thái</span>
-              <select
-                className="task-detail-control task-detail-select"
+              <CustomSelect
+                className="task-detail-control"
                 value={task?.status || "TODO"}
-                onChange={(event) => void handleUpdate({ status: event.target.value as Task["status"] })}
+                onChange={(val) => void handleUpdate({ status: val as Task["status"] })}
                 disabled={isLoading || isSaving || !canUpdateStatus}
                 style={{
                   color: task?.status === "DONE" ? "#15803d" : task?.status === "IN_PROGRESS" ? "#1d4ed8" : "#b45309",
                   backgroundColor: task?.status === "DONE" ? "rgba(34, 197, 94, 0.15)" : task?.status === "IN_PROGRESS" ? "rgba(59, 130, 246, 0.15)" : "rgba(250, 204, 21, 0.18)"
                 }}
-              >
-                <option value="TODO">Cần làm</option>
-                <option value="IN_PROGRESS">Đang tiến hành</option>
-                <option value="DONE">Hoàn thành</option>
-              </select>
+                options={[
+                  { value: "TODO", label: "Cần làm" },
+                  { value: "IN_PROGRESS", label: "Đang tiến hành" },
+                  { value: "DONE", label: "Hoàn thành" },
+                ]}
+              />
             </label>
 
             <label className="task-detail-field">
               <span className="task-detail-field-label">Ưu tiên</span>
-              <select
-                className="task-detail-control task-detail-select"
+              <CustomSelect
+                className="task-detail-control"
                 value={task?.priority || "MEDIUM"}
-                onChange={(event) => void handleUpdate({ priority: event.target.value as Task["priority"] })}
+                onChange={(val) => void handleUpdate({ priority: val as Task["priority"] })}
                 disabled={isLoading || isSaving || !canEditTask}
                 style={{
                   color: task?.priority === "CRITICAL" ? "#b91c1c" : task?.priority === "HIGH" ? "#b45309" : task?.priority === "MEDIUM" ? "#15803d" : "#0369a1",
                   backgroundColor: task?.priority === "CRITICAL" ? "rgba(220, 38, 38, 0.15)" : task?.priority === "HIGH" ? "rgba(217, 119, 6, 0.15)" : task?.priority === "MEDIUM" ? "rgba(22, 163, 74, 0.15)" : "rgba(2, 132, 199, 0.15)"
                 }}
-              >
-                <option value="LOW">Thấp</option>
-                <option value="MEDIUM">Trung bình</option>
-                <option value="HIGH">Cao</option>
-                <option value="CRITICAL">Khẩn cấp</option>
-              </select>
+                options={[
+                  { value: "LOW", label: "Thấp" },
+                  { value: "MEDIUM", label: "Trung bình" },
+                  { value: "HIGH", label: "Cao" },
+                  { value: "CRITICAL", label: "Khẩn cấp" },
+                ]}
+              />
             </label>
 
             <label className="task-detail-field">
@@ -499,16 +504,16 @@ export function TaskDetailModal({
         </div>
 
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-              <h3
+              <span
+                className="task-detail-field-label"
                 style={{
-                  fontSize: "1rem",
                   marginBottom: "1rem",
-                  color: "var(--foreground-muted)",
+                  display: "block",
                   flexShrink: 0,
                 }}
               >
                 Logwork đã ghi nhận
-              </h3>
+              </span>
               <div
                 style={{
                   display: "flex",

@@ -260,7 +260,8 @@ export function WorkspaceShell({
                     cursor: "pointer",
                     color: "var(--ink)",
                     transition: "all 0.2s ease",
-                    padding: "0.2rem"
+                    padding: "0.2rem",
+                    marginTop: "11px"
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.1)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}

@@ -224,6 +224,16 @@ def get_task(db: Session, task_id: int, current_user_id: int):
     return _normalize_task(task)
 
 
+def _auto_complete_parent_recursive(db: Session, parent_task_id: int):
+    siblings = task_repository.get_tasks_by_parent_id(db, parent_task_id)
+    if siblings and all(normalize_task_status(s.status) == "done" for s in siblings):
+        parent_task = task_repository.get_task_by_id(db, parent_task_id)
+        if parent_task and normalize_task_status(parent_task.status) != "done":
+            task_repository.update_task(db, parent_task, {"status": "done"})
+            if parent_task.parent_task_id:
+                _auto_complete_parent_recursive(db, parent_task.parent_task_id)
+
+
 def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUpdate):
     task = get_task(db, task_id, current_user_id)
     update_data = task_in.model_dump(exclude_unset=True)
@@ -263,12 +273,8 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 
     task = task_repository.update_task(db, task, update_data)
 
-    if "status" in update_data and update_data["status"] == "DONE" and task.parent_task_id:
-        siblings = task_repository.get_tasks_by_parent_id(db, task.parent_task_id)
-        if siblings and all(normalize_task_status(s.status) == "DONE" for s in siblings):
-            parent_task = task_repository.get_task_by_id(db, task.parent_task_id)
-            if parent_task and normalize_task_status(parent_task.status) != "DONE":
-                task_repository.update_task(db, parent_task, {"status": "DONE"})
+    if "status" in update_data and update_data["status"] == "done" and task.parent_task_id:
+        _auto_complete_parent_recursive(db, task.parent_task_id)
 
     db.commit()
     db.refresh(task)

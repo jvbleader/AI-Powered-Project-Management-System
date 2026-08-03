@@ -1,5 +1,5 @@
-import { roleLabel } from "@/lib/utils/format";
-import { ROLE_ADMIN } from "@/lib/utils/format";
+import { CustomSelect } from "@/components/custom-select";
+import { roleLabel, ROLE_ADMIN } from "@/lib/utils/format";
 import { SYSTEM_ROLE_OPTIONS, type UserRole, type Department } from "@/types";
 import styles from "../styles/team.module.css";
 
@@ -95,28 +95,23 @@ export function AddUserModal({
 
           <label className={styles.filterField}>
             <span>Phòng ban</span>
-            <select value={addDepartment} onChange={(e) => onAddDepartmentChange(e.target.value)}>
-              <option value="">-- Chọn phòng ban --</option>
-              {departments.map((dept) => (
-                <option key={dept.id} value={dept.name}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
+            <CustomSelect 
+              value={addDepartment} 
+              onChange={onAddDepartmentChange}
+              options={[
+                { value: "", label: "-- Chọn phòng ban --" },
+                ...departments.map((dept) => ({ value: dept.name, label: dept.name }))
+              ]}
+            />
           </label>
 
           <label className={styles.filterField}>
             <span>Chức danh (Vai trò)</span>
-            <select
+            <CustomSelect
               value={addRole}
-              onChange={(e) => onAddRoleChange(e.target.value as UserRole)}
-            >
-              {SYSTEM_ROLE_OPTIONS.map((r) => (
-                <option key={r} value={r}>
-                  {roleLabel(r)}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => onAddRoleChange(val as UserRole)}
+              options={SYSTEM_ROLE_OPTIONS.map((r) => ({ value: r, label: roleLabel(r) }))}
+            />
           </label>
 
           <label className={styles.filterField}>

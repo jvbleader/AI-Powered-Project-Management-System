@@ -110,5 +110,12 @@ export const aiApi = {
     return response.data;
   },
 
+  async updateMessage(messageId: string, content: string) {
+    const response = await requestApi<any>({ path: `/api/ai/messages/${messageId}`, method: "PUT" }, {
+      body: JSON.stringify({ content }),
+    });
+    return response.data;
+  },
+
   streamChatUrl: apiEndpoints.ai.chat.path,
 };

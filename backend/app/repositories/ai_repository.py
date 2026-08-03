@@ -59,6 +59,37 @@ def create_message(db: Session, session_id: int, sender: str, content: str) -> A
     return new_message
 
 
+def get_message_by_id(db: Session, message_id: int) -> AiMessage | None:
+    return db.query(AiMessage).filter(AiMessage.id == message_id).first()
+
+
+def update_message_content(db: Session, message: AiMessage, new_content: str) -> AiMessage:
+    message.content = new_content
+    db.commit()
+    db.refresh(message)
+    return message
+
+
+def confirm_latest_draft_message(db: Session, user_id: int):
+    # Tìm message mới nhất của user này (thông qua session) có chứa json_task_draft
+    latest_message = (
+        db.query(AiMessage)
+        .join(AiConversation, AiMessage.conversation_id == AiConversation.id)
+        .filter(AiConversation.user_id == user_id)
+        .filter(AiMessage.sender == "assistant")
+        .filter(AiMessage.content.like("%```json_task_draft\n%"))
+        .order_by(AiMessage.created_at.desc())
+        .first()
+    )
+    if latest_message:
+        latest_message.content = latest_message.content.replace(
+            "```json_task_draft\n", "```json_task_draft_confirmed\n"
+        )
+        db.commit()
+        return True
+    return False
+
+
 def delete_messages_by_session(db: Session, session_id: int) -> None:
     db.query(AiMessage).filter(AiMessage.conversation_id == session_id).delete()
     db.commit()

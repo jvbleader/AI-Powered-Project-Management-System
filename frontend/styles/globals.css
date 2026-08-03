@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --bg: #e2effd;
   --bg-deep: #d3e5fa;
   --sidebar-start: #0f172a;
@@ -85,6 +86,24 @@ body::before {
     linear-gradient(90deg, rgba(37, 99, 235, 0.06) 1px, transparent 1px);
   background-size: 72px 72px;
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 23, 42, 0.15);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(15, 23, 42, 0.3);
 }
 
 a {
@@ -835,13 +854,15 @@ p {
 
 .topbar {
   gap: 1.5rem;
-  margin: 0.5rem 0 2.5rem 0;
-  padding: 1rem 0 1rem 0;
-  background: transparent;
+  margin: -1.75rem -2rem 2.5rem -2rem; /* Tràn viền ra sát mép workspace-main */
+  padding: 1.25rem 2.5rem;
+  background: rgba(255, 255, 255, 0.85); /* Nền trắng mờ */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: none;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
-  border-radius: 0;
-  box-shadow: none;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08); /* Đường viền phân cách dứt khoát */
+  border-radius: 0; /* Không bo góc để tạo cảm giác thanh ngang kiến trúc */
+  box-shadow: 0 4px 24px -8px rgba(15, 23, 42, 0.06);
   position: relative;
   z-index: 50;
   align-items: center;
@@ -852,7 +873,7 @@ p {
 }
 
 .topbar h1 {
-  font-size: clamp(1.8rem, 2.5vw, 2.4rem);
+  font-size: clamp(1.6rem, 2vw, 2.2rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -2261,18 +2282,43 @@ p {
 }
 
 .task-detail-field-label {
-  font-size: 0.8rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: rgba(15, 23, 42, 0.55);
-  margin-bottom: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-bottom: 0.5rem;
   display: block;
+}
+
+:where(.custom-select-default) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  min-height: 38px;
+  font-size: 0.9rem;
+  background-color: white;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+:where(.custom-select-default[data-has-value="true"]) {
+  color: var(--ink);
+}
+
+:where(.custom-select-default[data-disabled="true"]) {
+  background-color: var(--surface-muted);
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .task-detail-control {
   width: 100%;
   height: 2.5rem;
-  padding: 0 0.75rem;
+  padding: 0 1rem;
   border: 1px solid transparent;
   border-radius: 10px;
   background: rgba(15, 23, 42, 0.04);
@@ -2951,7 +2997,7 @@ p {
 
 .assistant-panel {
   position: relative;
-  width: 540px;
+  width: 720px;
   max-width: 100%;
   height: 780px;
   max-height: 100%;

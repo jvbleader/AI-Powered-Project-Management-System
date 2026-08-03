@@ -10,7 +10,14 @@ from app.schemas.ai_schema import ClassifyIntentResponse, QuickResponseRequest
 from app.services.ai_services.graph import project_graph
 from app.services.ai_services.nodes import supervisor_node
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("AI_AGENT")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - [%(levelname)s] - %(name)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
 
 def handle_classify_intent(
@@ -27,6 +34,14 @@ def handle_classify_intent(
 
     decision_dict = supervisor_node(initial_state)
     intent = decision_dict.get("router_decision", "out_of_scope")
+    logger.info("=========================================")
+    logger.info(f"[SUPERVISOR] Phân loại ý định người dùng:")
+    logger.info(f"- Prompt: {payload.prompt}")
+    logger.info(f"- Kết quả phân loại: {intent}")
+    logger.info("=========================================")
+
+    if intent == "out_of_scope":
+        return ClassifyIntentResponse(intent=intent)
     return ClassifyIntentResponse(intent=intent)
 
 
@@ -66,18 +81,57 @@ async def stream_chat_sse(
 
         async for event in project_graph.astream_events(initial_state, config, version="v2"):
             kind = event["event"]
+            name = event.get("name", "")
             tags = event.get("tags", [])
 
             if "supervisor_llm" in tags or "summarizer_llm" in tags:
                 continue
+                
+            # Log all raw events for deep debugging if needed (set to debug level to avoid spamming info)
+            logger.debug(f"[RAW EVENT] kind={kind}, name={event.get('name')}")
 
-            if kind == "on_chat_model_stream":
+            if kind == "on_chat_model_start":
+                logger.info(f"\n🤔 [AI ĐANG SUY NGHĨ] Gọi LLM ({event.get('name')})...")
+            elif kind == "on_chat_model_end":
+                logger.info(f"💡 [LLM PHẢN HỒI XONG] ({event.get('name')})")
+            elif kind == "on_chat_model_stream":
                 chunk = event["data"]["chunk"].content
                 if chunk:
                     full_ai_response += chunk
                     yield f"data: {json.dumps({'chunk': chunk})}\n\n"
             elif kind == "on_tool_start":
+                tool_name = event.get("name", "unknown_tool")
+                tool_input = event.get("data", {}).get("input", {})
+                logger.info(f"\n🚀 [TOOL BẮT ĐẦU] {tool_name}")
+                try:
+                    in_str = json.dumps(tool_input, indent=2, ensure_ascii=False)
+                    for line in in_str.split('\n'):
+                        logger.info(f"   ▶ {line}")
+                except Exception:
+                    logger.info(f"   ▶ Input: {tool_input}")
+                
                 yield f"data: {json.dumps({'tool_call': 'phân tích'})}\n\n"
+            elif kind == "on_tool_end":
+                tool_name = event.get("name", "unknown_tool")
+                tool_output = event.get("data", {}).get("output", "")
+                logger.info(f"✅ [TOOL KẾT THÚC] {tool_name}")
+                
+                try:
+                    out_str = json.dumps(tool_output, indent=2, ensure_ascii=False)
+                except Exception:
+                    out_str = str(tool_output)
+                
+                lines = out_str.split('\n')
+                if len(lines) > 20:
+                    lines = lines[:20] + ["  ... (truncated) ...", "]"] if out_str.startswith("[") else lines[:20] + ["  ... (truncated) ...", "}"]
+                
+                logger.info("   ◀ Output:")
+                for line in lines:
+                    logger.info(f"       {line}")
+                logger.info("")
+            elif kind == "on_chain_start":
+                if name in ["qna_agent", "task_agent", "out_of_scope_agent"]:
+                    logger.info(f"\n🧠 [AGENT XỬ LÝ] Đang chạy agent: {name}")
             elif kind == "on_chain_end" and event.get("name") in [
                 "out_of_scope_agent",
                 "out_of_scope_node",
@@ -130,6 +184,19 @@ def update_user_session(db: Session, current_user: User, session_id: int, title:
     if session:
         return ai_repository.update_session(db, session, title)
     return None
+
+
+def update_message_content(db: Session, current_user: User, message_id: int, new_content: str):
+    message = ai_repository.get_message_by_id(db, message_id)
+    if not message:
+        return None
+        
+    # Check if user owns the conversation
+    session = ai_repository.get_session_by_id_and_user(db, message.conversation_id, current_user.id)
+    if not session:
+        return None
+        
+    return ai_repository.update_message_content(db, message, new_content)
 
 
 def delete_user_session(db: Session, current_user: User, session_id: int):

@@ -3,6 +3,16 @@ from langchain_openai import ChatOpenAI
 
 from app.config.settings import get_settings
 from app.services.ai_services.state import AgentState
+import logging
+
+logger = logging.getLogger("AI_AGENT")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - [%(levelname)s] - %(name)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
 settings = get_settings()
 llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.openai_api_key, temperature=0.1)
@@ -41,7 +51,8 @@ def supervisor_node(state: AgentState) -> dict:
         "   - Khi câu hỏi HOÀN TOÀN không liên quan đến công việc, quản lý dự án, phần mềm (ví dụ: thời tiết, giải trí, chào hỏi vu vơ).\n\n"
         "LƯU Ý QUAN TRỌNG:\n"
         "- Hãy suy luận dựa trên Ý ĐỊNH THỰC SỰ của câu. Ví dụ: Nếu người dùng hỏi 'Nên làm gì hôm nay?', đó là ý định TÌM LỜI KHUYÊN (qna), không phải là tạo task.\n"
-        "- ĐẶC BIẾT LƯU Ý: Nếu câu hỏi của người dùng là một câu HỎI TIẾP NỐI (follow-up) dựa trên ngữ cảnh đang chat (ví dụ: 'còn ai khác không?', 'thêm người này vào đi', 'sao lại chọn người đó?'), bạn PHẢI xếp nó vào 'task' hoặc 'qna' (ưu tiên 'task' nếu đang trong luồng tạo task), TUYỆT ĐỐI KHÔNG được xếp vào 'out_of_scope'."
+        "- ĐẶC BIỆT LƯU Ý: Mọi câu hỏi có chứa từ khóa liên quan đến nghiệp vụ (ví dụ: 'dự án', 'task', 'công việc', 'nhân sự') ĐỀU PHẢI XẾP VÀO 'qna' hoặc 'task', TUYỆT ĐỐI KHÔNG xếp vào 'out_of_scope' ngay cả khi tên dự án/công việc đó nghe có vẻ lạ hoặc chưa từng xuất hiện.\n"
+        "- Nếu câu hỏi của người dùng là một câu HỎI TIẾP NỐI (follow-up) dựa trên ngữ cảnh đang chat (ví dụ: 'còn ai khác không?', 'thêm người này vào đi', 'dự án X thì sao?'), bạn PHẢI xếp nó vào 'task' hoặc 'qna', TUYỆT ĐỐI KHÔNG được xếp vào 'out_of_scope'."
     )
     system_prompt += summary_text
 
@@ -49,4 +60,17 @@ def supervisor_node(state: AgentState) -> dict:
     response = router_llm.invoke(
         [SystemMessage(content=system_prompt)] + messages, config={"tags": ["supervisor_llm"]}
     )
+    
+    # HARDCODE FALLBACK: Nếu LLM vẫn bướng bỉnh xếp vào out_of_scope dù có từ khóa nghiệp vụ
+    if response.next_node == "out_of_scope" and len(messages) > 0:
+        latest_msg = messages[-1].content.lower()
+        keywords = ["dự án", "task", "công việc", "nhân sự", "logwork", "tiến độ", "team", "sprint"]
+        if any(kw in latest_msg for kw in keywords):
+            logger.info(f"==== SUPERVISOR OVERRIDE ====")
+            logger.info(f"Phát hiện từ khóa nghiệp vụ trong '{latest_msg}', ghi đè từ out_of_scope -> qna")
+            response.next_node = "qna"
+
+    logger.info(f"==== SUPERVISOR QUYẾT ĐỊNH ====")
+    logger.info(f"Phân loại ngữ định: {response.next_node}")
+    
     return {"router_decision": response.next_node}

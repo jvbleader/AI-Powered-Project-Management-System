@@ -3,6 +3,7 @@ import { roleLabel, isManagerRole } from "@/lib/utils/format";
 import type { UserProfile } from "@/types";
 import { userApi } from "@/services/api";
 import { projectApi } from "@/services/api";
+import { CustomSelect } from "@/components/custom-select";
 import { Department } from "@/types/user";
 import styles from "./create-project-modal.module.css";
 import { hasCompanywideProjectAccess } from "@/lib/utils/format";
@@ -167,20 +168,16 @@ export function CreateProjectModal({
               </div>
               <div className={styles.inputGroup}>
                 <label>Phòng ban phụ trách</label>
-                <select
+                <CustomSelect
                   className={styles.inputControl}
                   value={newProjectDepartmentId}
-                  onChange={(event) => setNewProjectDepartmentId(event.target.value)}
-                  required
+                  onChange={(val) => setNewProjectDepartmentId(val)}
                   disabled={!canSelectDepartment}
-                >
-                  <option value="" disabled>-- Chọn phòng ban --</option>
-                  {departments.map((dept) => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "-- Chọn phòng ban --" },
+                    ...departments.map((dept) => ({ value: String(dept.id), label: dept.name }))
+                  ]}
+                />
                 {!canSelectDepartment && (
                   <p style={{ fontSize: "0.8rem", color: "var(--foreground-muted)", marginTop: "4px" }}>
                     Dự án mặc định thuộc phòng ban của bạn.
@@ -189,20 +186,17 @@ export function CreateProjectModal({
               </div>
               <div className={styles.inputGroup}>
                 <label>Người quản lý</label>
-                <select
+                <CustomSelect
                   className={styles.inputControl}
                   value={newProjectManagerId}
-                  onChange={(event) => setNewProjectManagerId(event.target.value)}
-                  required
+                  onChange={(val) => setNewProjectManagerId(val)}
                   disabled={filteredManagers.length === 0}
-                >
-                  {filteredManagers.length === 0 && <option value="">Không có Manager nào trong phòng ban này</option>}
-                  {filteredManagers.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} - {roleLabel(user.role)}
-                    </option>
-                  ))}
-                </select>
+                  options={
+                    filteredManagers.length === 0 
+                      ? [{ value: "", label: "Không có Manager nào trong phòng ban này" }]
+                      : filteredManagers.map((user) => ({ value: String(user.id), label: `${user.name} - ${roleLabel(user.role)}` }))
+                  }
+                />
               </div>
               <div className={`${styles.inputGroup}`}>
                 <label>Phương pháp quản lý</label>

@@ -97,6 +97,24 @@ def update_session(
     return session
 
 
+class UpdateAiMessageRequest(BaseModel):
+    content: str
+
+
+@router.put("/messages/{message_id}")
+def update_message(
+    message_id: int,
+    payload: UpdateAiMessageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    message = ai_service.update_message_content(db, current_user, message_id, payload.content)
+    if not message:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Message not found or not owned by user")
+    return {"status": "ok", "message": "Message updated successfully"}
+
+
 @router.delete("/sessions/{session_id}")
 async def clear_chat_session(
     session_id: str,
@@ -144,6 +162,10 @@ def confirm_tasks(
         project_id=payload.project_id,
         tasks_data=payload.tasks_data,
     )
+    
+    from app.repositories import ai_repository
+    ai_repository.confirm_latest_draft_message(db, current_user.id)
+
     return ConfirmTasksResponse(
         message=f"Tạo thành công {len(created_tasks)} tasks.",
         created_task_ids=[task.id for task in created_tasks],

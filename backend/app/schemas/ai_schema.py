@@ -114,7 +114,7 @@ class DraftTaskSchema(BaseModel):
         description="Tiêu đề (tên) của công việc. Phải ngắn gọn, rõ ràng, thể hiện trực tiếp hành động cần làm (VD: 'Thiết kế giao diện Login', 'Viết API tạo user')."
     )
     description: str = Field(
-        description="Mô tả chi tiết nội dung công việc, yêu cầu cần đạt được (Acceptance Criteria), và các lưu ý hoặc bối cảnh nếu có."
+        description="Mô tả chi tiết nội dung công việc. Nếu người dùng không cung cấp hoặc cung cấp quá sơ sài, BẠN PHẢI TỰ ĐỘNG SUY LUẬN TỪ TIÊU ĐỀ và viết ra một mô tả chi tiết, chuyên nghiệp (bao gồm các bước thực hiện, yêu cầu đầu ra, hoặc Acceptance Criteria)."
     )
     assignee_id: Optional[int] = Field(
         default=None,
@@ -122,6 +122,14 @@ class DraftTaskSchema(BaseModel):
     )
     priority: str = Field(
         description="Mức độ ưu tiên của công việc. Bắt buộc phải là một trong các giá trị sau: 'low', 'medium', 'high', 'urgent'. Hãy tự phân tích ngữ cảnh để chọn mức độ phù hợp."
+    )
+    subtasks: Optional[list['DraftTaskSchema']] = Field(
+        default=None,
+        description="Danh sách các công việc con (nếu đây là một Task to cần phân rã theo dạng cây).",
+    )
+    parent_task_id: Optional[int] = Field(
+        default=None,
+        description="ID của task cha NẾU người dùng yêu cầu thêm subtask vào một task đã có sẵn trong hệ thống.",
     )
 
 
