@@ -1,6 +1,8 @@
-from typing import Optional
-from pydantic import BaseModel
 from datetime import date, datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
 
 class SprintBase(BaseModel):
     name: str
@@ -10,8 +12,10 @@ class SprintBase(BaseModel):
     status: Optional[str] = "planning"
     review_note: Optional[str] = None
 
+
 class SprintCreate(SprintBase):
     pass
+
 
 class SprintUpdate(BaseModel):
     name: Optional[str] = None
@@ -20,6 +24,7 @@ class SprintUpdate(BaseModel):
     end_date: Optional[date] = None
     status: Optional[str] = None
     review_note: Optional[str] = None
+
 
 class SprintResponse(SprintBase):
     id: int

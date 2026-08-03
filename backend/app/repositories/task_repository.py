@@ -1,23 +1,26 @@
+from datetime import datetime, timezone
 from typing import List, Optional
+
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
 
-from app.models.task_model import Task, TaskAssignees, TaskAttachment
 from app.models.logworks import LogWork
 from app.models.project_model import ProjectMember
+from app.models.task_model import Task, TaskAssignees, TaskAttachment
 from app.models.user_model import User
-from app.schemas.task_schema import TaskCreate, TaskUpdate
 
 
 def _active_project_member_filter():
     return or_(ProjectMember.is_active == True, ProjectMember.is_active.is_(None))
 
+
 def get_task_by_id(db: Session, task_id: int) -> Optional[Task]:
     return db.query(Task).filter(Task.id == task_id).first()
 
+
 def get_tasks_by_parent_id(db: Session, parent_id: int) -> List[Task]:
     return db.query(Task).filter(Task.parent_task_id == parent_id).all()
+
 
 def list_tasks(
     db: Session,
@@ -50,25 +53,28 @@ def list_tasks(
         query = query.filter(Task.sprint_id == sprint_id)
     return query.order_by(desc(Task.created_at)).all()
 
+
 def create_task(db: Session, task_data: dict) -> Task:
     task = Task(**task_data)
     db.add(task)
     db.flush()
     return task
 
+
 def update_task(db: Session, task: Task, update_data: dict) -> Task:
     for key, value in update_data.items():
         if hasattr(task, key):
             setattr(task, key, value)
-    
+
     if "status" in update_data:
         if update_data["status"] == "done":
             task.completed_at = datetime.now(timezone.utc)
         else:
             task.completed_at = None
-        
+
     db.flush()
     return task
+
 
 def delete_task(db: Session, task: Task) -> None:
     db.query(TaskAssignees).filter(TaskAssignees.task_id == task.id).delete()
@@ -78,9 +84,11 @@ def delete_task(db: Session, task: Task) -> None:
     db.delete(task)
     db.flush()
 
+
 # --- Assignees ---
 def get_task_assignees(db: Session, task_id: int) -> List[TaskAssignees]:
     return db.query(TaskAssignees).filter(TaskAssignees.task_id == task_id).all()
+
 
 def list_task_assignee_users(db: Session, task_ids: List[int]):
     if not task_ids:
@@ -113,32 +121,45 @@ def is_task_assignee(db: Session, task_id: int, user_id: int) -> bool:
         is not None
     )
 
-def add_task_assignee(db: Session, task_id: int, project_member_id: int, assigned_by: int) -> TaskAssignees:
+
+def add_task_assignee(
+    db: Session, task_id: int, project_member_id: int, assigned_by: int
+) -> TaskAssignees:
     assignee = TaskAssignees(
-        task_id=task_id, 
-        project_member_id=project_member_id, 
-        assigned_by_member_id=assigned_by
+        task_id=task_id, project_member_id=project_member_id, assigned_by_member_id=assigned_by
     )
     db.add(assignee)
     db.flush()
     return assignee
 
+
 def clear_task_assignees(db: Session, task_id: int) -> None:
     db.query(TaskAssignees).filter(TaskAssignees.task_id == task_id).delete()
     db.flush()
 
+
 def remove_task_assignee(db: Session, task_id: int, project_member_id: int) -> None:
-    assignee = db.query(TaskAssignees).filter(
-        TaskAssignees.task_id == task_id, 
-        TaskAssignees.project_member_id == project_member_id
-    ).first()
+    assignee = (
+        db.query(TaskAssignees)
+        .filter(
+            TaskAssignees.task_id == task_id, TaskAssignees.project_member_id == project_member_id
+        )
+        .first()
+    )
     if assignee:
         db.delete(assignee)
         db.flush()
 
+
 # --- Comments ---
 def list_task_attachments(db: Session, task_id: int) -> List[TaskAttachment]:
-    return db.query(TaskAttachment).filter(TaskAttachment.task_id == task_id).order_by(TaskAttachment.created_at).all()
+    return (
+        db.query(TaskAttachment)
+        .filter(TaskAttachment.task_id == task_id)
+        .order_by(TaskAttachment.created_at)
+        .all()
+    )
+
 
 def create_task_attachment(db: Session, attachment_data: dict) -> TaskAttachment:
     attachment = TaskAttachment(**attachment_data)
@@ -146,9 +167,13 @@ def create_task_attachment(db: Session, attachment_data: dict) -> TaskAttachment
     db.flush()
     return attachment
 
+
 # --- Logworks ---
 def list_task_logworks(db: Session, task_id: int) -> List[LogWork]:
-    return db.query(LogWork).filter(LogWork.task_id == task_id).order_by(desc(LogWork.work_date)).all()
+    return (
+        db.query(LogWork).filter(LogWork.task_id == task_id).order_by(desc(LogWork.work_date)).all()
+    )
+
 
 def list_project_logworks(db: Session, project_id: int) -> List[LogWork]:
     return (
@@ -159,7 +184,10 @@ def list_project_logworks(db: Session, project_id: int) -> List[LogWork]:
         .all()
     )
 
-def list_project_logworks_with_context(db: Session, project_id: Optional[int] = None, project_ids: Optional[List[int]] = None):
+
+def list_project_logworks_with_context(
+    db: Session, project_id: Optional[int] = None, project_ids: Optional[List[int]] = None
+):
     query = (
         db.query(LogWork, Task, ProjectMember, User)
         .join(Task, Task.id == LogWork.task_id)
@@ -172,11 +200,8 @@ def list_project_logworks_with_context(db: Session, project_id: Optional[int] = 
         if not project_ids:
             return []
         query = query.filter(Task.project_id.in_(project_ids))
-    return (
-        query
-        .order_by(desc(LogWork.work_date), desc(LogWork.updated_at), desc(LogWork.id))
-        .all()
-    )
+    return query.order_by(desc(LogWork.work_date), desc(LogWork.updated_at), desc(LogWork.id)).all()
+
 
 def create_logwork(db: Session, logwork_data: dict) -> LogWork:
     logwork = LogWork(**logwork_data)

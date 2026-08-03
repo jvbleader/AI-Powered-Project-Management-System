@@ -1,20 +1,10 @@
-import os
-import sys
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 from app.config.settings import get_settings
 from app.core.connection import Base
-from app.models.ai_model import AiConversation, AiMessage
-from app.models.department_model import Department
-from app.models.logworks import LogWork
-from app.models.project_model import Project, ProjectMember, Role
-from app.models.refresh_token_model import RefreshToken
-from app.models.sprint_model import Sprint
-from app.models.task_model import Task, TaskAssignees, TaskAttachment
-from app.models.user_model import User
-from app.models.notification_model import Notification
 
 config = context.config
 
@@ -75,9 +65,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

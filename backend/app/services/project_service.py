@@ -14,12 +14,10 @@ from app.schemas.project_schema import (
     ProjectUpdate,
 )
 from app.utils.project_helpers import (
-
     has_companywide_project_access,
     is_admin_user,
     list_accessible_project_ids,
     list_managed_project_ids,
-    project_role_options,
     to_db_status,
     user_can_access_project,
     user_can_manage_project,
@@ -80,6 +78,7 @@ def require_project_access(
 def list_project_roles(db: Session):
     from app.models.project_model import Role
     from app.schemas.project_schema import RoleResponse
+
     roles = db.query(Role).all()
     return [RoleResponse.model_validate(r) for r in roles]
 
@@ -188,7 +187,9 @@ def update_project(
     if data.name:
         existing_project = project_repository.get_project_by_name(db, data.name)
         if existing_project and existing_project.id != project.id:
-            raise HTTPException(status_code=400, detail="Tên dự án đã tồn tại. Vui lòng chọn tên khác.")
+            raise HTTPException(
+                status_code=400, detail="Tên dự án đã tồn tại. Vui lòng chọn tên khác."
+            )
         project.name = data.name.strip()
     if data.project_type is not None:
         project.project_type = data.project_type.strip()
@@ -213,15 +214,15 @@ def update_project(
     return project
 
 
-def list_project_members(db: Session, current_user: User, project_id: str, search: str | None = None):
+def list_project_members(
+    db: Session, current_user: User, project_id: str, search: str | None = None
+):
     numeric_id = parse_project_id(project_id)
     require_project_access(db, numeric_id, current_user)
     return project_repository.list_project_members(db, numeric_id, search, include_inactive=True)
 
 
-def add_project_member(
-    db: Session, current_user: User, project_id: str, data: ProjectMemberCreate
-):
+def add_project_member(db: Session, current_user: User, project_id: str, data: ProjectMemberCreate):
     numeric_id = parse_project_id(project_id)
     require_project_access(db, numeric_id, current_user, require_manager=True)
 
@@ -231,7 +232,9 @@ def add_project_member(
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Người dùng đã bị vô hiệu hóa.")
 
-    existing = project_repository.get_project_member(db, numeric_id, data.user_id, include_inactive=True)
+    existing = project_repository.get_project_member(
+        db, numeric_id, data.user_id, include_inactive=True
+    )
     if existing:
         if getattr(existing, "is_active", True):
             raise HTTPException(status_code=400, detail="Người dùng đã là thành viên dự án.")

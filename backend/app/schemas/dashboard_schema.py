@@ -97,6 +97,7 @@ class DashboardOverviewResponse(BaseModel):
     workloadBoard: List[DashboardWorkloadMemberResponse] = Field(default_factory=list)
     recentLogwork: List[DashboardRecentLogworkResponse] = Field(default_factory=list)
 
+
 class ProjectHealthPreviewResponse(BaseModel):
     id: int
     name: str

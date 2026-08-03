@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project_model import Project, ProjectMember
 from app.models.user_model import User
-from app.repositories import project_repository
+from app.repositories import project_repository, task_repository
 from app.schemas.project_schema import (
     ProjectDetailResponse,
     ProjectMemberResponse,
@@ -12,7 +12,6 @@ from app.schemas.project_schema import (
     ProjectResponse,
     RoleResponse,
 )
-from app.repositories import task_repository
 from app.utils.dashboard_helpers import (
     build_task_progress_map,
     calculate_logwork_coverage,
@@ -28,8 +27,10 @@ ROLE_DIRECTOR = "Giám đốc"
 ROLE_ADMIN = "Admin"
 DEPARTMENT_HEAD_OF_DEV = "Head of Dev"
 
+
 def list_project_role_names() -> list[str]:
     return ["Manager", "Member"]
+
 
 def project_role_options() -> list[RoleResponse]:
     return [
@@ -37,8 +38,10 @@ def project_role_options() -> list[RoleResponse]:
         RoleResponse(id=2, name="Member"),
     ]
 
+
 def normalize_project_role_name(name: str | None) -> str:
     return (name or "").strip()
+
 
 def project_role_name_from_user(user: User | None) -> str:
     if not user:
@@ -47,6 +50,7 @@ def project_role_name_from_user(user: User | None) -> str:
         return "Manager"
     return "Member"
 
+
 def project_role_id_from_user(user: User | None) -> int:
     return 1 if user_role_requires_manager_scope(user) else 2
 
@@ -54,7 +58,7 @@ def project_role_id_from_user(user: User | None) -> int:
 def build_project_code(name: str) -> str:
     words = name.strip().split()
     code_suffix = "".join("".join(c for c in word if c.isalnum()).upper() for word in words[:3])[:8]
-    return f"FP-{code_suffix or 'NEW'}" 
+    return f"FP-{code_suffix or 'NEW'}"
 
 
 def to_frontend_status(db_status: str) -> str:
@@ -172,6 +176,7 @@ def build_project_response(
     progress = metrics.velocity if metrics.totalTasks else 0
 
     from app.models.department_model import Department
+
     department = db.query(Department).filter(Department.id == project.department_id).first()
 
     base = ProjectResponse(
@@ -198,10 +203,7 @@ def build_project_response(
     if not include_members:
         return base
 
-    member_responses = [
-        build_member_response(member, user, role)
-        for member, user, role in members
-    ]
+    member_responses = [build_member_response(member, user, role) for member, user, role in members]
 
     return ProjectDetailResponse(**base.model_dump(), members=member_responses)
 

@@ -9,7 +9,6 @@ from app.models.task_model import Task
 from app.models.user_model import User
 
 
-
 def _active_project_member_filter():
     return or_(ProjectMember.is_active.is_(True), ProjectMember.is_active.is_(None))
 
@@ -187,9 +186,6 @@ def list_project_user_ids(
 
     rows = query.distinct().all()
     return [user_id for (user_id,) in rows]
-
-
-
 
 
 def add_project_member(db: Session, member: ProjectMember) -> ProjectMember:

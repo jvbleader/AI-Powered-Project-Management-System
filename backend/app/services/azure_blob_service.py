@@ -1,12 +1,13 @@
 import base64
-import uuid
 import mimetypes
-from io import BytesIO
-from typing import Optional
+import uuid
+
 from azure.storage.blob import BlobServiceClient
+
 from app.config.settings import get_settings
 
 settings = get_settings()
+
 
 class AzureBlobService:
     def __init__(self):
@@ -16,7 +17,9 @@ class AzureBlobService:
 
         if self.connection_string:
             try:
-                self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+                self.blob_service_client = BlobServiceClient.from_connection_string(
+                    self.connection_string
+                )
             except Exception as e:
                 print(f"Failed to initialize Azure Blob Service Client: {e}")
 
@@ -36,7 +39,11 @@ class AzureBlobService:
             if "base64," in base64_data:
                 header, encoded = base64_data.split("base64,", 1)
                 mime_type = header.split(":")[1].split(";")[0] if ":" in header else "image/jpeg"
-                extension = mime_map.get(mime_type.lower()) or mimetypes.guess_extension(mime_type) or ".jpg"
+                extension = (
+                    mime_map.get(mime_type.lower())
+                    or mimetypes.guess_extension(mime_type)
+                    or ".jpg"
+                )
                 if extension == ".jfif":
                     extension = ".jpg"
             else:
@@ -56,7 +63,9 @@ class AzureBlobService:
             except Exception as upload_err:
                 err_str = str(upload_err).lower()
                 if "container" in err_str or "notfound" in err_str or "404" in err_str:
-                    container_client = self.blob_service_client.get_container_client(self.container_name)
+                    container_client = self.blob_service_client.get_container_client(
+                        self.container_name
+                    )
                     try:
                         container_client.create_container(public_access="blob")
                     except Exception:
@@ -73,5 +82,6 @@ class AzureBlobService:
             print(f"Error uploading avatar to Azure: {e}")
             # Fallback to the original base64 string if upload fails
             return base64_data
+
 
 azure_blob_service = AzureBlobService()

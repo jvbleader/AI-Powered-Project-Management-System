@@ -107,6 +107,7 @@
   border-radius: 16px;
   background: rgba(248, 250, 252, 0.98);
   font-size: 0.95rem;
+  font-family: inherit;
   color: #0f172a;
   outline: none;
   transition: border-color 0.2s ease;

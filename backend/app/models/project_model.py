@@ -9,9 +9,7 @@ from app.core.connection import Base
 class Role(Base):
     __tablename__ = "roles"
 
-    id = Column(
-        Integer, primary_key=True, autoincrement=True, nullable=False, index=True
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False, index=True)
     name = Column(String(100), nullable=False, unique=True)
     description = Column(Text, nullable=True)
     is_admin = Column(Boolean, nullable=False, default=False)
@@ -22,9 +20,7 @@ class Role(Base):
 class Project(Base):
     __tablename__ = "projects"
 
-    id = Column(
-        Integer, primary_key=True, autoincrement=True, nullable=False, index=True
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False, index=True)
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     project_type = Column(String(50), nullable=False, default="agile")
@@ -47,9 +43,7 @@ class Project(Base):
 class ProjectMember(Base):
     __tablename__ = "project_members"
 
-    id = Column(
-        Integer, primary_key=True, autoincrement=True, nullable=False, index=True
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

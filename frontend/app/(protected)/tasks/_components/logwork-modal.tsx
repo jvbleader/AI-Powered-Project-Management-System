@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { toVietnamDateInputValue } from "@/lib/utils/format";
 import { taskApi } from "@/services/api";
+import styles from "../../projects/_components/create-project-modal.module.css";
 
 interface LogworkModalProps {
   isOpen: boolean;
@@ -75,33 +76,47 @@ export function LogworkModal({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={handleClose}>
+    <div className={styles.modalBackdrop} role="presentation" onMouseDown={handleClose}>
       <section
-        className="app-modal modal-shell-md"
+        className={styles.modalSurface}
         role="dialog"
         aria-modal="true"
         aria-labelledby="logwork-title"
         onMouseDown={(event) => event.stopPropagation()}
+        style={{ width: "100%", maxWidth: "600px", display: "flex", flexDirection: "column" }}
       >
-        <div className="app-modal-header">
-          <div>
-            <span className="eyebrow">Nhật ký công việc</span>
-            <h2 id="logwork-title">Logwork</h2>
-            <p>Ghi nhận số giờ đã làm và mô tả ngắn gọn đầu việc vừa hoàn thành.</p>
+        <div className={styles.modalHeader}>
+          <div style={{ flex: 1 }}>
+            <h2 id="logwork-title" style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>Logwork</h2>
           </div>
-          <button type="button" className="icon-button" onClick={handleClose} aria-label="Đóng popup">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m6 6 12 12M18 6 6 18" />
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Đóng popup"
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "4px",
+              color: "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6L6 18M6 6l12 12"></path>
             </svg>
           </button>
         </div>
 
-        <form className="app-modal-body surface-form" onSubmit={handleLogwork}>
-          <div className="app-modal-section">
-            <div className="form-grid">
-              <label>
-                <span>Số giờ (h)</span>
+        <form onSubmit={handleLogwork} style={{ display: "flex", flexDirection: "column" }}>
+          <div className={styles.modalBody}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", marginBottom: "0.5rem" }}>
+              <div className={styles.inputGroup}>
+                <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>Số giờ</label>
                 <input
+                  className={styles.inputControl}
                   type="number"
                   min="0"
                   step="0.5"
@@ -111,38 +126,41 @@ export function LogworkModal({
                   disabled={isSubmitting}
                   required
                 />
-              </label>
-              <label>
-                <span>Ngày thực hiện</span>
+              </div>
+              <div className={styles.inputGroup}>
+                <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>Ngày thực hiện</label>
                 <input
+                  className={styles.inputControl}
                   type="date"
                   value={date}
                   onChange={(event) => setDate(event.target.value)}
                   disabled={isSubmitting}
                   required
                 />
-              </label>
-              <label className="form-grid-span">
-                <span>Mô tả công việc đã làm</span>
+              </div>
+              <div className={styles.inputGroup} style={{ gridColumn: "1 / -1" }}>
+                <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>Mô tả công việc đã làm</label>
                 <textarea
+                  className={styles.inputControl}
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   disabled={isSubmitting}
                   required
                   rows={4}
+                  style={{ minHeight: "120px", resize: "vertical" }}
                   placeholder="Nêu ngắn gọn phần việc đã hoàn thành, kết quả và ghi chú cần bàn giao..."
                 />
-              </label>
+              </div>
             </div>
+
+            {formError && <p style={{ color: "var(--critical)", fontSize: "0.875rem", marginTop: "1rem" }}>{formError}</p>}
           </div>
 
-          {formError ? <p className="form-error">{formError}</p> : null}
-
-          <div className="app-modal-footer">
-            <button type="button" className="secondary-button" onClick={handleClose} disabled={isSubmitting}>
+          <div className={styles.modalFooter}>
+            <button type="button" className={styles.btnSecondary} onClick={handleClose} disabled={isSubmitting}>
               Hủy
             </button>
-            <button type="submit" className="primary-button" disabled={isSubmitting}>
+            <button type="submit" className={styles.btnPrimary} disabled={isSubmitting}>
               Lưu Logwork
             </button>
           </div>

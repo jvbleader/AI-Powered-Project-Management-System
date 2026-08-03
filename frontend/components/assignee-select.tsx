@@ -54,17 +54,15 @@ export function AssigneeSelect({
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "flex-start",
           textAlign: "left",
           width: "100%",
-          padding: "8px 12px",
-          background: disabled ? "var(--surface-sunken)" : "var(--surface)",
           cursor: disabled ? "not-allowed" : "pointer",
         }}
         disabled={disabled}
       >
         {selectedOption ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden", width: "100%" }}>
             <span
               className="avatar-token"
               style={{
@@ -92,9 +90,8 @@ export function AssigneeSelect({
             </span>
           </div>
         ) : (
-          <span style={{ color: "var(--foreground-muted)" }}>{placeholder}</span>
+          <span style={{ color: "var(--foreground-muted)", width: "100%" }}>{placeholder}</span>
         )}
-        <span style={{ color: "var(--foreground-muted)", fontSize: "0.8em" }}>▼</span>
       </button>
 
       {isOpen && !disabled && (

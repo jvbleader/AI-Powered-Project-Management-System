@@ -30,6 +30,13 @@ function getTaskTopic(title: string): string {
   return clean.trim().toLowerCase();
 }
 
+const PRIORITY_WEIGHT: Record<string, number> = {
+  "CRITICAL": 4,
+  "HIGH": 3,
+  "MEDIUM": 2,
+  "LOW": 1,
+};
+
 function sortBacklogTasks(tasks: EnrichedTask[]): EnrichedTask[] {
   const taskMap = new Map<string, EnrichedTask>(tasks.map((t) => [t.id, t]));
   const childrenByParent = new Map<string, EnrichedTask[]>();
@@ -45,8 +52,14 @@ function sortBacklogTasks(tasks: EnrichedTask[]): EnrichedTask[] {
     }
   });
 
-  // Sort root tasks by topic & title
+  // Sort root tasks by priority, then topic & title
   rootTasks.sort((a, b) => {
+    const weightA = PRIORITY_WEIGHT[a.priority] || 0;
+    const weightB = PRIORITY_WEIGHT[b.priority] || 0;
+    if (weightA !== weightB) {
+      return weightB - weightA; // Higher priority first
+    }
+
     const topicA = getTaskTopic(a.title);
     const topicB = getTaskTopic(b.title);
     if (topicA !== topicB) {
@@ -61,7 +74,14 @@ function sortBacklogTasks(tasks: EnrichedTask[]): EnrichedTask[] {
   function addWithChildren(task: EnrichedTask) {
     result.push(task);
     const children = childrenByParent.get(task.id) || [];
-    children.sort((a, b) => a.title.localeCompare(b.title, "vi", { numeric: true, sensitivity: "base" }));
+    children.sort((a, b) => {
+      const weightA = PRIORITY_WEIGHT[a.priority] || 0;
+      const weightB = PRIORITY_WEIGHT[b.priority] || 0;
+      if (weightA !== weightB) {
+        return weightB - weightA;
+      }
+      return a.title.localeCompare(b.title, "vi", { numeric: true, sensitivity: "base" });
+    });
     children.forEach(addWithChildren);
   }
 
@@ -80,7 +100,12 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
 
   useEffect(() => {
     const sortedTasks = [...tasks].sort((a, b) => {
-      return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
+      const weightA = PRIORITY_WEIGHT[a.priority] || 0;
+      const weightB = PRIORITY_WEIGHT[b.priority] || 0;
+      if (weightA !== weightB) {
+        return weightB - weightA; // Higher priority first
+      }
+      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime(); // Newer activity first as secondary
     });
     setLocalTasks(sortedTasks);
   }, [tasks]);

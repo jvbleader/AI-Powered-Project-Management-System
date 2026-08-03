@@ -4,6 +4,7 @@ import type { UserProfile, Project } from "@/types";
 import { projectApi, userApi } from "@/services/api";
 import type { ProjectMemberResponse, ProjectRoleResponse } from "@/services/api/projects";
 import { Department } from "@/types/user";
+import { CustomSelect } from "@/components/custom-select";
 import styles from "./create-project-modal.module.css";
 
 interface EditProjectModalProps {
@@ -184,7 +185,7 @@ export function EditProjectModal({
         aria-modal="true"
         aria-labelledby="edit-project-title"
         onMouseDown={(event) => event.stopPropagation()}
-        style={{ maxWidth: "700px" }}
+        style={{ width: "100%", maxWidth: "800px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
       >
         <div className={styles.modalHeader}>
           <h2 id="edit-project-title">Chỉnh sửa dự án: {project.name}</h2>
@@ -229,11 +230,18 @@ export function EditProjectModal({
         </div>
 
         {activeTab === "INFO" && (
-          <form onSubmit={handleUpdateInfo} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+          <form onSubmit={handleUpdateInfo} style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
             <div className={styles.modalBody}>
-              <div className={styles.formGrid}>
-                <div className={styles.inputGroup}>
-                  <label>Tên dự án</label>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "1.25rem",
+                marginBottom: "0.5rem"
+              }}>
+                <div className={styles.inputGroup} style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>
+                    Tên dự án
+                  </label>
                   <input
                     className={styles.inputControl}
                     value={editName}
@@ -241,47 +249,44 @@ export function EditProjectModal({
                     required
                   />
                 </div>
+                
                 <div className={styles.inputGroup}>
-                  <label>Trạng thái</label>
-                  <select
+                  <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>
+                    Trạng thái
+                  </label>
+                  <CustomSelect
                     className={styles.inputControl}
                     value={editStatus}
-                    onChange={(event) => setEditStatus(event.target.value)}
-                  >
-                    <option value="ACTIVE">Đang triển khai</option>
-                    <option value="PLANNING">Đang lập kế hoạch</option>
-                    <option value="AT_RISK">Rủi ro trễ hạn</option>
-                    <option value="COMPLETED">Đã hoàn thành</option>
-                    <option value="ON_HOLD">Tạm dừng</option>
-                  </select>
-                </div>
-                <div className={styles.inputGroup}>
-                  <label>Phòng ban phụ trách</label>
-                  <select
-                    className={styles.inputControl}
-                    value={editDepartmentId}
-                    onChange={(event) => setEditDepartmentId(event.target.value)}
-                    required
-                  >
-                    <option value="" disabled>-- Chọn phòng ban --</option>
-                    {departments.map((dept) => (
-                      <option key={dept.id} value={dept.id}>
-                        {dept.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className={`${styles.inputGroup} ${styles.fullWidth}`}>
-                  <label>Mô tả chi tiết</label>
-                  <textarea
-                    className={styles.inputControl}
-                    value={editDescription}
-                    onChange={(event) => setEditDescription(event.target.value)}
-                    rows={4}
+                    onChange={(val) => setEditStatus(val)}
+                    options={[
+                      { value: "ACTIVE", label: "Đang triển khai" },
+                      { value: "PLANNING", label: "Đang lập kế hoạch" },
+                      { value: "AT_RISK", label: "Rủi ro trễ hạn" },
+                      { value: "COMPLETED", label: "Đã hoàn thành" },
+                      { value: "ON_HOLD", label: "Tạm dừng" },
+                    ]}
                   />
                 </div>
+                
                 <div className={styles.inputGroup}>
-                  <label>Ngày bắt đầu</label>
+                  <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>
+                    Phòng ban phụ trách
+                  </label>
+                  <CustomSelect
+                    className={styles.inputControl}
+                    value={editDepartmentId}
+                    onChange={(val) => setEditDepartmentId(val)}
+                    options={[
+                      { value: "", label: "-- Chọn phòng ban --" },
+                      ...departments.map((dept) => ({ value: String(dept.id), label: dept.name }))
+                    ]}
+                  />
+                </div>
+                
+                <div className={styles.inputGroup}>
+                  <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>
+                    Ngày bắt đầu
+                  </label>
                   <input
                     className={styles.inputControl}
                     type="date"
@@ -290,8 +295,11 @@ export function EditProjectModal({
                     required
                   />
                 </div>
+                
                 <div className={styles.inputGroup}>
-                  <label>Ngày kết thúc dự kiến</label>
+                  <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>
+                    Ngày kết thúc dự kiến
+                  </label>
                   <input
                     className={styles.inputControl}
                     type="date"
@@ -299,11 +307,34 @@ export function EditProjectModal({
                     onChange={(event) => setEditEnd(event.target.value)}
                   />
                 </div>
+
+                <div className={styles.inputGroup} style={{ gridColumn: "1 / -1" }}>
+                  <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>
+                    Mô tả chi tiết
+                  </label>
+                  <textarea
+                    className={styles.inputControl}
+                    value={editDescription}
+                    onChange={(event) => setEditDescription(event.target.value)}
+                    rows={4}
+                    style={{ minHeight: "120px" }}
+                  />
+                </div>
               </div>
-              {formError ? <p className={styles.errorMessage}>{formError}</p> : null}
+
+              {formError && (
+                <div style={{ color: "var(--critical)", fontSize: "0.875rem", marginTop: "1rem" }}>
+                  {formError}
+                </div>
+              )}
             </div>
+
             <div className={styles.modalFooter}>
-              <button type="button" className={styles.btnSecondary} onClick={onClose}>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={onClose}
+              >
                 Hủy
               </button>
               <button type="submit" className={styles.btnPrimary}>
@@ -314,98 +345,55 @@ export function EditProjectModal({
         )}
 
         {activeTab === "MEMBERS" && (
-          <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
             <div className={styles.modalBody}>
-              <div style={{ display: "flex", gap: "8px", marginBottom: "16px", alignItems: "flex-end" }}>
-                <div className={styles.inputGroup} style={{ flex: 1, margin: 0 }}>
-                  <label>Thêm thành viên</label>
-                  <select
-                    className={styles.inputControl}
-                    value={newMemberId}
-                    onChange={(e) => setNewMemberId(e.target.value)}
-                  >
-                    {availableUsersToAdd.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name} - {roleLabel(u.role)}</option>
-                    ))}
-                    {availableUsersToAdd.length === 0 && <option value="">Đã thêm tất cả user</option>}
-                  </select>
-                </div>
-                <div className={styles.inputGroup} style={{ flex: 1, margin: 0 }}>
-                  <label>Vai trò dự án</label>
-                  <select
-                    className={styles.inputControl}
-                    value={newMemberRole}
-                    onChange={(e) => setNewMemberRole(e.target.value)}
-                  >
-                    {roles.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {projectRoleLabel(r.name)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="button"
-                  className={styles.btnPrimary}
-                  onClick={handleAddMember}
-                  disabled={!newMemberId || availableUsersToAdd.length === 0}
-                  style={{ height: "42px" }}
-                >
-                  Thêm
-                </button>
-              </div>
-              
-              {membersError && <p className={styles.errorMessage}>{membersError}</p>}
-              
-              <div style={{ marginTop: "16px", overflowY: "auto", maxHeight: "300px", border: "1px solid var(--border-subtle)", borderRadius: "6px" }}>
+              <div style={{ overflowY: "auto", flex: 1, border: "1px solid rgba(148, 163, 184, 0.2)", borderRadius: "16px", background: "var(--surface-sunken)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
-                  <thead style={{ background: "var(--surface-sunken)", position: "sticky", top: 0 }}>
+                  <thead style={{ background: "rgba(248, 250, 252, 0.9)", position: "sticky", top: 0, zIndex: 1, backdropFilter: "blur(4px)" }}>
                     <tr>
-                      <th style={{ padding: "12px", borderBottom: "1px solid var(--border-subtle)", fontWeight: 500, fontSize: "14px" }}>Tên</th>
-                      <th style={{ padding: "12px", borderBottom: "1px solid var(--border-subtle)", fontWeight: 500, fontSize: "14px" }}>Email</th>
-                      <th style={{ padding: "12px", borderBottom: "1px solid var(--border-subtle)", fontWeight: 500, fontSize: "14px", width: "160px" }}>Vai trò</th>
-                      <th style={{ padding: "12px", borderBottom: "1px solid var(--border-subtle)", width: "60px" }}></th>
+                      <th style={{ padding: "16px", borderBottom: "1px solid rgba(148, 163, 184, 0.2)", fontWeight: 600, fontSize: "0.85rem", color: "var(--text-secondary)" }}>Tên</th>
+                      <th style={{ padding: "16px", borderBottom: "1px solid rgba(148, 163, 184, 0.2)", fontWeight: 600, fontSize: "0.85rem", color: "var(--text-secondary)" }}>Email</th>
+                      <th style={{ padding: "16px", borderBottom: "1px solid rgba(148, 163, 184, 0.2)", fontWeight: 600, fontSize: "0.85rem", color: "var(--text-secondary)", width: "180px" }}>Vai trò</th>
                     </tr>
                   </thead>
                   <tbody>
                     {isLoadingMembers ? (
-                      <tr><td colSpan={4} style={{ padding: "16px", textAlign: "center" }}>Đang tải...</td></tr>
+                      <tr><td colSpan={3} style={{ padding: "20px", textAlign: "center", color: "var(--text-secondary)" }}>Đang tải...</td></tr>
                     ) : members.length === 0 ? (
-                      <tr><td colSpan={4} style={{ padding: "16px", textAlign: "center" }}>Chưa có thành viên.</td></tr>
+                      <tr><td colSpan={3} style={{ padding: "20px", textAlign: "center", color: "var(--text-secondary)" }}>Chưa có thành viên.</td></tr>
                     ) : (
                       members.map((m) => {
                         const canEdit = true;
                         return (
-                          <tr key={m.id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                            <td style={{ padding: "12px", fontSize: "14px" }}><strong>{m.userName}</strong></td>
-                            <td style={{ padding: "12px", fontSize: "14px", color: "var(--text-secondary)" }}>{m.userEmail}</td>
-                            <td style={{ padding: "12px" }}>
-                              <select
-                                className={styles.inputControl}
-                                style={{ padding: "4px 8px", fontSize: "13px", height: "auto" }}
-                                value={resolveMemberRoleId(m)}
-                                disabled={!canEdit}
-                                onChange={(e) => handleUpdateRole(m.id, parseInt(e.target.value))}
-                              >
-                                {roles.map((r) => (
-                                  <option key={r.id} value={r.id}>
-                                    {projectRoleLabel(r.name)}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td style={{ padding: "12px", textAlign: "right" }}>
-                              <button
-                                type="button"
-                                style={{ background: "none", border: "none", color: "var(--color-critical)", cursor: canEdit ? "pointer" : "not-allowed", opacity: canEdit ? 1 : 0.5 }}
-                                onClick={() => handleRemoveMember(m.id)}
-                                disabled={!canEdit}
-                                title="Xóa"
-                              >
-                                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
+                          <tr key={m.id} style={{ borderBottom: "1px solid rgba(148, 163, 184, 0.15)" }}>
+                            <td style={{ padding: "12px 16px", fontSize: "0.95rem" }}><strong>{m.userName}</strong></td>
+                            <td style={{ padding: "12px 16px", fontSize: "0.95rem", color: "var(--text-secondary)" }}>{m.userEmail}</td>
+                            <td style={{ padding: "12px 16px" }}>
+                              <span style={{
+                                display: "block",
+                                width: "150px",
+                                textAlign: "center",
+                                padding: "6px 12px",
+                                background: "rgba(241, 245, 249, 0.6)",
+                                border: "1px solid rgba(148, 163, 184, 0.2)",
+                                borderRadius: "8px",
+                                fontSize: "0.85rem",
+                                color: "var(--text-secondary)",
+                                fontWeight: 500,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                boxSizing: "border-box"
+                              }}
+                              title={(() => {
+                                const roleObj = roles.find((r) => r.id === resolveMemberRoleId(m));
+                                return roleObj ? projectRoleLabel(roleObj.name) : "Thành viên";
+                              })()}>
+                                {(() => {
+                                  const roleObj = roles.find((r) => r.id === resolveMemberRoleId(m));
+                                  return roleObj ? projectRoleLabel(roleObj.name) : "Thành viên";
+                                })()}
+                              </span>
                             </td>
                           </tr>
                         );

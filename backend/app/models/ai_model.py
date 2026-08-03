@@ -14,7 +14,11 @@ class AiConversation(Base):
     title = Column(String(255))
     context_summary = Column(Text)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
 
 class AiMessage(Base):
@@ -22,6 +26,6 @@ class AiMessage(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     conversation_id = Column(Integer, ForeignKey("ai_conversations.id"), nullable=False, index=True)
-    sender = Column(String(50), nullable=False) # user, assistant
+    sender = Column(String(50), nullable=False)  # user, assistant
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

@@ -1,13 +1,14 @@
-from typing import List, Literal, Optional, Union
-from pydantic import BaseModel, Field
 from datetime import date, datetime, timezone
-from pydantic import field_validator
+from typing import List, Literal, Optional, Union
+
+from pydantic import BaseModel, Field, field_validator
 
 
 def _ensure_utc_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
 
 class TaskAssigneeResponse(BaseModel):
     user_id: str
@@ -17,12 +18,15 @@ class TaskAssigneeResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class TaskAttachmentBase(BaseModel):
     file_url: str
     file_name: str
 
+
 class TaskAttachmentCreate(TaskAttachmentBase):
     pass
+
 
 class TaskAttachmentResponse(TaskAttachmentBase):
     id: int
@@ -39,6 +43,7 @@ class TaskAttachmentResponse(TaskAttachmentBase):
     class Config:
         from_attributes = True
 
+
 class LogWorkBase(BaseModel):
     work_date: date
     hours_spent: float
@@ -53,8 +58,10 @@ class LogWorkBase(BaseModel):
             raise ValueError("Số giờ logwork không được âm.")
         return value
 
+
 class LogWorkCreate(LogWorkBase):
     pass
+
 
 class LogWorkResponse(LogWorkBase):
     id: int
@@ -74,6 +81,7 @@ class LogWorkResponse(LogWorkBase):
 
     class Config:
         from_attributes = True
+
 
 class TaskBase(BaseModel):
     title: str
@@ -105,13 +113,13 @@ class TaskBase(BaseModel):
             return None
         return stripped
 
-
     @field_validator("estimated_hours")
     @classmethod
     def validate_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
         if value is not None and value < 0:
             raise ValueError("Thời gian ước tính không được âm.")
         return value
+
 
 class TaskCreate(TaskBase):
     assignee_user_ids: List[Union[str, int]] = Field(default_factory=list)
@@ -132,6 +140,7 @@ class TaskCreate(TaskBase):
         if start_date and value < start_date:
             raise ValueError("Hạn chót phải sau hoặc bằng ngày bắt đầu.")
         return value
+
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -173,6 +182,7 @@ class TaskUpdate(BaseModel):
             raise ValueError("Thời gian ước tính không được âm.")
         return value
 
+
 class TaskResponse(TaskBase):
     id: int
     project_id: int
@@ -191,6 +201,6 @@ class TaskResponse(TaskBase):
         if value is None:
             return None
         return _ensure_utc_datetime(value)
-    
+
     class Config:
         from_attributes = True

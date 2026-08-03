@@ -36,7 +36,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
         await signOut();
 
         if (!isCancelled) {
-          window.location.assign("/login");
+          window.location.assign("/unauthorized");
         }
       }
     }
@@ -44,7 +44,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     const handleSessionExpired = async () => {
       await signOut();
       if (!isCancelled) {
-        router.replace("/login");
+        router.replace("/unauthorized");
       }
     };
 
@@ -60,7 +60,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isReady && !session) {
-      window.location.assign("/login");
+      window.location.assign("/unauthorized");
     }
   }, [isReady, session]);
 

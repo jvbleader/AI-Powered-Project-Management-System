@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { KeyValueList, StatusPill } from "@/components/ui";
 import { AssigneeSelect } from "@/components/assignee-select";
 import { taskApi } from "@/services/api";
+import { CustomSelect } from "@/components/custom-select";
 import { formatDate, formatDateTime } from "@/lib/utils/format";
 import type { EnrichedTask, Task, TaskLogworkEntry, UserProfile } from "@/types";
 import { LogworkModal } from "./logwork-modal";
@@ -212,8 +213,7 @@ export function TaskDetailModal({
       >
         <div
           style={{
-            padding: "1.5rem",
-            borderBottom: "1px solid var(--border)",
+            padding: "1.5rem 1.5rem 0.5rem 1.5rem",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-start",
@@ -261,11 +261,11 @@ export function TaskDetailModal({
               </h2>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <button
                 type="button"
                 className="secondary-button"
-                style={{ color: "var(--critical-fg)", borderColor: "var(--critical-border)" }}
+                style={{ color: "var(--critical-fg)", borderColor: "var(--critical-border)", padding: "0.5rem 1rem", fontSize: "0.85rem" }}
                 onClick={async () => {
                   if (confirm("Bạn có chắc chắn muốn xoá task này không?")) {
                     try {
@@ -286,7 +286,7 @@ export function TaskDetailModal({
               <a
                 href={`/projects/${task.projectId}?tab=${isWaterfall ? 'gantt' : 'kanban'}&highlightTaskId=${task.id}&highlightColor=green`}
                 className="secondary-button"
-                style={{ textDecoration: "none" }}
+                style={{ textDecoration: "none", padding: "0.5rem 1rem", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
               >
                 Chuyển tới dự án
               </a>
@@ -297,6 +297,7 @@ export function TaskDetailModal({
                 className="primary-button"
                 onClick={() => setIsLogworkModalOpen(true)}
                 disabled={isLoading}
+                style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}
               >
                 + Logwork
               </button>
@@ -306,9 +307,10 @@ export function TaskDetailModal({
               style={{
                 background: "none",
                 border: "none",
-                fontSize: "1.5rem",
+                fontSize: "1.35rem",
                 cursor: "pointer",
                 color: "var(--foreground-muted)",
+                padding: "0.25rem 0.5rem"
               }}
             >
               &times;
@@ -316,195 +318,116 @@ export function TaskDetailModal({
           </div>
         </div>
 
-        <div className="task-detail-layout" style={{ padding: "1.5rem", overflowY: "auto", flex: 1 }}>
-          <div style={{ flex: 2 }}>
-            <h3 style={{ fontSize: "1rem", marginBottom: "1rem", color: "var(--foreground-muted)" }}>
-              Mô tả công việc
-            </h3>
-            {isEditingDesc ? (
-              <div>
-                <textarea
-                  autoFocus
-                  value={editDesc}
-                  onChange={(event) => setEditDesc(event.target.value)}
-                  rows={6}
-                  style={{
-                    width: "100%",
-                    padding: "0.75rem",
-                    borderRadius: "4px",
-                    border: "1px solid var(--border)",
-                    background: "var(--surface-sunken)",
-                    color: "var(--foreground)",
-                    resize: "vertical",
-                    marginBottom: "0.5rem",
-                  }}
-                />
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button className="primary-button" onClick={saveDesc} disabled={isSaving}>
-                    Lưu
-                  </button>
-                  <button
-                    className="secondary-button"
-                    onClick={() => {
-                      setIsEditingDesc(false);
-                      setEditDesc(task?.description || "");
-                    }}
-                    disabled={isSaving}
-                  >
-                    Hủy
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div
-                style={{
-                  padding: "0.75rem",
-                  background: "var(--surface-sunken)",
-                  borderRadius: "4px",
-                  minHeight: "100px",
-                  cursor: canEditTask ? "pointer" : "default",
-                  whiteSpace: "pre-wrap",
-                }}
-                onClick={() => canEditTask && setIsEditingDesc(true)}
-                title={canEditTask ? "Bấm để sửa mô tả" : undefined}
-              >
-                {isLoading ? "..." : task?.description || (
-                  <span style={{ color: "var(--foreground-subtle)" }}>Chưa có mô tả.</span>
-                )}
-              </div>
-            )}
-
-            <div style={{ marginTop: "1.5rem" }}>
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  marginBottom: "1rem",
-                  color: "var(--foreground-muted)",
-                }}
-              >
-                Logwork đã ghi nhận
-              </h3>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.85rem",
-                }}
-              >
-                {isLoading ? (
-                  <div
+        <div className="task-detail-layout" style={{ padding: "0 1.5rem 1.5rem 1.5rem", overflow: "hidden", flex: 1, display: "flex", flexDirection: "column" }}>
+          <div style={{ flexShrink: 0, marginBottom: "0.5rem" }}>
+            <div style={{ marginBottom: "0.75rem" }}>
+              <span className="task-detail-field-label" style={{ marginBottom: "0.5rem" }}>
+                Mô tả công việc
+              </span>
+              {isEditingDesc ? (
+                <div>
+                  <textarea
+                    autoFocus
+                    value={editDesc}
+                    onChange={(event) => setEditDesc(event.target.value)}
+                    rows={6}
                     style={{
+                      width: "100%",
                       padding: "1rem",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-sunken)",
-                      color: "var(--foreground-muted)",
+                      borderRadius: "12px",
+                      border: "1px solid rgba(59, 130, 246, 0.42)",
+                      background: "#ffffff",
+                      color: "var(--ink)",
+                      resize: "vertical",
+                      marginBottom: "0.5rem",
+                      fontSize: "0.95rem",
+                      lineHeight: "1.7",
+                      boxShadow: "0 0 0 4px rgba(59, 130, 246, 0.15)",
+                      outline: "none"
                     }}
-                  >
-                    Đang tải logwork...
-                  </div>
-                ) : logworks.length ? (
-                  logworks.map((entry) => (
-                    <article
-                      key={entry.id}
-                      style={{
-                        padding: "1rem",
-                        borderRadius: "10px",
-                        border: "1px solid var(--border)",
-                        background: "var(--surface-sunken)",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "0.55rem",
+                  />
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button className="primary-button" onClick={saveDesc} disabled={isSaving}>
+                      Lưu
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        setIsEditingDesc(false);
+                        setEditDesc(task?.description || "");
                       }}
+                      disabled={isSaving}
                     >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: "1rem",
-                          flexWrap: "wrap",
-                          alignItems: "baseline",
-                        }}
-                      >
-                        <div>
-                          <strong style={{ display: "block", marginBottom: "0.15rem" }}>
-                            {entry.userName}
-                          </strong>
-                          <span style={{ color: "var(--foreground-muted)", fontSize: "0.88rem" }}>
-                            Ngày logwork: {formatDate(entry.workDate)}
-                          </span>
-                        </div>
-                        <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
-                          <strong style={{ display: "block" }}>{entry.hoursSpent}h</strong>
-                          <span style={{ color: "var(--foreground-muted)", fontSize: "0.8rem" }}>
-                            {formatDateTime(entry.createdAt)}
-                          </span>
-                          <span style={{ 
-                            fontSize: "0.75rem", 
-                            fontWeight: 600,
-                            padding: "0.15rem 0.5rem", 
-                            borderRadius: "1rem",
-                            backgroundColor: entry.status === 'APPROVED' ? 'rgba(34, 197, 94, 0.15)' : entry.status === 'REJECTED' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(234, 179, 8, 0.15)',
-                            color: entry.status === 'APPROVED' ? 'var(--success-fg)' : entry.status === 'REJECTED' ? 'var(--critical-fg)' : 'var(--warning-fg)'
-                          }}>
-                            {entry.status === 'APPROVED' ? 'Đã duyệt' : entry.status === 'REJECTED' ? 'Từ chối' : 'Chờ duyệt'}
-                          </span>
-                        </div>
-                      </div>
-                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
-                        {entry.workContent}
-                      </div>
-                      {entry.comment ? (
-                        <div
-                          style={{
-                            paddingTop: "0.55rem",
-                            borderTop: "1px dashed var(--border)",
-                            color: "var(--foreground-muted)",
-                            fontSize: "0.92rem",
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
-                          Ghi chú: {entry.comment}
-                        </div>
-                      ) : null}
-                    </article>
-                  ))
-                ) : (
-                  <div
-                    style={{
-                      padding: "1rem",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-sunken)",
-                      color: "var(--foreground-muted)",
-                    }}
-                  >
-                    Task này chưa có logwork nào.
+                      Hủy
+                    </button>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: "1rem",
+                    background: "rgba(15, 23, 42, 0.02)",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(15, 23, 42, 0.03)",
+                    cursor: canEditTask ? "pointer" : "default",
+                    whiteSpace: "pre-wrap",
+                    fontSize: "0.95rem",
+                    lineHeight: "1.7",
+                    color: task?.description ? "var(--ink)" : "var(--foreground-muted)",
+                    maxHeight: "35vh",
+                    overflowY: "auto",
+                  }}
+                  onClick={() => canEditTask && setIsEditingDesc(true)}
+                  title={canEditTask ? "Bấm để sửa mô tả" : undefined}
+                >
+                  {isLoading ? "..." : task?.description || "Chưa có mô tả."}
+                </div>
+              )}
             </div>
-          </div>
 
-          <aside className="task-detail-side">
-            <div className="task-detail-assignee-card">
-              <div className="task-detail-assignee-kicker">Người đang được giao</div>
-              <strong>{isBacklog ? "Chưa phân công" : (resolvedAssignee?.name || task?.assigneeName || "Chưa phân công")}</strong>
-              <span>{isBacklog ? "Chưa có thông tin email" : (resolvedAssignee?.email || task?.assigneeEmail || "Chưa có thông tin email")}</span>
-            </div>
-
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: "1.25rem",
+              paddingTop: "0.5rem"
+            }}>
             <label className="task-detail-field">
               <span className="task-detail-field-label">Trạng thái</span>
-              <select
-                className="task-detail-control task-detail-select"
+              <CustomSelect
+                className="task-detail-control"
                 value={task?.status || "TODO"}
-                onChange={(event) => void handleUpdate({ status: event.target.value as Task["status"] })}
+                onChange={(val) => void handleUpdate({ status: val as Task["status"] })}
                 disabled={isLoading || isSaving || !canUpdateStatus}
-              >
-                <option value="TODO">Cần làm</option>
-                <option value="IN_PROGRESS">Đang tiến hành</option>
-                <option value="DONE">Hoàn thành</option>
-              </select>
+                style={{
+                  color: task?.status === "DONE" ? "#15803d" : task?.status === "IN_PROGRESS" ? "#1d4ed8" : "#b45309",
+                  backgroundColor: task?.status === "DONE" ? "rgba(34, 197, 94, 0.15)" : task?.status === "IN_PROGRESS" ? "rgba(59, 130, 246, 0.15)" : "rgba(250, 204, 21, 0.18)"
+                }}
+                options={[
+                  { value: "TODO", label: "Cần làm" },
+                  { value: "IN_PROGRESS", label: "Đang tiến hành" },
+                  { value: "DONE", label: "Hoàn thành" },
+                ]}
+              />
+            </label>
+
+            <label className="task-detail-field">
+              <span className="task-detail-field-label">Ưu tiên</span>
+              <CustomSelect
+                className="task-detail-control"
+                value={task?.priority || "MEDIUM"}
+                onChange={(val) => void handleUpdate({ priority: val as Task["priority"] })}
+                disabled={isLoading || isSaving || !canEditTask}
+                style={{
+                  color: task?.priority === "CRITICAL" ? "#b91c1c" : task?.priority === "HIGH" ? "#b45309" : task?.priority === "MEDIUM" ? "#15803d" : "#0369a1",
+                  backgroundColor: task?.priority === "CRITICAL" ? "rgba(220, 38, 38, 0.15)" : task?.priority === "HIGH" ? "rgba(217, 119, 6, 0.15)" : task?.priority === "MEDIUM" ? "rgba(22, 163, 74, 0.15)" : "rgba(2, 132, 199, 0.15)"
+                }}
+                options={[
+                  { value: "LOW", label: "Thấp" },
+                  { value: "MEDIUM", label: "Trung bình" },
+                  { value: "HIGH", label: "Cao" },
+                  { value: "CRITICAL", label: "Khẩn cấp" },
+                ]}
+              />
             </label>
 
             <label className="task-detail-field">
@@ -521,21 +444,6 @@ export function TaskDetailModal({
                 }
                 options={assigneeOptions}
               />
-            </label>
-
-            <label className="task-detail-field">
-              <span className="task-detail-field-label">Ưu tiên</span>
-              <select
-                className="task-detail-control task-detail-select"
-                value={task?.priority || "MEDIUM"}
-                onChange={(event) => void handleUpdate({ priority: event.target.value as Task["priority"] })}
-                disabled={isLoading || isSaving || !canEditTask}
-              >
-                <option value="LOW">Thấp</option>
-                <option value="MEDIUM">Trung bình</option>
-                <option value="HIGH">Cao</option>
-                <option value="CRITICAL">Khẩn cấp</option>
-              </select>
             </label>
 
             <label className="task-detail-field">
@@ -592,9 +500,112 @@ export function TaskDetailModal({
                 disabled={isLoading || isSaving || !canEditTask}
               />
             </label>
-          </aside>
+          </div>
         </div>
-      </div>
+
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+              <span
+                className="task-detail-field-label"
+                style={{
+                  marginBottom: "1rem",
+                  display: "block",
+                  flexShrink: 0,
+                }}
+              >
+                Logwork đã ghi nhận
+              </span>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.85rem",
+                  overflowY: "auto",
+                  paddingRight: "0.5rem",
+                  flex: 1,
+                  background: "var(--surface-sunken)",
+                  padding: "1rem",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {isLoading ? (
+                  <div style={{ color: "var(--foreground-muted)" }}>Đang tải logwork...</div>
+                ) : logworks.length ? (
+                  logworks.map((entry) => (
+                    <article
+                      key={entry.id}
+                      style={{
+                        padding: "1rem",
+                        borderRadius: "8px",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.55rem",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "1rem",
+                          flexWrap: "wrap",
+                          alignItems: "baseline",
+                        }}
+                      >
+                        <div>
+                          <strong style={{ display: "block", marginBottom: "0.15rem" }}>
+                            {entry.userName}
+                          </strong>
+                          <span style={{ color: "var(--foreground-muted)", fontSize: "0.88rem" }}>
+                            Ngày logwork: {formatDate(entry.workDate)}
+                          </span>
+                        </div>
+                        <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
+                          <strong style={{ display: "block" }}>{entry.hoursSpent}h</strong>
+                          <span style={{ color: "var(--foreground-muted)", fontSize: "0.8rem" }}>
+                            {formatDateTime(entry.createdAt)}
+                          </span>
+                          <span style={{ 
+                            fontSize: "0.75rem", 
+                            fontWeight: 600,
+                            padding: "0.15rem 0.5rem", 
+                            borderRadius: "1rem",
+                            backgroundColor: entry.status === 'APPROVED' ? 'rgba(34, 197, 94, 0.15)' : entry.status === 'REJECTED' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                            color: entry.status === 'APPROVED' ? 'var(--success-fg)' : entry.status === 'REJECTED' ? 'var(--critical-fg)' : 'var(--warning-fg)'
+                          }}>
+                            {entry.status === 'APPROVED' ? 'Đã duyệt' : entry.status === 'REJECTED' ? 'Từ chối' : 'Chờ duyệt'}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
+                        {entry.workContent}
+                      </div>
+                      {entry.comment ? (
+                        <div
+                          style={{
+                            paddingTop: "0.55rem",
+                            borderTop: "1px dashed var(--border)",
+                            color: "var(--foreground-muted)",
+                            fontSize: "0.92rem",
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          Ghi chú: {entry.comment}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))
+                ) : (
+                  <div style={{ color: "var(--foreground-muted)" }}>
+                    Task này chưa có logwork nào.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
       {task ? (
         <LogworkModal

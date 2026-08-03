@@ -19,12 +19,12 @@ from app.schemas.user_schema import (
     UserStatusUpdate,
 )
 from app.services.azure_blob_service import azure_blob_service
+from app.utils.password_hash import hash_password
 from app.utils.project_helpers import (
     is_admin_user,
     list_accessible_project_ids,
     user_can_access_team_directory,
 )
-from app.utils.password_hash import hash_password
 
 
 def _require_admin(current_user: User) -> None:
@@ -75,7 +75,7 @@ def update_phone(db: Session, current_user: User, data: UpdatePhone) -> User:
 
 def update_avatar(db: Session, current_user: User, data: UpdateAvatar) -> User:
     avatar_url = azure_blob_service.upload_base64_avatar(data.avatar_url, current_user.id)
-    
+
     current_user.avatar_url = avatar_url
     current_user.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -139,7 +139,9 @@ def get_users(
     )
 
 
-def update_user_status(db: Session, current_user: User, user_id: int, data: UserStatusUpdate) -> User:
+def update_user_status(
+    db: Session, current_user: User, user_id: int, data: UserStatusUpdate
+) -> User:
     _require_admin(current_user)
 
     user = user_repository.get_by_id(db, user_id)

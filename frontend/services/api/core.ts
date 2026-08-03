@@ -279,8 +279,22 @@ export const apiEndpoints = {
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
   },
   ai: {
-    classifyIntent: { method: "POST" as EndpointMethod, path: "/api/ai/classify-intent" },
-    executeAi: { method: "POST" as EndpointMethod, path: "/api/ai/execute" },
+    classifyIntent: { path: "/api/ai/classify-intent", method: "POST" },
+    executeAi: { path: "/api/ai/execute", method: "POST" },
+    chat: { path: "/api/ai/chat", method: "POST" },
+    sessions: { path: "/api/ai/sessions", method: "GET" },
+    sessionMessages: (id: string) => ({
+      path: `/api/ai/sessions/${id}/messages`,
+      method: "GET" as EndpointMethod,
+    }),
+    updateSession: (id: string) => ({
+      path: `/api/ai/sessions/${id}`,
+      method: "PUT" as EndpointMethod,
+    }),
+    clearSession: (id: string) => ({
+      path: `/api/ai/sessions/${id}`,
+      method: "DELETE" as EndpointMethod,
+    }),
     quickQuery: { method: "POST" as EndpointMethod, path: "/api/ai/query" },
     reports: { method: "GET" as EndpointMethod, path: "/api/ai/reports" },
     memory: { method: "GET" as EndpointMethod, path: "/api/ai/memory" },

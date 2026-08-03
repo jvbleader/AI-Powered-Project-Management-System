@@ -214,12 +214,12 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1.5rem", alignItems: "stretch" }}>
-        
+
         {/* Project Progress Section */}
         <Surface title="Tiến độ chi tiết từng dự án" style={{ display: "flex", flexDirection: "column", height: "100%" }} aside={<Link href="/projects" style={{ fontSize: "0.875rem", color: "var(--primary-base)", fontWeight: 500, textDecoration: "none" }}>Quản lý dự án &rarr;</Link>}>
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem", flex: 1 }}>
             {projectHealths.length > 0 ? (
-              <ColumnChart 
+              <ColumnChart
                 items={projectHealths.map((ph) => ({
                   label: ph.name,
                   value: ph.progress,
@@ -286,7 +286,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "1.5rem", borderBottom: "1px solid rgba(148,163,184,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0, fontSize: "1.25rem", color: "var(--ink)", fontWeight: 600 }}>Danh sách Nhiệm vụ Quá hạn</h3>
-              <button 
+              <button
                 onClick={() => setIsOverdueModalOpen(false)}
                 style={{ background: "transparent", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "var(--foreground-muted)", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
@@ -341,7 +341,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "1.5rem", borderBottom: "1px solid rgba(148,163,184,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0, fontSize: "1.25rem", color: "var(--ink)", fontWeight: 600 }}>Danh sách Dự án Toàn hệ thống</h3>
-              <button 
+              <button
                 onClick={() => setIsTotalProjectsModalOpen(false)}
                 style={{ background: "transparent", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "var(--foreground-muted)", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
@@ -399,7 +399,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "1.5rem", borderBottom: "1px solid rgba(148,163,184,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0, fontSize: "1.25rem", color: "var(--ink)", fontWeight: 600 }}>Nhiệm vụ Vừa hoàn thành (Top 50)</h3>
-              <button 
+              <button
                 onClick={() => setIsCompletedTasksModalOpen(false)}
                 style={{ background: "transparent", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "var(--foreground-muted)", display: "flex", alignItems: "center", justifyContent: "center" }}
               >
