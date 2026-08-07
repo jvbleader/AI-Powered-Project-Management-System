@@ -304,27 +304,31 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
         switch (node.level) {
           case 0:
             return (
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" style={{ color: "#0047B3", flexShrink: 0 }} title="Epic">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" style={{ color: "#0047B3", flexShrink: 0 }}>
+                <title>Epic</title>
                 <polygon points="12 2 22 12 12 22 2 12 12 2" />
               </svg>
             );
           case 1:
             return (
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#2684FF", flexShrink: 0 }} title="Task">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#2684FF", flexShrink: 0 }}>
+                <title>Task</title>
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                 <path d="M9 12l2 2 4-4" />
               </svg>
             );
           case 2:
             return (
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#36B37E", flexShrink: 0 }} title="Subtask">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#36B37E", flexShrink: 0 }}>
+                <title>Subtask</title>
                 <polyline points="15 10 20 15 15 20" />
                 <path d="M4 4v7a4 4 0 0 0 4 4h12" />
               </svg>
             );
           default:
             return (
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#8993A4", flexShrink: 0 }} title="Sub-subtask">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#8993A4", flexShrink: 0 }}>
+                <title>Sub-subtask</title>
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="8" x2="12" y2="16" />
                 <line x1="8" y1="12" x2="16" y2="12" />
@@ -420,27 +424,29 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               }}
               onClick={() => handleRowClick(node.task.id)}
             >
-              {hasChildren && isRoot ? (
-                /* Summary Task (Parent) */
-                <div
-                  style={{
-                    gridColumnStart: startCol,
-                    gridColumnEnd: endCol,
-                    position: "relative",
-                    marginTop: "8px",
-                    height: "10px",
-                    backgroundColor: "#1a365d", /* Màu xanh đen đậm */
-                    zIndex: 2,
-                    borderTopLeftRadius: "2px",
-                    borderTopRightRadius: "2px"
-                  }}
-                  title={`[Hạng mục] ${node.task.title}`}
-                >
-                  {/* Left Hook */}
-                  <div style={{ position: "absolute", left: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderRight: "6px solid transparent" }} />
-                  {/* Right Hook */}
-                  <div style={{ position: "absolute", right: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderLeft: "6px solid transparent" }} />
-                </div>
+              {hasChildren ? (
+                isRoot ? (
+                  /* Summary Task (Parent/Epic) */
+                  <div
+                    style={{
+                      gridColumnStart: startCol,
+                      gridColumnEnd: endCol,
+                      position: "relative",
+                      marginTop: "8px",
+                      height: "10px",
+                      backgroundColor: "#1a365d", /* Màu xanh đen đậm */
+                      zIndex: 2,
+                      borderTopLeftRadius: "2px",
+                      borderTopRightRadius: "2px"
+                    }}
+                    title={`[Hạng mục] ${node.task.title}`}
+                  >
+                    {/* Left Hook */}
+                    <div style={{ position: "absolute", left: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderRight: "6px solid transparent" }} />
+                    {/* Right Hook */}
+                    <div style={{ position: "absolute", right: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderLeft: "6px solid transparent" }} />
+                  </div>
+                ) : null /* Do not render bars for intermediate parent tasks */
               ) : (
                 /* Leaf Task (Child) */
                 <div

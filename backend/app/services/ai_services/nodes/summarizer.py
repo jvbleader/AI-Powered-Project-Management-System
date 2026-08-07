@@ -4,8 +4,10 @@ from langchain_core.messages import HumanMessage, RemoveMessage
 from langchain_openai import ChatOpenAI
 
 from app.services.ai_services.state import AgentState
+from app.config.settings import get_settings
 
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).with_config(tags=["summarizer_llm"])
+settings = get_settings()
+llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.openai_api_key, temperature=0).with_config(tags=["summarizer_llm"])
 
 
 def summarizer_node(state: AgentState):

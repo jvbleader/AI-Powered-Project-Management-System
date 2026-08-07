@@ -13,6 +13,7 @@ import {
   AiQuickResponseRequest,
 } from "@/types";
 import { TaskDraftConfirm } from "./task-draft-confirm";
+import { SprintDraftConfirm } from "./sprint-draft-confirm";
 
 type SuggestedPrompt = {
   action: AiQuickResponseAction;
@@ -121,6 +122,11 @@ const MemoizedMarkdown = memo(({ content, messageId, projectId }: { content: str
         const initialStatus = match[1] || "pending"; // "confirmed" | "rejected" | "pending"
         return <TaskDraftConfirm draft={String(children)} projectId={projectId} messageId={messageId} initialStatus={initialStatus as any} />;
       }
+      const sprintMatch = /language-json_sprint_draft(?:_(confirmed|rejected))?/.exec(className || "");
+      if (!inline && sprintMatch) {
+        const initialStatus = sprintMatch[1] || "pending"; // "confirmed" | "rejected" | "pending"
+        return <SprintDraftConfirm draft={String(children)} projectId={projectId} messageId={messageId} initialStatus={initialStatus as any} />;
+      }
       return (
         <code className={className} {...props}>
           {children}
@@ -152,7 +158,7 @@ export function AssistantBubble({
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const messageStackRef = useRef<HTMLDivElement | null>(null);
-  const scrollTargetMessageIdRef = useRef<string | null>(null);
+  const isAutoScrollEnabledRef = useRef<boolean>(true);
 
   const promptChips = useMemo(() => suggestedPrompts.slice(0, 4), []);
 
@@ -283,30 +289,24 @@ export function AssistantBubble({
       return;
     }
 
-    const messageStack = messageStackRef.current;
-    const targetMessageId = scrollTargetMessageIdRef.current;
-
-    if (!targetMessageId) {
+    if (isAutoScrollEnabledRef.current) {
+      const messageStack = messageStackRef.current;
       messageStack.scrollTop = messageStack.scrollHeight;
-      return;
-    }
-
-    const targetMessage = messageStack.querySelector<HTMLElement>(
-      `[data-message-id="${targetMessageId}"]`,
-    );
-    if (targetMessage) {
-      messageStack.scrollTop = Math.max(
-        0,
-        targetMessage.offsetTop - messageStack.offsetTop,
-      );
     }
   }, [isOpen, messages]);
+
+  const handleScroll = () => {
+    if (!messageStackRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messageStackRef.current;
+    // Enable auto-scroll if user is within 100px of the bottom
+    isAutoScrollEnabledRef.current = scrollHeight - scrollTop - clientHeight < 100;
+  };
 
 
 
   function pushAssistantText(content: string) {
     const message = createAssistantMessage(content);
-    scrollTargetMessageIdRef.current = message.id;
+    isAutoScrollEnabledRef.current = true;
     setMessages((current) => [...current, message]);
   }
 
@@ -322,13 +322,14 @@ export function AssistantBubble({
     const scopeProjectId = projectId || null;
 
     const loadingMessageId = `assistant-loading-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    scrollTargetMessageIdRef.current = loadingMessageId;
+    isAutoScrollEnabledRef.current = true;
     setIsLoading(true);
     
     const controller = new AbortController();
     setAbortController(controller);
     
     let targetSessionId = activeSessionId;
+    let finalMessageId = `assistant-${Date.now()}`;
 
     try {
       if (targetSessionId.startsWith("sess-")) {
@@ -428,6 +429,16 @@ export function AssistantBubble({
                       : message
                   )
                 , targetSessionId);
+              } else if (data.replace !== undefined) {
+                toolCallStr = "";
+                assistantContent = data.replace;
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === loadingMessageId
+                      ? { ...message, content: assistantContent }
+                      : message
+                  )
+                , targetSessionId);
               } else if (data.error) {
                 assistantContent += `\n\n**Lỗi:** ${data.error}`;
                 setMessages((current) =>
@@ -437,6 +448,13 @@ export function AssistantBubble({
                       : message
                   )
                 , targetSessionId);
+              } else if (data.new_session_id) {
+                const newId = String(data.new_session_id);
+                setSessions(curr => curr.map(s => s.id === targetSessionId ? { ...s, id: newId } : s));
+                setActiveSessionId(curr => curr === targetSessionId ? newId : curr);
+                targetSessionId = newId;
+              } else if (data.message_id) {
+                finalMessageId = String(data.message_id);
               }
             } catch (e) {
               // Ignore JSON parse errors for incomplete chunks (shouldn't happen with proper buffer)
@@ -457,11 +475,11 @@ export function AssistantBubble({
       );
     } finally {
       setAbortController(null);
-      // Fix: Rename the ID to a permanent one so it saves to localStorage
+      // Rename the ID to a permanent one from the server so it can be updated
       setMessages((current) =>
         current.map((message) =>
           message.id === loadingMessageId
-            ? { ...message, id: `assistant-${Date.now()}` }
+            ? { ...message, id: finalMessageId }
             : message
         ),
         targetSessionId
@@ -538,7 +556,7 @@ export function AssistantBubble({
 
 
 
-      <div ref={messageStackRef} className="assistant-message-stack">
+      <div ref={messageStackRef} className="assistant-message-stack" onScroll={handleScroll}>
         {messages.map((message) => (
           <article
             key={message.id}
@@ -550,7 +568,7 @@ export function AssistantBubble({
                 : "assistant-message-user",
             )}
           >
-            <span>{message.role === "assistant" ? "AI" : "Bạn"}</span>
+            <span className="assistant-message-sender">{message.role === "assistant" ? "AI" : "Bạn"}</span>
 
             <div className="assistant-message-content">
               <MemoizedMarkdown content={message.content} messageId={message.id} projectId={projectId} />

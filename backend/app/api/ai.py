@@ -12,7 +12,7 @@ from app.schemas.ai_schema import (
     QuickResponseResponse,
 )
 from app.services.ai_services import service as ai_service
-from app.services.ai_services.tools.write_tools import execute_create_tasks
+from app.services.ai_services.tools.action_tools import execute_create_tasks
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
 

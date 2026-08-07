@@ -58,6 +58,15 @@ def create_sprint(db: Session, project_id: int, current_user_id: int, sprint_in:
     actor_member = _get_or_create_actor_member(db, project_id, current_user_id)
 
     sprint_data = sprint_in.model_dump()
+    
+    if sprint_data.get("status") and sprint_data.get("status").upper() == "ACTIVE":
+        active_sprint = sprint_repository.get_active_sprint_by_project(db, project_id)
+        if active_sprint:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Sprint '{active_sprint.name}' đang hoạt động. Không thể tạo và active ngay sprint khác.",
+            )
+            
     sprint_data["project_id"] = project_id
     sprint_data["created_by_member_id"] = actor_member.id
 
@@ -80,6 +89,24 @@ def update_sprint(db: Session, sprint_id: int, current_user_id: int, sprint_in: 
         )
 
     update_data = sprint_in.model_dump(exclude_unset=True)
+    
+    if update_data.get("status") and update_data.get("status").upper() == "ACTIVE":
+        active_sprint = sprint_repository.get_active_sprint_by_project(db, sprint.project_id)
+        if active_sprint and active_sprint.id != sprint_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Sprint '{active_sprint.name}' đang hoạt động. Không thể bắt đầu sprint khác.",
+            )
+    
+    if update_data.get("status") and update_data.get("status").lower() == "closed":
+        from app.models.task_model import Task
+        from sqlalchemy import func
+        # Move all unfinished tasks in this sprint back to the backlog
+        db.query(Task).filter(
+            Task.sprint_id == sprint_id,
+            func.lower(Task.status) != "done"
+        ).update({"sprint_id": None}, synchronize_session=False)
+
     sprint = sprint_repository.update_sprint(db, sprint, update_data)
     db.commit()
     db.refresh(sprint)

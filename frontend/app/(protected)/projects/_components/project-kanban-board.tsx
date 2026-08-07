@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { taskApi } from "@/services/api";
+import { taskApi, sprintApi } from "@/services/api";
 import Link from "next/link";
 import { EnrichedTask, Sprint } from "@/types";
 import { StatusPill } from "@/components/ui";
@@ -14,6 +14,8 @@ interface ProjectKanbanBoardProps {
   viewerId: string;
   onTaskUpdated: () => void;
   onTaskClick: (taskId: string) => void;
+  onSprintUpdated?: () => void;
+  onEditSprint?: (sprintId: string) => void;
 }
 
 const KANBAN_COLUMNS = [
@@ -90,13 +92,14 @@ function sortBacklogTasks(tasks: EnrichedTask[]): EnrichedTask[] {
   return result;
 }
 
-export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, onTaskClick }: ProjectKanbanBoardProps) {
+export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, onTaskClick, onSprintUpdated, onEditSprint }: ProjectKanbanBoardProps) {
   const searchParams = useSearchParams();
   const highlightTaskId = searchParams.get("highlightTaskId");
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
   const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const sortedTasks = [...tasks].sort((a, b) => {
@@ -145,6 +148,18 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
 
   const selectedSprint = sprints?.find((s) => String(s.id) === selectedSprintId);
   
+  const handleUpdateSprintStatus = async (status: "ACTIVE" | "CLOSED") => {
+    if (!selectedSprint) return;
+    try {
+      await sprintApi.update(String(selectedSprint.id), { status });
+      if (onSprintUpdated) {
+        onSprintUpdated();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Lỗi cập nhật Sprint");
+    }
+  };
+  
   // Kanban tasks: belong to selected sprint
   const kanbanTasks = selectedSprint ? localTasks.filter((t) => String(t.sprintId) === String(selectedSprint.id)) : [];
   
@@ -158,6 +173,12 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
     e.stopPropagation();
     e.dataTransfer.setData("text/plain", taskId);
     e.dataTransfer.effectAllowed = "move";
+    
+    // Force the browser to use only this specific card as the ghost image
+    if (e.currentTarget instanceof Element) {
+      e.dataTransfer.setDragImage(e.currentTarget, 20, 20);
+    }
+    
     // Defer state update to allow browser to capture drag ghost
     setTimeout(() => {
       setDraggedTaskId(taskId);
@@ -171,6 +192,11 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
 
   const handleDragOver = (e: React.DragEvent, colId: string) => {
     e.preventDefault();
+    if (colId !== "BACKLOG" && selectedSprint?.status?.toUpperCase() !== "ACTIVE") {
+      e.dataTransfer.dropEffect = "none";
+      if (dragOverColumn === colId) setDragOverColumn(null);
+      return;
+    }
     e.dataTransfer.dropEffect = "move";
     if (dragOverColumn !== colId) {
       setDragOverColumn(colId);
@@ -206,7 +232,11 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
       } else {
         // Move to kanban column
         if (!selectedSprint) {
-          alert("Vui lòng chọn một Sprint trước khi kéo task vào Kanban board!");
+          setErrorMessage("Vui lòng chọn một Sprint trước khi kéo task vào Kanban board!");
+          return;
+        }
+        if (selectedSprint.status?.toUpperCase() !== "ACTIVE") {
+          setErrorMessage("Chỉ có thể kéo task vào Kanban board khi Sprint đang ở trạng thái Active!");
           return;
         }
         
@@ -246,7 +276,7 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
       }
     } catch (err: unknown) {
       setLocalTasks(tasks); // Revert on error
-      alert(err instanceof Error ? err.message : "Lỗi khi di chuyển task");
+      setErrorMessage(err instanceof Error ? err.message : "Lỗi khi di chuyển task");
     }
   };
 
@@ -314,19 +344,52 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
             Kanban Board
           </h2>
           {sprints && sprints.length > 0 && (
-            <div style={{ width: "220px" }}>
-              <FilterSelect
-                value={selectedSprintId || ""}
-                onChange={(val) => setSelectedSprintId(val)}
-                options={sprints.map((s): FilterOption => {
-                  const status = s.status?.toUpperCase() || "";
-                  return {
-                    value: String(s.id),
-                    label: `${s.name} ${status === "ACTIVE" ? "(Active)" : status === "PLANNING" ? "(Planning)" : "(Closed)"}`
-                  };
-                })}
-                placeholder="-- Chọn Sprint --"
-              />
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+              <div style={{ width: "220px" }}>
+                <FilterSelect
+                  value={selectedSprintId || ""}
+                  onChange={(val) => setSelectedSprintId(val)}
+                  options={sprints.map((s): FilterOption => {
+                    const status = s.status?.toUpperCase() || "";
+                    return {
+                      value: String(s.id),
+                      label: `${s.name} ${status === "ACTIVE" ? "(Active)" : status === "PLANNING" ? "(Planning)" : "(Closed)"}`
+                    };
+                  })}
+                  placeholder="-- Chọn Sprint --"
+                  onEditClick={(val) => {
+                    if (onEditSprint) onEditSprint(val);
+                  }}
+                />
+              </div>
+              {selectedSprint && (
+                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  {selectedSprint.status?.toUpperCase() === "PLANNING" && (
+                    <button 
+                      type="button" 
+                      className="primary-button" 
+                      style={{ padding: "0.6rem 1.25rem", fontSize: "0.875rem" }}
+                      onClick={() => handleUpdateSprintStatus("ACTIVE")}
+                    >
+                      Bắt đầu Sprint
+                    </button>
+                  )}
+                  {selectedSprint.status?.toUpperCase() === "ACTIVE" && (
+                    <button 
+                      type="button" 
+                      className="secondary-button" 
+                      style={{ padding: "0.6rem 1.25rem", fontSize: "0.875rem", borderColor: "var(--critical)", color: "var(--critical)" }}
+                      onClick={() => {
+                        if (window.confirm("Bạn có chắc muốn hoàn thành Sprint này?")) {
+                          handleUpdateSprintStatus("CLOSED");
+                        }
+                      }}
+                    >
+                      Kết thúc Sprint
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -343,6 +406,37 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
             </div>
           </div>
         )}
+
+        {selectedSprint && selectedSprint.status?.toUpperCase() !== "ACTIVE" && (
+          <div 
+            className={styles.noSprintWarning} 
+            style={{ 
+              background: "#fef2f2", 
+              color: "#991b1b", 
+              borderColor: "#fecaca",
+              opacity: draggedTaskId ? 1 : 0,
+              maxHeight: draggedTaskId ? "100px" : "0",
+              paddingTop: draggedTaskId ? "1rem" : "0",
+              paddingBottom: draggedTaskId ? "1rem" : "0",
+              marginTop: draggedTaskId ? "1rem" : "0",
+              marginBottom: draggedTaskId ? "1rem" : "0",
+              borderWidth: draggedTaskId ? "1px" : "0",
+              overflow: "hidden",
+              transition: "all 0.5s ease",
+              transitionDelay: draggedTaskId ? "0s" : "0.75s"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <span>Sprint này chưa được bắt đầu. Bạn không thể kéo thả task vào bảng Kanban.</span>
+            </div>
+          </div>
+        )}
+
 
         <div className={`${styles.kanbanWrapper} ${draggedTaskId ? styles.isDragging : ""}`}>
           {KANBAN_COLUMNS.map((col) => {
@@ -369,7 +463,11 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
                         <polyline points="17 8 12 3 7 8" />
                         <line x1="12" y1="3" x2="12" y2="15" />
                       </svg>
-                      <span>Kéo thả công việc vào đây</span>
+                      <span>
+                        {(draggedTaskId && selectedSprint?.status?.toUpperCase() !== "ACTIVE")
+                          ? "Sprint chưa bắt đầu" 
+                          : "Kéo thả công việc vào đây"}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -405,6 +503,64 @@ export function ProjectKanbanBoard({ tasks, sprints, viewerId, onTaskUpdated, on
           )}
         </div>
       </div>
+      
+      {errorMessage && (
+        <div style={{
+          position: "fixed",
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(15, 23, 42, 0.4)",
+          backdropFilter: "blur(2px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+          padding: "1.5rem"
+        }}>
+          <div style={{
+            background: "#ffffff",
+            borderRadius: "16px",
+            width: "100%",
+            maxWidth: "500px",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            padding: "2rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "1.25rem"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", color: "var(--critical)" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "var(--ink)" }}>Thông báo</h3>
+            </div>
+            <p style={{ margin: 0, fontSize: "1.05rem", color: "var(--foreground)", lineHeight: 1.5 }}>
+              {errorMessage}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem" }}>
+              <button 
+                onClick={() => setErrorMessage(null)}
+                style={{
+                  padding: "0.6rem 1.5rem",
+                  backgroundColor: "var(--accent)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "1rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "background-color 0.2s"
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = "var(--accent-strong)"}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = "var(--accent)"}
+              >
+                Đã hiểu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

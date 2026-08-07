@@ -123,6 +123,26 @@ strong {
   letter-spacing: -0.035em;
 }
 
+/* Global Markdown Viewer Styles */
+.markdown-viewer p {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+  line-height: 1.5;
+}
+.markdown-viewer ul, .markdown-viewer ol {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+  padding-left: 1.5em;
+}
+.markdown-viewer li {
+  margin-top: 0.125em;
+  margin-bottom: 0.125em;
+}
+.markdown-viewer li p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 h1,
 h2,
 h3 {
@@ -166,6 +186,35 @@ p {
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.25), transparent 28%),
     linear-gradient(180deg, var(--sidebar-start) 0%, var(--sidebar-end) 100%);
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-logo-container {
+  margin-top: 0.25rem;
+  margin-bottom: 1.5rem;
+  padding: 0.25rem 0.5rem;
+  /* Bỏ background kính */
+}
+
+.sidebar-logo-container .software-logo {
+  gap: 1.2rem;
+}
+
+.sidebar-logo-container .software-logo-mark {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.sidebar-logo-container .software-logo-copy strong {
+  font-size: 1.25rem;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.sidebar-logo-container .software-logo-copy p {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.85);
+  margin-top: 0.15rem;
 }
 
 .brand-block,
@@ -550,6 +599,57 @@ p {
   gap: 0.35rem;
 }
 
+.app-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.app-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--foreground-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.app-input {
+  height: 48px;
+  padding: 0 1rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background-color: var(--surface-sunken);
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--ink);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.app-input:focus {
+  border-color: var(--accent);
+  background-color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+textarea.app-input {
+  height: auto;
+  padding: 1rem;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+select.app-input {
+  appearance: none;
+  padding-right: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -854,14 +954,18 @@ p {
 
 .topbar {
   gap: 1.5rem;
-  margin: -1.75rem -2rem 2.5rem -2rem; /* Tràn viền ra sát mép workspace-main */
+  margin: -1.75rem -2rem 2.5rem -2rem;
+  /* Tràn viền ra sát mép workspace-main */
   padding: 1.25rem 2.5rem;
-  background: rgba(255, 255, 255, 0.85); /* Nền trắng mờ */
+  background: rgba(255, 255, 255, 0.85);
+  /* Nền trắng mờ */
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: none;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08); /* Đường viền phân cách dứt khoát */
-  border-radius: 0; /* Không bo góc để tạo cảm giác thanh ngang kiến trúc */
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  /* Đường viền phân cách dứt khoát */
+  border-radius: 0;
+  /* Không bo góc để tạo cảm giác thanh ngang kiến trúc */
   box-shadow: 0 4px 24px -8px rgba(15, 23, 42, 0.06);
   position: relative;
   z-index: 50;
@@ -3084,7 +3188,7 @@ p {
   font-size: 0.95rem;
 }
 
-.assistant-message span {
+.assistant-message-sender {
   display: block;
   margin-bottom: 0.35rem;
   font-size: 0.72rem;
@@ -3114,7 +3218,7 @@ p {
   color: #ffffff;
 }
 
-.assistant-message-user span {
+.assistant-message-user .assistant-message-sender {
   color: rgba(255, 255, 255, 0.8);
 }
 

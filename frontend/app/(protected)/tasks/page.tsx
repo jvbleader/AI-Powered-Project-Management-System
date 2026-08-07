@@ -96,8 +96,8 @@ function TasksPageContent() {
       alertCount: 0,
     } satisfies WorkspaceShellData);
 
-  // Lọc chỉ các task ĐƯỢC GÁN cho viewer (scope theo từng người)
-  const myTasks = taskState?.tasks?.filter(t => t.assigneeId === viewer.id) ?? [];
+  // Lọc chỉ các task ĐƯỢC GÁN cho viewer và chưa hoàn thành
+  const myTasks = taskState?.tasks?.filter(t => t.assigneeId === viewer.id && t.status !== "DONE") ?? [];
   const filteredTasks = selectedProjectId === "ALL"
     ? myTasks
     : myTasks.filter((task) => task.projectId === selectedProjectId);

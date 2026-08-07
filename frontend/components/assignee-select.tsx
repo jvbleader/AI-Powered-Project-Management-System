@@ -20,7 +20,7 @@ export function AssigneeSelect({
   disabled,
   title,
   placeholder = "-- Chưa phân công --",
-  className = "task-detail-control task-detail-select",
+  className = "task-detail-control",
 }: AssigneeSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,44 +54,61 @@ export function AssigneeSelect({
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "flex-start",
+          justifyContent: "space-between",
           textAlign: "left",
           width: "100%",
           cursor: disabled ? "not-allowed" : "pointer",
+          gap: "8px",
         }}
         disabled={disabled}
       >
-        {selectedOption ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden", width: "100%" }}>
-            <span
-              className="avatar-token"
-              style={{
-                width: 24,
-                height: 24,
-                fontSize: 10,
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                borderRadius: "50%",
-                background: selectedOption.avatarUrl ? "transparent" : "var(--accent)",
-                color: "#ffffff",
-              }}
-            >
-              {selectedOption.avatarUrl ? (
-                <img src={selectedOption.avatarUrl} alt={selectedOption.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                selectedOption.initials
-              )}
-            </span>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {selectedOption.name} - {selectedOption.employeeCode || (selectedOption.id.startsWith("usr-") ? selectedOption.id : `usr-${selectedOption.id}`)}
-            </span>
-          </div>
-        ) : (
-          <span style={{ color: "var(--foreground-muted)", width: "100%" }}>{placeholder}</span>
-        )}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
+          {selectedOption ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden", width: "100%" }}>
+              <span
+                className="avatar-token"
+                style={{
+                  width: 24,
+                  height: 24,
+                  fontSize: 10,
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  borderRadius: "50%",
+                  background: selectedOption.avatarUrl ? "transparent" : "var(--accent)",
+                  color: "#ffffff",
+                }}
+              >
+                {selectedOption.avatarUrl ? (
+                  <img src={selectedOption.avatarUrl} alt={selectedOption.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  selectedOption.initials
+                )}
+              </span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selectedOption.name} - {selectedOption.employeeCode || (selectedOption.id.startsWith("usr-") ? selectedOption.id : `usr-${selectedOption.id}`)}
+              </span>
+            </div>
+          ) : (
+            <span style={{ color: "var(--foreground-muted)", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{placeholder}</span>
+          )}
+        </div>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ flexShrink: 0, color: "var(--foreground-muted)" }}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
 
       {isOpen && !disabled && (
@@ -152,57 +169,57 @@ export function AssigneeSelect({
           {filteredOptions.length > 0 ? (
             filteredOptions.map((user) => (
               <li
-              key={user.id}
-              onClick={() => {
-                onChange(user.id);
-                setIsOpen(false);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "8px 12px",
-                cursor: "pointer",
-                borderRadius: "4px",
-                background: value === user.id ? "var(--surface-sunken)" : "transparent",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = value === user.id ? "var(--surface-sunken)" : "transparent")
-              }
-            >
-              <div
+                key={user.id}
+                onClick={() => {
+                  onChange(user.id);
+                  setIsOpen(false);
+                }}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  width: "28px",
-                  height: "28px",
-                  borderRadius: "50%",
-                  background: user.avatarUrl ? "transparent" : "var(--accent)",
-                  color: "#ffffff",
-                  fontSize: "10px",
-                  fontWeight: 600,
-                  flexShrink: 0,
-                  overflow: "hidden",
+                  gap: "8px",
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  borderRadius: "4px",
+                  background: value === user.id ? "var(--surface-sunken)" : "transparent",
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = value === user.id ? "var(--surface-sunken)" : "transparent")
+                }
               >
-                {user.avatarUrl ? (
-                  <img src={user.avatarUrl} alt={user.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  user.initials
-                )}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--ink)", lineHeight: 1.2 }}>
-                  {user.name}
-                </span>
-                <span style={{ fontSize: "12px", color: "var(--foreground-muted)", marginTop: "2px" }}>
-                  {user.employeeCode || (user.id.startsWith("usr-") ? user.id : `usr-${user.id}`)}
-                </span>
-              </div>
-            </li>
-          ))) : (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    background: user.avatarUrl ? "transparent" : "var(--accent)",
+                    color: "#ffffff",
+                    fontSize: "10px",
+                    fontWeight: 600,
+                    flexShrink: 0,
+                    overflow: "hidden",
+                  }}
+                >
+                  {user.avatarUrl ? (
+                    <img src={user.avatarUrl} alt={user.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    user.initials
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--ink)", lineHeight: 1.2 }}>
+                    {user.name}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "var(--foreground-muted)", marginTop: "2px" }}>
+                    {user.employeeCode || (user.id.startsWith("usr-") ? user.id : `usr-${user.id}`)}
+                  </span>
+                </div>
+              </li>
+            ))) : (
             <li style={{ padding: "8px 12px", color: "var(--foreground-muted)", textAlign: "center", fontSize: "0.875rem" }}>
               Không tìm thấy kết quả
             </li>

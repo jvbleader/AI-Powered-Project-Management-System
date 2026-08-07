@@ -19,6 +19,26 @@ class TaskAssigneeResponse(BaseModel):
         from_attributes = True
 
 
+class TaskLogResponse(BaseModel):
+    id: int
+    task_id: int
+    user_id: Optional[int] = None
+    user_name: Optional[str] = None
+    action: str
+    field_changed: Optional[str] = None
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+    @field_validator("created_at")
+    @classmethod
+    def ensure_utc(cls, v: datetime) -> datetime:
+        return _ensure_utc_datetime(v)
+
+
 class TaskAttachmentBase(BaseModel):
     file_url: str
     file_name: str

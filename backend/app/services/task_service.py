@@ -8,6 +8,7 @@ from app.models.project_model import ProjectMember
 from app.models.task_model import Task
 from app.repositories import project_repository, task_repository
 from app.schemas.task_schema import LogWorkCreate, TaskAttachmentCreate, TaskCreate, TaskUpdate
+from app.services.task_log_service import create_task_log, create_task_notifications
 from app.utils.dashboard_helpers import normalize_task_status
 from app.utils.project_helpers import (
     has_companywide_project_access,
@@ -271,14 +272,36 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
                 detail="Deadline must be after or equal to start date",
             )
 
+    # Track changes for logging
+    changes_to_log = []
+    for key, new_val in update_data.items():
+        if hasattr(task, key):
+            old_val = getattr(task, key)
+            if old_val != new_val:
+                # Convert date/datetime to string for logging if necessary
+                old_val_str = str(old_val) if old_val is not None else None
+                new_val_str = str(new_val) if new_val is not None else None
+                changes_to_log.append((key, old_val_str, new_val_str))
+
     task = task_repository.update_task(db, task, update_data)
 
     if "status" in update_data and update_data["status"] == "done" and task.parent_task_id:
         _auto_complete_parent_recursive(db, task.parent_task_id)
+        
+    for key, old_val_str, new_val_str in changes_to_log:
+        create_task_log(
+            db=db,
+            task_id=task.id,
+            user_id=current_user_id,
+            action="updated",
+            field_changed=key,
+            old_value=old_val_str,
+            new_value=new_val_str,
+        )
 
     db.commit()
     db.refresh(task)
-    return _normalize_task(task)
+    return _normalize_task(task), changes_to_log
 
 
 def add_assignee(db: Session, task_id: int, user_id_to_assign: str, current_user_id: int):
