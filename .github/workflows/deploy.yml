@@ -4,12 +4,12 @@ on:
   push:
     branches:
       - main
-      - feature/ai-assistant
+      - develop
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_BACKEND: ghcr.io/${{ github.repository }}-backend
-  IMAGE_NAME_FRONTEND: ghcr.io/${{ github.repository }}-frontend
+  IMAGE_NAME_BACKEND: ghcr.io/jvbleader/flowpilot-backend
+  IMAGE_NAME_FRONTEND: ghcr.io/jvbleader/flowpilot-frontend
 
 jobs:
   build-and-push:
