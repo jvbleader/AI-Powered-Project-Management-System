@@ -53,6 +53,13 @@ async def stream_chat_sse(
         return
 
     db_session_id = int(session_id)
+    
+    session = ai_repository.get_session_by_id_and_user(db, db_session_id, current_user.id)
+    if not session:
+        session = ai_repository.create_session(db, current_user.id, "Đoạn chat mới")
+        db_session_id = session.id
+        yield f"data: {json.dumps({'new_session_id': str(db_session_id)})}\n\n"
+        
     ai_repository.create_message(db, db_session_id, "user", message)
 
     initial_state = {
@@ -143,20 +150,18 @@ async def stream_chat_sse(
                 full_ai_response += chunk_str
                 yield f"data: {json.dumps({'chunk': chunk_str})}\n\n"
 
-        if not full_ai_response:
-            logger.error("full_ai_response is empty. Falling back to aget_state")
-            final_state = await project_graph.aget_state(config)
-            if final_state and final_state.values and "messages" in final_state.values:
-                last_msg = final_state.values["messages"][-1]
-                logger.error(f"Last message type: {getattr(last_msg, 'type', 'unknown')}, content: {last_msg.content}")
-                if getattr(last_msg, "type", "") == "ai" and last_msg.content:
-                    full_ai_response = last_msg.content
-                    yield f"data: {json.dumps({'chunk': full_ai_response})}\n\n"
-            else:
-                logger.error("final_state or messages is empty")
+        final_state = await project_graph.aget_state(config)
+        if final_state and final_state.values and "messages" in final_state.values:
+            last_msg = final_state.values["messages"][-1]
+            if getattr(last_msg, "type", "") == "ai" and last_msg.content:
+                final_content = last_msg.content
+                if final_content != full_ai_response:
+                    full_ai_response = final_content
+                    yield f"data: {json.dumps({'replace': full_ai_response})}\n\n"
 
         if full_ai_response:
-            ai_repository.create_message(db, db_session_id, "assistant", full_ai_response)
+            db_msg = ai_repository.create_message(db, db_session_id, "assistant", full_ai_response)
+            yield f"data: {json.dumps({'message_id': db_msg.id})}\n\n"
 
         yield "data: [DONE]\n\n"
     except Exception as e:
@@ -202,7 +207,7 @@ def update_message_content(db: Session, current_user: User, message_id: int, new
 def delete_user_session(db: Session, current_user: User, session_id: int):
     session = ai_repository.get_session_by_id_and_user(db, session_id, current_user.id)
     if session:
-        ai_repository.delete_messages_by_session(db, session.id)
-        ai_repository.delete_session(db, session)
+        ai_repository.delete_messages_by_session(db, session_id)
+        ai_repository.delete_session(db, session_id)
         return True
     return False

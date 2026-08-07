@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { sprintApi } from "@/services/api";
+
+import type { Sprint } from "@/types";
 
 interface CreateSprintModalProps {
   projectId: string;
   projectName: string;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (newSprintId?: string) => void;
+  sprintToEdit?: Sprint | null;
+  canManage?: boolean;
 }
 
 const today = new Date().toISOString().split("T")[0];
@@ -21,6 +25,8 @@ export function CreateSprintModal({
   isOpen,
   onClose,
   onSuccess,
+  sprintToEdit,
+  canManage = true,
 }: CreateSprintModalProps) {
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
@@ -29,6 +35,23 @@ export function CreateSprintModal({
   
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (sprintToEdit) {
+        setName(sprintToEdit.name || "");
+        setGoal(sprintToEdit.goal || "");
+        setStartDate(sprintToEdit.plannedStart || today);
+        setEndDate(sprintToEdit.plannedEnd || defaultEnd);
+      } else {
+        setName("");
+        setGoal("");
+        setStartDate(today);
+        setEndDate(defaultEnd);
+      }
+      setFormError(null);
+    }
+  }, [isOpen, sprintToEdit]);
 
   if (!isOpen) return null;
 
@@ -48,18 +71,36 @@ export function CreateSprintModal({
 
     setIsLoading(true);
     try {
-      await sprintApi.create(projectId, {
-        name: name.trim(),
-        goal: goal.trim(),
-        status: "PLANNING",
-        progress: 0,
-        committedPoints: 0,
-        completedPoints: 0,
-        plannedStart: startDate,
-        plannedEnd: endDate,
-        health: "on_track",
-        focusAreas: ["Goal alignment", "Task readiness", "Resource allocation"],
-      } as any);
+      if (sprintToEdit) {
+        await sprintApi.update(sprintToEdit.id, {
+          name: name.trim(),
+          goal: goal.trim(),
+          plannedStart: startDate,
+          plannedEnd: endDate,
+        });
+      } else {
+        const response = await sprintApi.create(projectId, {
+          name: name.trim(),
+          goal: goal.trim(),
+          status: "PLANNING",
+          progress: 0,
+          committedPoints: 0,
+          completedPoints: 0,
+          plannedStart: startDate,
+          plannedEnd: endDate,
+          health: "on_track",
+          focusAreas: ["Goal alignment", "Task readiness", "Resource allocation"],
+        } as any);
+        
+        // Xoá trắng
+        setName("");
+        setGoal("");
+        setStartDate(today);
+        setEndDate(defaultEnd);
+
+        onSuccess(String(response.data.id));
+        return;
+      }
 
       // Xoá trắng
       setName("");
@@ -67,7 +108,7 @@ export function CreateSprintModal({
       setStartDate(today);
       setEndDate(defaultEnd);
 
-      onSuccess();
+      onSuccess(sprintToEdit ? String(sprintToEdit.id) : undefined);
     } catch (err: any) {
       setFormError(err.message || "Đã xảy ra lỗi khi tạo sprint.");
     } finally {
@@ -94,7 +135,7 @@ export function CreateSprintModal({
     >
       <section
         style={{
-          background: "var(--surface)",
+          background: "#ffffff",
           borderRadius: "20px",
           width: "100%",
           maxWidth: "520px",
@@ -115,11 +156,8 @@ export function CreateSprintModal({
         >
           <div>
             <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "var(--ink)" }}>
-              Tạo Sprint mới
+              {sprintToEdit ? "Chi tiết Sprint" : "Tạo Sprint mới"}
             </h2>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "0.875rem", color: "var(--ink-light)" }}>
-              Thêm sprint cho dự án <strong>{projectName}</strong>
-            </p>
           </div>
           <button
             type="button"
@@ -145,38 +183,48 @@ export function CreateSprintModal({
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.5rem", padding: "1.5rem", overflowY: "auto" }}>
           <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Tên Sprint *</label>
+            <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Tên Sprint *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="VD: Sprint 1"
               required
+              disabled={!!sprintToEdit && !canManage}
               style={{
                 width: "100%",
                 padding: "0.85rem 1rem",
                 borderRadius: "14px",
-                border: "1px solid var(--border)",
-                background: "var(--surface-sunken)",
-                color: "var(--foreground)",
+                border: "1px solid rgba(148, 163, 184, 0.28)",
+                background: "rgba(248, 250, 252, 0.98)",
+                color: "var(--ink)",
+                fontSize: "0.95rem",
+                fontFamily: "inherit",
+                outline: "none",
+                transition: "border-color 0.2s"
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Mục tiêu trọng tâm</label>
+            <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Mục tiêu trọng tâm</label>
             <textarea
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder="VD: Hoàn thiện tính năng đăng nhập..."
               rows={3}
+              disabled={!!sprintToEdit && !canManage}
               style={{
                 width: "100%",
                 padding: "0.85rem 1rem",
                 borderRadius: "14px",
-                border: "1px solid var(--border)",
-                background: "var(--surface-sunken)",
-                color: "var(--foreground)",
+                border: "1px solid rgba(148, 163, 184, 0.28)",
+                background: "rgba(248, 250, 252, 0.98)",
+                color: "var(--ink)",
+                fontSize: "0.95rem",
+                fontFamily: "inherit",
+                outline: "none",
+                transition: "border-color 0.2s",
                 resize: "vertical"
               }}
             />
@@ -184,36 +232,46 @@ export function CreateSprintModal({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
             <div>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Ngày bắt đầu *</label>
+              <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Ngày bắt đầu *</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 required
+                disabled={!!sprintToEdit && !canManage}
                 style={{
                   width: "100%",
                   padding: "0.85rem 1rem",
                   borderRadius: "14px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-sunken)",
-                  color: "var(--foreground)",
+                  border: "1px solid rgba(148, 163, 184, 0.28)",
+                  background: "rgba(248, 250, 252, 0.98)",
+                  color: "var(--ink)",
+                  fontSize: "0.95rem",
+                  fontFamily: "inherit",
+                  outline: "none",
+                  transition: "border-color 0.2s"
                 }}
               />
             </div>
             <div>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>Ngày kết thúc *</label>
+              <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Ngày kết thúc *</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 required
+                disabled={!!sprintToEdit && !canManage}
                 style={{
                   width: "100%",
                   padding: "0.85rem 1rem",
                   borderRadius: "14px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-sunken)",
-                  color: "var(--foreground)",
+                  border: "1px solid rgba(148, 163, 184, 0.28)",
+                  background: "rgba(248, 250, 252, 0.98)",
+                  color: "var(--ink)",
+                  fontSize: "0.95rem",
+                  fontFamily: "inherit",
+                  outline: "none",
+                  transition: "border-color 0.2s"
                 }}
               />
             </div>
@@ -241,15 +299,17 @@ export function CreateSprintModal({
               className="secondary-button"
               disabled={isLoading}
             >
-              Hủy
+              Đóng
             </button>
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={isLoading || !name.trim() || !startDate || !endDate}
-            >
-              {isLoading ? "Đang tạo..." : "Tạo Sprint"}
-            </button>
+            {(!sprintToEdit || canManage) && (
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={isLoading || !name.trim() || !startDate || !endDate}
+              >
+                {isLoading ? "Đang lưu..." : sprintToEdit ? "Cập nhật Sprint" : "Tạo Sprint"}
+              </button>
+            )}
           </div>
         </form>
       </section>

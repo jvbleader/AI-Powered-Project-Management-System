@@ -22,7 +22,7 @@ from app.services import project_service
 from app.services.websocket_manager import manager
 from app.utils.project_helpers import build_member_response, build_project_response
 
-router = APIRouter()
+router = APIRouter(tags=["Project"])
 
 
 @router.get("/api/project-roles", response_model=list[RoleResponse])

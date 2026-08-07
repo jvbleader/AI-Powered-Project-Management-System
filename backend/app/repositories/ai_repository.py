@@ -37,8 +37,8 @@ def update_session(db: Session, session: AiConversation, title: str) -> AiConver
     return session
 
 
-def delete_session(db: Session, session: AiConversation) -> None:
-    db.delete(session)
+def delete_session(db: Session, session_id: int) -> None:
+    db.query(AiConversation).filter(AiConversation.id == session_id).delete(synchronize_session=False)
     db.commit()
 
 

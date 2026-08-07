@@ -11,7 +11,7 @@ from app.utils.jwt_handler import (
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["Auth"])
 
 
 @router.post("/login")

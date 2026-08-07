@@ -10,6 +10,13 @@ def get_sprint_by_id(db: Session, sprint_id: int) -> Optional[Sprint]:
     return db.query(Sprint).filter(Sprint.id == sprint_id).first()
 
 
+def get_active_sprint_by_project(db: Session, project_id: int) -> Optional[Sprint]:
+    return db.query(Sprint).filter(
+        Sprint.project_id == project_id,
+        Sprint.status == "ACTIVE"
+    ).first()
+
+
 def list_sprints(
     db: Session, project_id: Optional[int] = None, project_ids_subquery=None
 ) -> List[Sprint]:
@@ -18,7 +25,7 @@ def list_sprints(
         query = query.filter(Sprint.project_id == project_id)
     if project_ids_subquery is not None:
         query = query.filter(Sprint.project_id.in_(project_ids_subquery))
-    return query.order_by(desc(Sprint.start_date)).all()
+    return query.order_by(desc(Sprint.created_at)).all()
 
 
 def create_sprint(db: Session, sprint_data: dict) -> Sprint:

@@ -151,6 +151,15 @@ export const taskApi = {
     return { data: mapBackendTask(response.data), meta: response.meta };
   },
 
+  async getLogs(taskId: string): Promise<ApiResponse<TaskLog[]>> {
+    const endpoint = {
+      method: "GET" as const,
+      path: `/api/tasks/${taskId}/logs`,
+    };
+    const response = await requestApi<TaskLog[]>(endpoint);
+    return response;
+  },
+
   async create(payload: Omit<Task, "id"> & { projectId: string }): Promise<ApiResponse<Task>> {
     const endpoint = {
       method: "POST" as const,

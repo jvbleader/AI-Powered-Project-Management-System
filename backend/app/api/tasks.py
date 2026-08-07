@@ -146,10 +146,48 @@ def get_task(
 def update_task(
     task_id: int,
     task_in: TaskUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    task = task_service.update_task(db, task_id, current_user.id, task_in)
+    task, changes = task_service.update_task(db, task_id, current_user.id, task_in)
+    
+    if changes:
+        from app.services.task_log_service import create_task_notifications
+        
+        # Get raw task object for notification creation
+        raw_task = task_service.task_repository.get_task_by_id(db, task_id)
+        if raw_task:
+            changed_fields = ", ".join([c[0] for c in changes])
+            notifications = create_task_notifications(
+                db=db,
+                task=raw_task,
+                actor_user_id=current_user.id,
+                title="Task được cập nhật",
+                content=f"Task '{raw_task.title}' đã được cập nhật các trường: {changed_fields}",
+            )
+            
+            async def send_ws():
+                for notif in notifications:
+                    await manager.send_personal_message(
+                        {
+                            "type": "NEW_NOTIFICATION",
+                            "data": {
+                                "id": notif.id,
+                                "type": notif.type,
+                                "title": notif.title,
+                                "content": notif.content,
+                                "link": notif.link,
+                                "is_read": False,
+                                "created_at": notif.created_at.isoformat(),
+                            },
+                        },
+                        notif.user_id,
+                    )
+            
+            if notifications:
+                background_tasks.add_task(send_ws)
+
     _hydrate_task_response(db, task)
     return task
 
@@ -164,6 +202,18 @@ def add_assignee(
 ):
     task_service.add_assignee(db, task_id, req.user_id, current_user.id)
     task = task_service.task_repository.get_task_by_id(db, task_id)
+    
+    # Create task log
+    from app.services.task_log_service import create_task_log
+    create_task_log(
+        db=db,
+        task_id=task_id,
+        user_id=current_user.id,
+        action="assigned",
+        field_changed="assignee",
+        old_value=None,
+        new_value=req.user_id,
+    )
 
     target_user_id_str = req.user_id.replace("usr-", "") if req.user_id else ""
 
@@ -202,6 +252,29 @@ def add_assignee(
 
     _hydrate_task_response(db, task)
     return {"message": "Success"}
+
+
+from app.schemas.task_schema import TaskLogResponse
+
+@router_root.get("/{task_id}/logs", response_model=List[TaskLogResponse])
+def get_task_logs(
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    from app.models.task_log_model import TaskLog
+    from sqlalchemy import desc
+
+    task_service.get_task(db, task_id, current_user.id)
+    
+    logs = (
+        db.query(TaskLog)
+        .filter(TaskLog.task_id == task_id)
+        .order_by(desc(TaskLog.created_at))
+        .all()
+    )
+    for log in logs:
+        if log.user:
+            log.user_name = log.user.full_name
+    return logs
 
 
 @router_root.get("/{task_id}/attachments", response_model=List[TaskAttachmentResponse])

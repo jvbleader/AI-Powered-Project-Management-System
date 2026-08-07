@@ -9,7 +9,7 @@ from app.models.user_model import User
 from app.services.websocket_manager import manager
 from app.utils.jwt_handler import create_access_token, decode_token
 
-router = APIRouter()
+router = APIRouter(tags=["Notification"])
 
 
 @router.get("/ws-token")

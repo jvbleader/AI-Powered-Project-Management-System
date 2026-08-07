@@ -9,6 +9,7 @@ import { signOut, signOutAll } from "@/services/auth/session";
 import { projectApi } from "@/services/api/projects";
 import { primeTasksPageData } from "@/services/page-cache/tasks-page";
 import { AssistantBubble } from "@/components/assistant-bubble";
+import { SoftwareLogo } from "@/components/software-logo";
 import { useAuthSession } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
 import { ChangePasswordModal } from "@/components/change-password-modal";
@@ -220,7 +221,37 @@ export function WorkspaceShell({
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <nav className="sidebar-nav" aria-label="Primary" style={{ marginTop: "1rem" }}>
+        <div className="sidebar-logo-container" style={{ display: "flex", alignItems: "center", marginTop: "0.5rem", marginBottom: "1.5rem", padding: "0.5rem 0.5rem" }}>
+          {/* Typographic Logo */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", userSelect: "none" }}>
+            <div style={{ fontSize: "2rem", lineHeight: 1, fontFamily: "var(--font-inter), system-ui, sans-serif", display: "flex", alignItems: "center", letterSpacing: "0.04em" }}>
+              <span style={{ color: "#ffffff", fontWeight: 800 }}>AP</span>
+              <span style={{ color: "#60a5fa", fontWeight: 500 }}>MS</span>
+              
+              {/* AI Sparks Accent */}
+              <div style={{ display: "flex", gap: "0.1rem", marginLeft: "0.2rem", alignSelf: "flex-start", marginTop: "0.15rem" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <linearGradient id="spark-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#bfdbfe" />
+                      <stop offset="100%" stopColor="#3b82f6" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M12 0C12 6.62742 17.3726 12 24 12C17.3726 12 12 17.3726 12 24C12 17.3726 6.62742 12 0 12C6.62742 12 12 6.62742 12 0Z" fill="url(#spark-grad)"/>
+                </svg>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginTop: "0.45rem" }}>
+                  <path d="M12 0C12 6.62742 17.3726 12 24 12C17.3726 12 12 17.3726 12 24C12 17.3726 6.62742 12 0 12C6.62742 12 12 6.62742 12 0Z" fill="#60a5fa"/>
+                </svg>
+              </div>
+            </div>
+            
+            <span style={{ fontSize: "0.55rem", color: "#94a3b8", fontWeight: 600, letterSpacing: "0.15em", textTransform: "uppercase", lineHeight: 1, fontFamily: "var(--font-inter), system-ui, sans-serif", marginLeft: "0.1rem" }}>
+              Smart Projects Management
+            </span>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav" aria-label="Primary" style={{ marginTop: "0.5rem" }}>
           {filteredNavigation.map((item) => (
             <Link
               key={item.href}

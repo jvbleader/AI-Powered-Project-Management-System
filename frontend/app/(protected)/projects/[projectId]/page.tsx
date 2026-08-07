@@ -66,6 +66,8 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreateSprintModalOpen, setIsCreateSprintModalOpen] = useState(false);
+  const [sprintToEdit, setSprintToEdit] = useState<Sprint | null>(null);
+  const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
   const [defaultParentTaskId, setDefaultParentTaskId] = useState<string>("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
@@ -336,9 +338,18 @@ export default function ProjectDetailPage() {
                   tasks={state.tasks}
                   sprints={state.sprints}
                   viewerId={String(viewer.id)}
+                  selectedSprintId={selectedSprintId}
+                  onSprintChange={setSelectedSprintId}
                   onTaskClick={(taskId) => {
                     setSelectedTaskId(taskId);
                     setIsTaskDetailModalOpen(true);
+                  }}
+                  onEditSprint={(sprintId) => {
+                    const sprint = state.sprints.find((s) => String(s.id) === String(sprintId));
+                    if (sprint) {
+                      setSprintToEdit(sprint);
+                      setIsCreateSprintModalOpen(true);
+                    }
                   }}
                   onTaskUpdated={async () => {
                     try {
@@ -358,6 +369,24 @@ export default function ProjectDetailPage() {
                       );
                     } catch (err) {
                       console.error("Failed to refresh tasks after kanban update", err);
+                    }
+                  }}
+                  onSprintUpdated={async () => {
+                    try {
+                      const [
+                        { data: updatedSprints },
+                        { data: updatedTasks },
+                        { data: dashboardOverview },
+                      ] = await Promise.all([
+                        sprintApi.list({ projectId }, viewer),
+                        taskApi.getEnrichedBoard({ projectId }, viewer),
+                        dashboardApi
+                          .getOverview(viewer, projectId)
+                          .catch(() => ({ data: null as DashboardOverview | null })),
+                      ]);
+                      setState((prev) => prev ? { ...prev, sprints: updatedSprints, tasks: updatedTasks, dashboardOverview } : prev);
+                    } catch (err) {
+                      console.error("Failed to refresh sprints and tasks", err);
                     }
                   }}
                 />
@@ -383,6 +412,8 @@ export default function ProjectDetailPage() {
         <CreateTaskModal
           projectId={state.project.id}
           projectName={state.project.name}
+          projectType={state.project.projectType}
+          currentUserId={String(viewer.id)}
           isOpen={isCreateModalOpen}
           users={state.users.filter((user) => state.project.memberIds.includes(user.id))}
           tasks={state.tasks}
@@ -443,10 +474,22 @@ export default function ProjectDetailPage() {
           projectId={projectId}
           projectName={state.project.name}
           isOpen={isCreateSprintModalOpen}
-          onClose={() => setIsCreateSprintModalOpen(false)}
-          onSuccess={() => {
+          sprintToEdit={sprintToEdit}
+          canManage={canManageCurrentProject}
+          onClose={() => {
             setIsCreateSprintModalOpen(false);
-            window.location.reload();
+            setSprintToEdit(null);
+          }}
+          onSuccess={(newSprintId?: string) => {
+            setIsCreateSprintModalOpen(false);
+            setSprintToEdit(null);
+            // Refresh sprints
+            sprintApi.list({ projectId }, viewer).then(({ data }) => {
+              setState((prev) => prev ? { ...prev, sprints: data } : prev);
+              if (newSprintId) {
+                setSelectedSprintId(newSprintId);
+              }
+            });
           }}
         />
       )}

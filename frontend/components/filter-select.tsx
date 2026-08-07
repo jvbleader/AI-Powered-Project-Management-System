@@ -13,6 +13,7 @@ interface FilterSelectProps {
   options: FilterOption[];
   placeholder?: string;
   className?: string;
+  onEditClick?: (value: string) => void;
 }
 
 export function FilterSelect({
@@ -21,6 +22,7 @@ export function FilterSelect({
   options,
   placeholder = "-- Chọn trạng thái --",
   className = "",
+  onEditClick,
 }: FilterSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -62,7 +64,33 @@ export function FilterSelect({
           boxShadow: isOpen ? "0 0 0 2px rgba(var(--primary-rgb), 0.2)" : "none",
         }}
       >
-        <span>{selectedOption ? selectedOption.label : placeholder}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {onEditClick && value && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditClick(value);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--accent)",
+                padding: "2px"
+              }}
+              title="Xem chi tiết"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+            </div>
+          )}
+          <span>{selectedOption ? selectedOption.label : placeholder}</span>
+        </div>
         <span style={{ color: "var(--foreground-muted)", display: "flex", alignItems: "center" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>

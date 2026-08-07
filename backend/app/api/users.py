@@ -17,7 +17,7 @@ from app.schemas.user_schema import (
 )
 from app.services import department_service, user_service
 
-router = APIRouter()
+router = APIRouter(tags=["User"])
 
 
 @router.get("/me", response_model=UserProfile)
