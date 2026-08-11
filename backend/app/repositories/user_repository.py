@@ -78,6 +78,70 @@ def get_users(
     return users, total, total_pages
 
 
+def list_active_by_department_name(
+    db: Session,
+    department_name: str,
+    *,
+    role: str | None = None,
+    search: str | None = None,
+    exclude_role_names: list[str] | None = None,
+) -> list[User]:
+    query = (
+        _base_query(db)
+        .join(User.department)
+        .join(User.role_ref)
+        .filter(Department.name == department_name, User.is_active.is_(True))
+    )
+
+    if role and role != "ALL":
+        query = query.filter(Role.name == role)
+
+    if exclude_role_names:
+        query = query.filter(~Role.name.in_(exclude_role_names))
+
+    if search:
+        search_term = f"%{search.lower()}%"
+        query = query.filter(
+            or_(
+                User.email.ilike(search_term),
+                User.full_name.ilike(search_term),
+            )
+        )
+
+    return query.order_by(User.full_name.asc(), User.id.asc()).all()
+
+
+def list_user_ids_by_department_ids(db: Session, department_ids: list[int]) -> list[int]:
+    if not department_ids:
+        return []
+    rows = (
+        db.query(User.id)
+        .filter(User.department_id.in_(department_ids))
+        .distinct()
+        .all()
+    )
+    return [user_id for (user_id,) in rows]
+
+
+def list_user_ids_excluding_roles(db: Session, role_names: list[str]) -> list[int]:
+    if not role_names:
+        rows = db.query(User.id).distinct().all()
+        return [user_id for (user_id,) in rows]
+
+    rows = (
+        db.query(User.id)
+        .join(User.role_ref)
+        .filter(~Role.name.in_(role_names))
+        .distinct()
+        .all()
+    )
+    return [user_id for (user_id,) in rows]
+
+
+def list_user_ids_excluding_role(db: Session, role_name: str) -> list[int]:
+    return list_user_ids_excluding_roles(db, [role_name])
+
+
 def create(db: Session, user: User) -> User:
     db.add(user)
     db.commit()

@@ -2,20 +2,28 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import ai, auth, dashboard, logworks, notifications, projects, sprints, tasks, users
+from app.core.config import get_settings
+
+settings = get_settings()
+cors_origin_regex = (
+    r"^https?://[^/]+(?::\d+)?$" if settings.environment.strip().lower() == "development" else None
+)
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://localhost:3000",
-    ],
+    allow_origins=settings.cors_origins_list,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 app.include_router(auth.router)

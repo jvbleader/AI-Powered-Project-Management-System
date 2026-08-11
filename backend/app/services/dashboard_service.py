@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -36,8 +36,12 @@ from app.utils.dashboard_helpers import (
     sum_estimated_hours,
     sum_logged_hours,
 )
-from app.utils.project_helpers import build_project_response, list_accessible_project_ids
-
+from app.utils.project_helpers import (
+    build_project_response,
+    list_accessible_project_ids,
+    to_frontend_status,
+    user_can_manage_project,
+)
 
 def _normalize_sprint_status(status: str | None) -> str:
     normalized = (status or "planning").strip().lower()
@@ -104,6 +108,7 @@ def _build_task_preview(
         sprintName=sprint_name,
         projectId=project.id if project else None,
         projectName=project.name if project else None,
+        projectType=(getattr(project, "project_type", None) or "agile") if project else None,
     )
 
 
@@ -278,6 +283,10 @@ def get_dashboard_overview(
             hours=decimal_to_float(logwork.hours_spent),
             note=logwork.work_content,
             progressPercent=decimal_to_float(logwork.progress_percent),
+            status=(logwork.status or "PENDING").upper(),
+            projectId=task.project_id,
+            projectName=selected_project_response.name if selected_project_response else None,
+            canApprove=False,
         )
         for logwork, task, _, user in project_logwork_rows[:6]
     ]
@@ -357,6 +366,8 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
     upcoming_deadlines = []
     global_overdue_tasks_list = []
     global_completed_tasks_list = []
+    today = datetime.now(timezone.utc).date()
+    upcoming_until = today + timedelta(days=7)
 
     for project in accessible_projects:
         project_tasks = tasks_by_project[project.id]
@@ -388,42 +399,56 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
             ProjectHealthPreviewResponse(
                 id=project.id,
                 name=project.name,
-                code=f"PRJ-{project.id}",
-                status=project.status or "ACTIVE",
+                code=f"PRJ-{project.id:03d}",
+                status=to_frontend_status(project.status or "active"),
                 progress=progress,
                 totalTasks=len(leaf_tasks),
+                doneCount=counts["done"],
+                overdueCount=len(overdue_list),
                 health=health,
             )
         )
 
         for task in leaf_tasks:
             status_norm = normalize_task_status(task.status)
-            if task.deadline and status_norm != "done":
-                # We need the task tuple with its project info
-                upcoming_deadlines.append((task, project))
-            elif status_norm == "done":
+            if status_norm == "done":
                 global_completed_tasks_list.append((task, project))
+                continue
+            if not task.deadline:
+                continue
+            # Upcoming window: due today..+7 days (exclude overdue)
+            if today <= task.deadline <= upcoming_until:
+                upcoming_deadlines.append((task, project))
 
     global_logwork_rows = task_repository.list_project_logworks_with_context(
         db, project_ids=project_ids
     )
-    from app.schemas.dashboard_schema import DashboardRecentLogworkResponse
+    project_name_by_id = {p.id: p.name for p in accessible_projects}
 
-    recent_logworks = [
-        DashboardRecentLogworkResponse(
-            id=logwork.id,
-            taskId=task.id,
-            taskKey=f"TASK-{task.id}",
-            taskTitle=task.title,
-            userId=user.id,
-            userName=user.full_name,
-            workDate=logwork.work_date,
-            hours=decimal_to_float(logwork.hours_spent),
-            note=logwork.work_content,
-            progressPercent=decimal_to_float(logwork.progress_percent),
+    recent_logworks = []
+    for logwork, task, _, user in global_logwork_rows[:10]:
+        status = (logwork.status or "PENDING").upper()
+        can_approve = status == "PENDING" and user_can_manage_project(
+            db, task.project_id, current_user
         )
-        for logwork, task, _, user in global_logwork_rows[:10]
-    ]
+        recent_logworks.append(
+            DashboardRecentLogworkResponse(
+                id=logwork.id,
+                taskId=task.id,
+                taskKey=f"TASK-{task.id}",
+                taskTitle=task.title,
+                userId=user.id,
+                userName=user.full_name,
+                workDate=logwork.work_date,
+                hours=decimal_to_float(logwork.hours_spent),
+                note=logwork.work_content,
+                progressPercent=decimal_to_float(logwork.progress_percent),
+                status=status,
+                projectId=task.project_id,
+                projectName=project_name_by_id.get(task.project_id),
+                canApprove=can_approve,
+            )
+        )
 
     upcoming_deadlines.sort(key=lambda item: item[0].deadline)
     top_upcoming = upcoming_deadlines[:10]
@@ -445,10 +470,14 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
     return GlobalDashboardOverviewResponse(
         totalProjects=len(accessible_projects),
         activeProjects=sum(
-            1 for p in accessible_projects if (p.status or "ACTIVE").upper() == "ACTIVE"
+            1
+            for p in accessible_projects
+            if to_frontend_status(p.status or "active") not in {"ON_HOLD", "COMPLETED"}
         ),
         completedProjects=sum(
-            1 for p in accessible_projects if (p.status or "").upper() == "COMPLETED"
+            1
+            for p in accessible_projects
+            if to_frontend_status(p.status or "") == "COMPLETED"
         ),
         taskSummary=task_summary,
         projectHealths=project_healths,

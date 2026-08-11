@@ -1,7 +1,11 @@
 from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 
-from app.config.settings import get_settings
+from app.core.config import get_settings
+from app.services.ai_services.intent_guards import (
+    is_destructive_or_forbidden_write,
+    latest_user_text,
+)
 from app.services.ai_services.state import AgentState
 import logging
 
@@ -32,6 +36,14 @@ def supervisor_node(state: AgentState) -> dict:
         dict: Chứa quyết định điều hướng (router_decision).
     """
     messages = state["messages"]
+    latest = latest_user_text(messages)
+
+    # Chặn sớm: xóa hàng loạt / SQL ghi — không để LLM route sang task/qna rồi "tạo lại" draft.
+    if is_destructive_or_forbidden_write(latest):
+        logger.info("==== SUPERVISOR HARD BLOCK (destructive/SQL write) ====")
+        logger.info(f"User: {latest[:200]}")
+        return {"router_decision": "out_of_scope"}
+
     summary = state.get("summary", "")
     summary_text = f"\n\nBẢN TÓM TẮT LỊCH SỬ TRÒ CHUYỆN:\n{summary}" if summary else ""
 
@@ -44,15 +56,19 @@ def supervisor_node(state: AgentState) -> dict:
         "   - Mục tiêu: Người dùng muốn biết thông tin có sẵn, truy vấn dữ liệu từ hệ thống, CHƯA MUỐN thực hiện lệnh thay đổi/thêm mới/xóa.\n"
         "   - Dấu hiệu nhận biết: Các câu hỏi có từ khóa 'có những gì', 'còn bao nhiêu', 'ai rảnh', 'tiến độ', 'việc gì trước', 'tóm tắt', 'liệt kê', 'kiểm tra'.\n\n"
         "2. THỰC THI HÀNH ĐỘNG MỚI (Router trả về: 'task')\n"
-        "   - Bao gồm các hành động: Tạo công việc mới, phân công lại người phụ trách, chia nhỏ dự án.\n"
-        "   - Mục tiêu: Người dùng yêu cầu hệ thống phải sinh ra hoặc thay đổi dữ liệu công việc thực tế.\n"
-        "   - Dấu hiệu nhận biết: Động từ mang tính sai khiến mạnh: 'tạo giúp tôi', 'giao việc này cho', 'chia nhỏ task này', 'lên kế hoạch cho'.\n\n"
+        "   - Bao gồm các hành động: Tạo công việc mới, phân công lại người phụ trách, chia nhỏ dự án, tạo/đổi trạng thái sprint (qua bản nháp).\n"
+        "   - Mục tiêu: Người dùng yêu cầu hệ thống sinh bản nháp task/sprint để xác nhận trên UI.\n"
+        "   - Dấu hiệu nhận biết: Động từ mang tính sai khiến mạnh: 'tạo giúp tôi', 'giao việc này cho', 'chia nhỏ task này', 'lên kế hoạch cho'.\n"
+        "   - TUYỆT ĐỐI KHÔNG xếp 'xóa task', 'xóa hết', 'DELETE', 'UPDATE ... SET' vào 'task'.\n\n"
         "3. NGOÀI PHẠM VI (Router trả về: 'out_of_scope')\n"
-        "   - Khi câu hỏi HOÀN TOÀN không liên quan đến công việc, quản lý dự án, phần mềm (ví dụ: thời tiết, giải trí, chào hỏi vu vơ).\n\n"
+        "   - Câu hỏi không liên quan quản lý dự án (thời tiết, giải trí…).\n"
+        "   - HOẶC yêu cầu phá hủy/ghi DB trực tiếp: xóa task/hết task, DELETE/UPDATE/DROP/TRUNCATE SQL, wipe dữ liệu.\n"
+        "     (AI không hỗ trợ xóa hay chạy SQL ghi — phải từ chối.)\n\n"
         "LƯU Ý QUAN TRỌNG:\n"
         "- Hãy suy luận dựa trên Ý ĐỊNH THỰC SỰ của câu. Ví dụ: Nếu người dùng hỏi 'Nên làm gì hôm nay?', đó là ý định TÌM LỜI KHUYÊN (qna), không phải là tạo task.\n"
-        "- ĐẶC BIỆT LƯU Ý: Mọi câu hỏi có chứa từ khóa liên quan đến nghiệp vụ (ví dụ: 'dự án', 'task', 'công việc', 'nhân sự') ĐỀU PHẢI XẾP VÀO 'qna' hoặc 'task', TUYỆT ĐỐI KHÔNG xếp vào 'out_of_scope' ngay cả khi tên dự án/công việc đó nghe có vẻ lạ hoặc chưa từng xuất hiện.\n"
-        "- Nếu câu hỏi của người dùng là một câu HỎI TIẾP NỐI (follow-up) dựa trên ngữ cảnh đang chat (ví dụ: 'còn ai khác không?', 'thêm người này vào đi', 'dự án X thì sao?'), bạn PHẢI xếp nó vào 'task' hoặc 'qna', TUYỆT ĐỐI KHÔNG được xếp vào 'out_of_scope'."
+        "- Câu có từ khóa nghiệp vụ ('dự án', 'task'…) nhưng là LỆNH XÓA / SQL GHI → 'out_of_scope'.\n"
+        "- Các câu nghiệp vụ còn lại (tra cứu / tạo task) xếp 'qna' hoặc 'task', không xếp 'out_of_scope' chỉ vì tên dự án lạ.\n"
+        "- Nếu câu hỏi của người dùng là một câu HỎI TIẾP NỐI (follow-up) dựa trên ngữ cảnh đang chat (ví dụ: 'còn ai khác không?', 'thêm người này vào đi', 'dự án X thì sao?'), bạn PHẢI xếp nó vào 'task' hoặc 'qna' (trừ khi là lệnh xóa/SQL ghi)."
     )
     system_prompt += summary_text
 
@@ -60,17 +76,21 @@ def supervisor_node(state: AgentState) -> dict:
     response = router_llm.invoke(
         [SystemMessage(content=system_prompt)] + messages, config={"tags": ["supervisor_llm"]}
     )
-    
-    # HARDCODE FALLBACK: Nếu LLM vẫn bướng bỉnh xếp vào out_of_scope dù có từ khóa nghiệp vụ
-    if response.next_node == "out_of_scope" and len(messages) > 0:
-        latest_msg = messages[-1].content.lower()
-        keywords = ["dự án", "task", "công việc", "nhân sự", "logwork", "tiến độ", "team", "sprint"]
-        if any(kw in latest_msg for kw in keywords):
-            logger.info(f"==== SUPERVISOR OVERRIDE ====")
-            logger.info(f"Phát hiện từ khóa nghiệp vụ trong '{latest_msg}', ghi đè từ out_of_scope -> qna")
-            response.next_node = "qna"
 
-    logger.info(f"==== SUPERVISOR QUYẾT ĐỊNH ====")
+    # HARDCODE FALLBACK: từ khóa nghiệp vụ → qna, NHƯNG không ghi đè lệnh phá hủy.
+    if response.next_node == "out_of_scope" and latest:
+        if not is_destructive_or_forbidden_write(latest):
+            keywords = ["dự án", "task", "công việc", "nhân sự", "logwork", "tiến độ", "team", "sprint"]
+            if any(kw in latest for kw in keywords):
+                logger.info("==== SUPERVISOR OVERRIDE ====")
+                logger.info(f"Phát hiện từ khóa nghiệp vụ trong '{latest}', ghi đè từ out_of_scope -> qna")
+                response.next_node = "qna"
+
+    # Safety net lần nữa sau LLM
+    if is_destructive_or_forbidden_write(latest):
+        response.next_node = "out_of_scope"
+
+    logger.info("==== SUPERVISOR QUYẾT ĐỊNH ====")
     logger.info(f"Phân loại ngữ định: {response.next_node}")
-    
+
     return {"router_decision": response.next_node}

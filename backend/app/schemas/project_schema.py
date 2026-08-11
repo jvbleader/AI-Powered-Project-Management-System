@@ -60,8 +60,9 @@ class ProjectCreate(BaseModel):
     description: str
     start_date: date
     end_date: date
-    manager_id: int
     department_id: int
+    # Giữ optional để tương thích client cũ; server luôn gắn manager = người tạo.
+    manager_id: Optional[int] = None
 
     @field_validator("name", "description")
     @classmethod

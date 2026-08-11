@@ -44,6 +44,7 @@ class DashboardTaskPreviewResponse(BaseModel):
     sprintName: Optional[str] = None
     projectId: Optional[int] = None
     projectName: Optional[str] = None
+    projectType: Optional[str] = None
 
 
 class DashboardWorkloadMemberResponse(BaseModel):
@@ -73,6 +74,10 @@ class DashboardRecentLogworkResponse(BaseModel):
     hours: float
     note: str
     progressPercent: float = 0
+    status: str = "PENDING"
+    projectId: Optional[int] = None
+    projectName: Optional[str] = None
+    canApprove: bool = False
 
 
 class DashboardOverviewResponse(BaseModel):
@@ -105,6 +110,8 @@ class ProjectHealthPreviewResponse(BaseModel):
     status: str
     progress: int = 0
     totalTasks: int = 0
+    doneCount: int = 0
+    overdueCount: int = 0
     health: Literal["on-track", "watch", "critical"] = "on-track"
 
 

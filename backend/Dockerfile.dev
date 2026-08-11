@@ -1,0 +1,30 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY scripts ./scripts
+
+# Editable install so volume-mounted /app is the live package source.
+RUN pip install --no-cache-dir -e . \
+    && pip install --no-cache-dir "bcrypt<5"
+
+# Browser E2E (pytest-playwright) needs Chromium + OS libs inside the image.
+# Download browsers once at build; install-deps is best-effort for slim images.
+RUN python -m playwright install chromium \
+    && (python -m playwright install-deps chromium || true)
+
+COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh /app/scripts/migrate_db.py
+
+EXPOSE 8000
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

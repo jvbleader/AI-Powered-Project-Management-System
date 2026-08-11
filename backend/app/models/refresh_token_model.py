@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 
-from app.config.settings import get_settings
+from app.core.config import get_settings
 from app.core.connection import Base
 
 settings = get_settings()

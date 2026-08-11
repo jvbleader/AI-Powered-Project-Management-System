@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage, RemoveMessage
 from langchain_openai import ChatOpenAI
 
 from app.services.ai_services.state import AgentState
-from app.config.settings import get_settings
+from app.core.config import get_settings
 
 settings = get_settings()
 llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.openai_api_key, temperature=0).with_config(tags=["summarizer_llm"])
@@ -50,7 +50,7 @@ def summarizer_node(state: AgentState):
 def should_summarize(state: AgentState) -> Literal["summarize_conversation", "__end__"]:
     """
     Xác định xem có cần tóm tắt lịch sử hội thoại hay không.
-    Nếu lịch sử (messages) dài hơn 6 tin nhắn, luồng sẽ chuyển sang node summarizer.
+    Nếu lịch sử (messages) dài hơn 20 tin nhắn, luồng sẽ chuyển sang node summarizer.
 
     Args:
         state: Trạng thái hiện tại của đồ thị (AgentState).

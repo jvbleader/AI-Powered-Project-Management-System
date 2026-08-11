@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.models.sprint_model import Sprint
@@ -13,7 +13,7 @@ def get_sprint_by_id(db: Session, sprint_id: int) -> Optional[Sprint]:
 def get_active_sprint_by_project(db: Session, project_id: int) -> Optional[Sprint]:
     return db.query(Sprint).filter(
         Sprint.project_id == project_id,
-        Sprint.status == "ACTIVE"
+        func.lower(Sprint.status) == "active"
     ).first()
 
 

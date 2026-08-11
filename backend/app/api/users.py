@@ -10,6 +10,7 @@ from app.schemas.user_schema import (
     PaginatedUsersResponse,
     UpdateAvatar,
     UpdatePhone,
+    UpdateProfile,
     UserCreate,
     UserProfile,
     UserRoleUpdate,
@@ -32,6 +33,15 @@ def update_phone(
     db: Session = Depends(get_db),
 ):
     return user_service.update_phone(db, current_user, data)
+
+
+@router.put("/me/profile", response_model=UserProfile)
+def update_profile(
+    data: UpdateProfile,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return user_service.update_profile(db, current_user, data)
 
 
 @router.put("/me/avatar", response_model=UserProfile)

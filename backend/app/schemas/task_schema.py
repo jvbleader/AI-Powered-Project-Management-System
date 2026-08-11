@@ -83,11 +83,27 @@ class LogWorkCreate(LogWorkBase):
     pass
 
 
+class LogWorkUpdate(BaseModel):
+    hours_spent: Optional[float] = None
+    work_content: Optional[str] = None
+    comment: Optional[str] = None
+    progress_percent: Optional[float] = None
+
+    @field_validator("hours_spent")
+    @classmethod
+    def validate_hours_spent(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and value < 0:
+            raise ValueError("Số giờ logwork không được âm.")
+        return value
+
+
 class LogWorkResponse(LogWorkBase):
     id: int
     task_id: int
     project_member_id: int
+    user_id: Optional[int] = None
     user_name: Optional[str] = None
+    project_id: Optional[int] = None
     project_name: Optional[str] = None
     task_title: Optional[str] = None
     status: str

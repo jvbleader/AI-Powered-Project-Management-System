@@ -59,6 +59,13 @@ class UpdatePhone(BaseModel):
     phone_number: str
 
 
+class UpdateProfile(BaseModel):
+    name: Optional[str] = None
+    department: Optional[str] = None
+    job_title: Optional[str] = None
+    address: Optional[str] = None
+
+
 class UserStatusUpdate(BaseModel):
     is_active: bool
 

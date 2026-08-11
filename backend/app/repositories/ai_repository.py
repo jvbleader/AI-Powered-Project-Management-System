@@ -70,8 +70,25 @@ def update_message_content(db: Session, message: AiMessage, new_content: str) ->
     return message
 
 
+def confirm_draft_message(
+    db: Session, user_id: int, message_id: int, fence: str = "json_task_draft"
+) -> bool:
+    message = get_message_by_id(db, message_id)
+    if not message:
+        return False
+    session = get_session_by_id_and_user(db, message.conversation_id, user_id)
+    if not session:
+        return False
+    marker = f"```{fence}\n"
+    confirmed = f"```{fence}_confirmed\n"
+    if marker in message.content:
+        message.content = message.content.replace(marker, confirmed)
+        db.commit()
+        return True
+    return False
+
+
 def confirm_latest_draft_message(db: Session, user_id: int):
-    # Tìm message mới nhất của user này (thông qua session) có chứa json_task_draft
     latest_message = (
         db.query(AiMessage)
         .join(AiConversation, AiMessage.conversation_id == AiConversation.id)

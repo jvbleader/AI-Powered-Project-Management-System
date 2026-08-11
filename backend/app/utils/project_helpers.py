@@ -24,8 +24,11 @@ from app.utils.dashboard_helpers import (
 ROLE_PM = "Project Manager / Product Owner / Group Member"
 ROLE_LEADER = "Leader"
 ROLE_DIRECTOR = "Giám đốc"
+ROLE_DIRECTOR_ASSISTANT = "Trợ lý giám đốc"
 ROLE_ADMIN = "Admin"
 DEPARTMENT_HEAD_OF_DEV = "Head of Dev"
+
+HEAD_OF_DEV_HIDDEN_ROLES = {ROLE_DIRECTOR, ROLE_DIRECTOR_ASSISTANT}
 
 
 def list_project_role_names() -> list[str]:
@@ -55,10 +58,17 @@ def project_role_id_from_user(user: User | None) -> int:
     return 1 if user_role_requires_manager_scope(user) else 2
 
 
-def build_project_code(name: str) -> str:
-    words = name.strip().split()
-    code_suffix = "".join("".join(c for c in word if c.isalnum()).upper() for word in words[:3])[:8]
-    return f"FP-{code_suffix or 'NEW'}"
+def build_project_code(project_id: int | None = None, *, name: str | None = None) -> str:
+    """Stable display code for a project, e.g. PRJ-001.
+
+    Prefer numeric id so codes stay unique and professional regardless of
+    Vietnamese project titles. ``name`` is accepted for backward-compatible
+    call sites but is no longer used to derive the code.
+    """
+    if project_id is not None and project_id > 0:
+        return f"PRJ-{int(project_id):03d}"
+    _ = name
+    return "PRJ-NEW"
 
 
 def to_frontend_status(db_status: str) -> str:
@@ -181,7 +191,7 @@ def build_project_response(
 
     base = ProjectResponse(
         id=project.id,
-        code=build_project_code(project.name),
+        code=build_project_code(project.id),
         name=project.name,
         projectType=getattr(project, "project_type", "agile"),
         description=project.description,
@@ -227,20 +237,27 @@ def list_accessible_project_ids(db: Session, user: User | None) -> list[int]:
     if is_admin_user(user) or has_companywide_project_access(user):
         return sorted(project_repository.list_all_project_ids(db))
 
-    if user_role_requires_manager_scope(user):
-        return sorted(project_repository.list_member_project_ids(db, user.id, manager_only=True))
-
+    # Mọi role: dự án đang join (active membership)
     return sorted(project_repository.list_member_project_ids(db, user.id))
 
 
 def list_managed_project_ids(db: Session, user: User | None) -> list[int]:
+    """
+    Dự án thuộc phạm vi quản lý của user:
+    - Admin / companywide: mọi dự án
+    - PM/PO/GM hoặc Leader: mọi dự án đang join (vì role hệ thống đã là quản lý)
+    - Role khác: chỉ dự án có projects.manager_id = user
+    """
     if not user:
         return []
 
     if is_admin_user(user) or has_companywide_project_access(user):
         return sorted(project_repository.list_all_project_ids(db))
 
-    return sorted(project_repository.list_member_project_ids(db, user.id, manager_only=True))
+    if user_role_requires_manager_scope(user):
+        return sorted(project_repository.list_member_project_ids(db, user.id))
+
+    return []
 
 
 def user_can_access_team_directory(db: Session, user: User | None) -> bool:
@@ -249,6 +266,48 @@ def user_can_access_team_directory(db: Session, user: User | None) -> bool:
     if is_admin_user(user) or has_companywide_project_access(user):
         return True
     return bool(list_managed_project_ids(db, user))
+
+
+def list_team_directory_visible_user_ids(db: Session, user: User | None) -> list[int] | None:
+    """
+    Phạm vi tab Nhân sự:
+    - Admin: None (không giới hạn)
+    - Head of Dev: mọi user trừ Giám đốc và Trợ lý giám đốc
+    - PM: full phòng ban hiện tại của PM
+    - Còn lại (Leader...): user trên các dự án trong scope
+    """
+    if not user:
+        return []
+
+    if is_admin_user(user):
+        return None
+
+    from app.repositories import project_repository, user_repository
+
+    if is_head_of_dev_user(user):
+        visible = set(
+            user_repository.list_user_ids_excluding_roles(db, list(HEAD_OF_DEV_HIDDEN_ROLES))
+        )
+        visible.add(user.id)
+        return sorted(visible)
+
+    if get_user_role_name(user) == ROLE_PM:
+        if not user.department_id:
+            return [user.id]
+        return sorted(
+            {
+                *user_repository.list_user_ids_by_department_ids(db, [user.department_id]),
+                user.id,
+            }
+        )
+
+    if user_can_access_team_directory(db, user):
+        accessible_project_ids = list_accessible_project_ids(db, user)
+        visible = set(project_repository.list_project_user_ids(db, accessible_project_ids))
+        visible.add(user.id)
+        return sorted(visible)
+
+    return [user.id]
 
 
 def user_can_access_project(db: Session, project_id: int, user: User | None) -> bool:

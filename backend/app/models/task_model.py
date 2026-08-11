@@ -32,6 +32,10 @@ class Task(Base):
 
     @property
     def spent_hours(self) -> float:
+        rollup_override = getattr(self, "_spent_hours_rollup", None)
+        if rollup_override is not None:
+            return float(rollup_override)
+
         session = object_session(self)
         if not session:
             return 0.0
