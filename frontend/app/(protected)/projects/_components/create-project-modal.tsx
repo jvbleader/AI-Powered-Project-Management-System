@@ -1,17 +1,17 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { roleLabel, isManagerRole } from "@/lib/utils/format";
 import type { UserProfile } from "@/types";
 import { userApi } from "@/services/api";
 import { projectApi } from "@/services/api";
 import { CustomSelect } from "@/components/custom-select";
 import { Department } from "@/types/user";
 import styles from "./create-project-modal.module.css";
-import { hasCompanywideProjectAccess } from "@/lib/utils/format";
+import { isHeadOfDevDepartment } from "@/lib/utils/format";
 
 interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   viewerId: string;
+  viewerName: string;
   viewerRole: string;
   viewerDepartment: string | null;
   accessibleUsers: UserProfile[];
@@ -22,64 +22,52 @@ export function CreateProjectModal({
   isOpen,
   onClose,
   viewerId,
-  viewerRole,
+  viewerName,
+  viewerRole: _viewerRole,
   viewerDepartment,
-  accessibleUsers,
+  accessibleUsers: _accessibleUsers,
   onProjectCreated,
 }: CreateProjectModalProps) {
-  const canSelectDepartment = hasCompanywideProjectAccess(viewerRole as any, viewerDepartment);
+  const canSelectDepartment = isHeadOfDevDepartment(viewerDepartment);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [newProjectStart, setNewProjectStart] = useState("2026-07-01");
   const [newProjectEnd, setNewProjectEnd] = useState("2026-08-15");
   const [newProjectType, setNewProjectType] = useState<"agile" | "waterfall">("agile");
   const [newProjectDepartmentId, setNewProjectDepartmentId] = useState<string>("");
-  const [newProjectManagerId, setNewProjectManagerId] = useState(viewerId);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
 
   useEffect(() => {
-    if (isOpen) {
-      userApi.getDepartments().then(res => {
+    if (!isOpen) return;
+
+    userApi
+      .getDepartments()
+      .then((res) => {
         setDepartments(res.data);
-        if (res.data.length > 0) {
-          if (!canSelectDepartment && viewerDepartment) {
-            const userDept = res.data.find((d: Department) => d.name === viewerDepartment);
-            if (userDept) {
-              setNewProjectDepartmentId(String(userDept.id));
-            } else if (!newProjectDepartmentId) {
-              setNewProjectDepartmentId(String(res.data[0].id));
-            }
-          } else if (!newProjectDepartmentId) {
-            setNewProjectDepartmentId(String(res.data[0].id));
+        if (res.data.length === 0) return;
+
+        if (!canSelectDepartment && viewerDepartment) {
+          const userDept = res.data.find((d: Department) => d.name === viewerDepartment);
+          if (userDept) {
+            setNewProjectDepartmentId(String(userDept.id));
+            return;
           }
         }
-      }).catch(console.error);
-    }
+
+        setNewProjectDepartmentId((current) => current || String(res.data[0].id));
+      })
+      .catch(console.error);
   }, [isOpen, canSelectDepartment, viewerDepartment]);
 
   const extractErrorMessage = (error: unknown, fallback: string) =>
     error instanceof Error ? error.message : fallback;
+
   const handleClose = () => {
     setFormError(null);
     onClose();
   };
-
-  const selectedDepartmentName = departments.find(d => String(d.id) === newProjectDepartmentId)?.name;
-  const filteredManagers = accessibleUsers.filter(user => 
-    isManagerRole(user.role) && user.department === selectedDepartmentName
-  );
-
-  useEffect(() => {
-    if (filteredManagers.length > 0) {
-      if (!filteredManagers.find(m => m.id === newProjectManagerId)) {
-        setNewProjectManagerId(filteredManagers[0].id);
-      }
-    } else {
-      setNewProjectManagerId("");
-    }
-  }, [newProjectDepartmentId]);
 
   if (!isOpen) return null;
 
@@ -103,7 +91,6 @@ export function CreateProjectModal({
       return;
     }
 
-    const parsedManagerId = parseInt(newProjectManagerId.replace("usr-", ""), 10);
     setIsSubmitting(true);
 
     try {
@@ -113,33 +100,31 @@ export function CreateProjectModal({
         description: newProjectDescription.trim(),
         start_date: newProjectStart,
         end_date: newProjectEnd,
-        manager_id: isNaN(parsedManagerId) ? 1 : parsedManagerId,
-        department_id: parseInt(newProjectDepartmentId, 10)
+        department_id: parseInt(newProjectDepartmentId, 10),
+        // Server luôn gắn manager = người tạo; gửi viewerId để tương thích schema cũ.
+        manager_id: parseInt(String(viewerId).replace("usr-", ""), 10),
       });
 
       setNewProjectName("");
       setNewProjectDescription("");
       setNewProjectStart("2026-07-01");
       setNewProjectEnd("2026-08-15");
-      setNewProjectManagerId(viewerId);
 
       onProjectCreated(created.data.id);
       handleClose();
     } catch (error: unknown) {
-      setFormError(
-        extractErrorMessage(error, "Không thể tạo dự án. Vui lòng thử lại."),
-      );
+      setFormError(extractErrorMessage(error, "Không thể tạo dự án. Vui lòng thử lại."));
     } finally {
       setIsSubmitting(false);
     }
   }
-
 
   return (
     <div className={styles.modalBackdrop} role="presentation" onMouseDown={handleClose}>
       <div
         className={styles.modalSurface}
         role="dialog"
+        data-testid="create-project-modal"
         aria-modal="true"
         aria-labelledby="add-project-title"
         onMouseDown={(event) => event.stopPropagation()}
@@ -153,12 +138,17 @@ export function CreateProjectModal({
           </button>
         </div>
 
-        <form onSubmit={handleCreateProject} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+        <form
+          onSubmit={handleCreateProject}
+          data-testid="create-project-form"
+          style={{ display: "flex", flexDirection: "column", flex: 1 }}
+        >
           <div className={styles.modalBody}>
             <div className={styles.formGrid}>
               <div className={styles.inputGroup}>
                 <label>Tên dự án</label>
                 <input
+                  data-testid="project-name"
                   className={styles.inputControl}
                   value={newProjectName}
                   onChange={(event) => setNewProjectName(event.target.value)}
@@ -169,33 +159,25 @@ export function CreateProjectModal({
               <div className={styles.inputGroup}>
                 <label>Phòng ban phụ trách</label>
                 <CustomSelect
+                  testId="project-department"
                   className={styles.inputControl}
                   value={newProjectDepartmentId}
                   onChange={(val) => setNewProjectDepartmentId(val)}
                   disabled={!canSelectDepartment}
                   options={[
                     { value: "", label: "-- Chọn phòng ban --" },
-                    ...departments.map((dept) => ({ value: String(dept.id), label: dept.name }))
+                    ...departments.map((dept) => ({ value: String(dept.id), label: dept.name })),
                   ]}
                 />
-                {!canSelectDepartment && (
-                  <p style={{ fontSize: "0.8rem", color: "var(--foreground-muted)", marginTop: "4px" }}>
-                    Dự án mặc định thuộc phòng ban của bạn.
-                  </p>
-                )}
               </div>
               <div className={styles.inputGroup}>
                 <label>Người quản lý</label>
-                <CustomSelect
+                <input
+                  data-testid="project-manager"
                   className={styles.inputControl}
-                  value={newProjectManagerId}
-                  onChange={(val) => setNewProjectManagerId(val)}
-                  disabled={filteredManagers.length === 0}
-                  options={
-                    filteredManagers.length === 0 
-                      ? [{ value: "", label: "Không có Manager nào trong phòng ban này" }]
-                      : filteredManagers.map((user) => ({ value: String(user.id), label: `${user.name} - ${roleLabel(user.role)}` }))
-                  }
+                  value={viewerName}
+                  disabled
+                  readOnly
                 />
               </div>
               <div className={`${styles.inputGroup}`}>
@@ -203,6 +185,7 @@ export function CreateProjectModal({
                 <div style={{ display: "flex", gap: "16px", marginTop: "8px" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                     <input
+                      data-testid="project-type-agile"
                       type="radio"
                       name="projectType"
                       value="agile"
@@ -214,6 +197,7 @@ export function CreateProjectModal({
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                     <input
+                      data-testid="project-type-waterfall"
                       type="radio"
                       name="projectType"
                       value="waterfall"
@@ -229,6 +213,7 @@ export function CreateProjectModal({
               <div className={`${styles.inputGroup} ${styles.fullWidth}`}>
                 <label>Mô tả chi tiết</label>
                 <textarea
+                  data-testid="project-description"
                   className={styles.inputControl}
                   value={newProjectDescription}
                   onChange={(event) => setNewProjectDescription(event.target.value)}
@@ -237,9 +222,11 @@ export function CreateProjectModal({
                   rows={4}
                 />
               </div>
+
               <div className={styles.inputGroup}>
                 <label>Ngày bắt đầu</label>
                 <input
+                  data-testid="project-start-date"
                   className={styles.inputControl}
                   type="date"
                   value={newProjectStart}
@@ -250,6 +237,7 @@ export function CreateProjectModal({
               <div className={styles.inputGroup}>
                 <label>Ngày kết thúc dự kiến</label>
                 <input
+                  data-testid="project-end-date"
                   className={styles.inputControl}
                   type="date"
                   value={newProjectEnd}
@@ -258,14 +246,15 @@ export function CreateProjectModal({
                 />
               </div>
             </div>
+
             {formError ? <p className={styles.errorMessage}>{formError}</p> : null}
           </div>
 
           <div className={styles.modalFooter}>
-            <button type="button" className={styles.btnSecondary} onClick={handleClose}>
+            <button type="button" className={styles.btnSecondary} onClick={handleClose} disabled={isSubmitting}>
               Hủy
             </button>
-            <button type="submit" className={styles.btnPrimary} disabled={isSubmitting}>
+            <button type="submit" className={styles.btnPrimary} disabled={isSubmitting} data-testid="create-project-submit">
               {isSubmitting ? "Đang tạo..." : "Tạo dự án"}
             </button>
           </div>

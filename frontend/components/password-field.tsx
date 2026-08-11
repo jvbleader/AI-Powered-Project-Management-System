@@ -11,6 +11,7 @@ type PasswordFieldProps = {
   minLength?: number;
   autoComplete?: string;
   placeholder?: string;
+  testId?: string;
 };
 
 export function PasswordField({
@@ -22,10 +23,12 @@ export function PasswordField({
   minLength,
   autoComplete,
   placeholder,
+  testId,
 }: PasswordFieldProps) {
   return (
     <div className="password-input-shell">
       <input
+        data-testid={testId}
         value={value}
         minLength={minLength}
         onChange={onChange}

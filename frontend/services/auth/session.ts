@@ -1,20 +1,49 @@
 import { authApi } from "@/services/api";
-import { readStoredAvatar } from "@/lib/utils/avatar";
-import { UserProfile, type AuthSession, LoginPayload } from "@/types";
+import { resolveAvatarUrl } from "@/lib/utils/avatar";
+import { type AuthSession, LoginPayload } from "@/types";
 
 export const STORAGE_KEY = "flowpilot-session-v1";
 export const SESSION_STORAGE_KEY = "flowpilot-session-session-v1";
 export const SESSION_CHANGE_EVENT = "flowpilot-session-change";
+export const INTENTIONAL_LOGOUT_KEY = "flowpilot-intentional-logout";
 
 const authChannel = typeof window !== "undefined" ? new BroadcastChannel('auth_channel') : null;
 
 if (authChannel) {
   authChannel.onmessage = (event) => {
-    if (event.data === 'logout') {
+    if (event.data === "intentional_logout") {
+      markIntentionalLogout();
+      clearClientSession();
+      emitSessionChange();
+      return;
+    }
+
+    if (event.data === "logout") {
       clearClientSession();
       emitSessionChange();
     }
   };
+}
+
+export function markIntentionalLogout() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(INTENTIONAL_LOGOUT_KEY, "1");
+}
+
+export function consumeIntentionalLogout() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const wasIntentional = window.sessionStorage.getItem(INTENTIONAL_LOGOUT_KEY) === "1";
+  if (wasIntentional) {
+    window.sessionStorage.removeItem(INTENTIONAL_LOGOUT_KEY);
+  }
+
+  return wasIntentional;
 }
 
 function emitSessionChange() {
@@ -27,14 +56,27 @@ function clearClientSession() {
   window.localStorage.removeItem("flowpilot-user-directory-v1");
 }
 
-function enrichSession(session: AuthSession) {
-  const avatarUrl = readStoredAvatar(session.currentUser.id);
+/** Xóa snapshot client, không gọi API logout / không broadcast sang tab khác. */
+export function clearLocalSession() {
+  if (typeof window === "undefined") {
+    return;
+  }
 
+  clearClientSession();
+  emitSessionChange();
+}
+
+function enrichSession(session: AuthSession) {
   return {
     ...session,
     currentUser: {
       ...session.currentUser,
-      avatarUrl: avatarUrl ?? session.currentUser.avatarUrl,
+      avatarUrl: resolveAvatarUrl({
+        userId: session.currentUser.id,
+        email: session.currentUser.email,
+        name: session.currentUser.name,
+        avatarUrl: session.currentUser.avatarUrl,
+      }),
     },
   } satisfies AuthSession;
 }
@@ -159,12 +201,18 @@ export function readSession(): AuthSession | null {
   }
 }
 
+function broadcastLogout() {
+  const intentional =
+    window.sessionStorage.getItem(INTENTIONAL_LOGOUT_KEY) === "1";
+  authChannel?.postMessage(intentional ? "intentional_logout" : "logout");
+}
+
 export async function signOut() {
   if (typeof window !== "undefined") {
     await authApi.logout().catch(() => null);
     clearClientSession();
     emitSessionChange();
-    authChannel?.postMessage('logout');
+    broadcastLogout();
   }
 }
 
@@ -173,7 +221,7 @@ export async function signOutAll() {
     await authApi.logoutAll().catch(() => null);
     clearClientSession();
     emitSessionChange();
-    authChannel?.postMessage('logout');
+    broadcastLogout();
   }
 }
 
@@ -181,7 +229,7 @@ export function forceSignOut() {
   if (typeof window !== "undefined") {
     clearClientSession();
     emitSessionChange();
-    authChannel?.postMessage('logout');
+    authChannel?.postMessage("logout");
   }
 }
 

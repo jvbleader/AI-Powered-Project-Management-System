@@ -1,82 +1,74 @@
 "use client";
 
-import { useEffect, useState, Suspense, useMemo } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, Surface } from "@/components/ui";
-import { taskApi, workspaceApi, userApi } from "@/services/api";
 import {
   getTasksPageCache,
   primeTasksPageData,
   setTasksPageCache,
   type TaskPageState,
 } from "@/services/page-cache/tasks-page";
-import { normalizeViewer } from "@/lib/mock/permissions";
 import { hasCompanywideProjectAccess } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
-import type { WorkspaceShellData } from "@/types";
+import type { UserProfile, WorkspaceShellData } from "@/types";
 import { TaskDetailModal } from "./_components/task-detail-modal";
 import { GroupedTaskList } from "./_components/grouped-task-list";
 
 function TasksPageContent() {
   const session = useAuthSession();
-  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
+  const viewer = session?.currentUser as UserProfile;
   const cachedTaskState = getTasksPageCache(viewer.id);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("ALL");
   const [taskState, setTaskState] = useState<TaskPageState | null>(cachedTaskState);
   const [isBoardLoading, setIsBoardLoading] = useState(false);
+  const [taskOpenNotice, setTaskOpenNotice] = useState<string | null>(null);
 
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedTaskId = searchParams.get("taskId");
   const selectedTask = taskState?.tasks?.find((t) => t.id === selectedTaskId);
+  const isSelectedTaskAvailable = Boolean(
+    selectedTaskId && taskState?.tasks?.some((task) => task.id === selectedTaskId),
+  );
+  const selectedProjectId = "ALL";
+  const visibleTaskOpenNotice = selectedTaskId ? null : taskOpenNotice;
 
   useEffect(() => {
     let isCancelled = false;
 
     async function loadBoard() {
       setIsBoardLoading(true);
-      const nextState = await primeTasksPageData(viewer);
+      try {
+        const nextState = await primeTasksPageData(viewer);
 
-      if (isCancelled) {
-        return;
+        if (isCancelled) {
+          return null;
+        }
+
+        setTaskState(nextState);
+        return nextState;
+      } finally {
+        if (!isCancelled) {
+          setIsBoardLoading(false);
+        }
       }
-
-      setTaskState(nextState);
-      setIsBoardLoading(false);
-    }
-
-    async function loadSelectedTaskDetail(taskId: string) {
-      const [{ data: shellData }, { data: task }, { data: users }] = await Promise.all([
-        workspaceApi.getShellData(viewer),
-        taskApi.getEnrichedTask(taskId, viewer),
-        userApi.list(viewer),
-      ]);
-
-      if (isCancelled) {
-        return;
-      }
-
-      setTaskState({
-        shellData,
-        projects: task.project ? [task.project] : [],
-        tasks: [task],
-        users,
-      });
     }
 
     async function hydratePage() {
-      const cachedState = getTasksPageCache(viewer.id);
-      const hasSelectedTaskInCache =
-        Boolean(cachedState?.tasks.some((task) => task.id === selectedTaskId));
+      const nextState = await loadBoard();
 
-      if (selectedTaskId && !hasSelectedTaskInCache) {
-        await loadSelectedTaskDetail(selectedTaskId);
+      if (!selectedTaskId || !nextState || isCancelled) {
+        return;
       }
 
-      await loadBoard();
+      const hasSelectedTask = nextState.tasks.some((task) => task.id === selectedTaskId);
+      if (!hasSelectedTask) {
+        setTaskOpenNotice("Công việc này không còn tồn tại hoặc bạn không còn quyền truy cập.");
+        router.replace("/tasks", { scroll: false });
+      }
     }
 
     void hydratePage();
@@ -84,7 +76,7 @@ function TasksPageContent() {
     return () => {
       isCancelled = true;
     };
-  }, [selectedTaskId, viewer]);
+  }, [router, selectedTaskId, viewer]);
 
   const shellData =
     taskState?.shellData ??
@@ -101,13 +93,6 @@ function TasksPageContent() {
   const filteredTasks = selectedProjectId === "ALL"
     ? myTasks
     : myTasks.filter((task) => task.projectId === selectedProjectId);
-  const projectOptions = [
-    { value: "ALL", label: "Tất cả dự án" },
-    ...((taskState?.projects ?? []).map((project) => ({
-      value: project.id,
-      label: project.name,
-    })) || []),
-  ];
   const canManageSelectedTask = Boolean(
     selectedTask &&
       (hasCompanywideProjectAccess(viewer.role, viewer.department) ||
@@ -129,8 +114,20 @@ function TasksPageContent() {
           projects={taskState?.projects ?? []}
           tasks={filteredTasks}
           selectedProjectId={selectedProjectId}
-          onTaskClick={(taskId) => router.push(`/tasks?taskId=${taskId}`)}
+          onTaskClick={(taskId) => {
+            setTaskOpenNotice(null);
+            router.push(`/tasks?taskId=${taskId}`);
+          }}
         />
+
+        {visibleTaskOpenNotice ? (
+          <Surface title="Không thể mở công việc">
+            <EmptyState
+              title="Task không khả dụng"
+              description={visibleTaskOpenNotice}
+            />
+          </Surface>
+        ) : null}
 
         {filteredTasks.length === 0 && selectedProjectId === "ALL" && (
           <Surface title="Chưa có nhiệm vụ">
@@ -147,8 +144,8 @@ function TasksPageContent() {
       </div>
 
       <TaskDetailModal
-        taskId={selectedTaskId}
-        isOpen={!!selectedTaskId}
+        taskId={isSelectedTaskAvailable ? selectedTaskId : null}
+        isOpen={isSelectedTaskAvailable}
         onClose={() => router.push("/tasks")}
         users={taskState?.users || []}
         viewerId={viewer.id}
@@ -163,6 +160,19 @@ function TasksPageContent() {
             setTasksPageCache(viewer.id, nextState);
             return nextState;
           });
+        }}
+        onTaskDeleted={(deletedTaskId) => {
+          setTaskOpenNotice(null);
+          setTaskState((current) => {
+            if (!current) return null;
+            const nextState = {
+              ...current,
+              tasks: current.tasks.filter((task) => task.id !== deletedTaskId),
+            };
+            setTasksPageCache(viewer.id, nextState);
+            return nextState;
+          });
+          router.replace("/tasks", { scroll: false });
         }}
       />
     </WorkspaceShell>

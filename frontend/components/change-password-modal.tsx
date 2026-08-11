@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { PasswordField } from "@/components/password-field";
 import { authApi } from "@/services/api";
-import { signOut } from "@/services/auth/session";
+import { markIntentionalLogout, signOut } from "@/services/auth/session";
 import { AuthSession } from "@/types";
 
 type ChangePasswordModalProps = {
@@ -11,7 +10,6 @@ type ChangePasswordModalProps = {
 };
 
 export function ChangePasswordModal({ session, onClose }: ChangePasswordModalProps) {
-  const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -52,8 +50,9 @@ export function ChangePasswordModal({ session, onClose }: ChangePasswordModalPro
         newPassword,
       });
 
+      markIntentionalLogout();
       await signOut();
-      router.push("/login");
+      window.location.assign("/login");
     } catch (error) {
       setPasswordError(error instanceof Error ? error.message : "Không thể đổi mật khẩu lúc này.");
     } finally {

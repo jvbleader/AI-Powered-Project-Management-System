@@ -4,9 +4,9 @@ import { useEffect, useState, useMemo } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { projectApi, userApi, workspaceApi } from "@/services/api";
-import { normalizeViewer } from "@/lib/mock/permissions";
 import {
   canCreateProjects,
+  canManageProjectMembership,
   hasCompanywideProjectAccess,
   isAdminRole,
   roleLabel,
@@ -32,11 +32,11 @@ let accessibleUsersCache: { viewerId: string; data: UserProfile[] } | null = nul
 
 export default function ProjectsPage() {
   const session = useAuthSession();
-  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
+  const viewer = useMemo(() => session?.currentUser as any, [session?.currentUser]);
   const cachedProjectsState =
-    projectsPageCache?.viewerId === viewer.id ? projectsPageCache.data : null;
+    viewer?.id && projectsPageCache?.viewerId === viewer.id ? projectsPageCache!.data : null;
   const cachedAccessibleUsers =
-    accessibleUsersCache?.viewerId === viewer.id ? accessibleUsersCache.data : [];
+    viewer?.id && accessibleUsersCache?.viewerId === viewer.id ? accessibleUsersCache!.data : [];
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     cachedProjectsState?.projects[0]?.id ?? null,
@@ -61,7 +61,7 @@ export default function ProjectsPage() {
         }
 
         const nextState = { shellData, projects };
-        projectsPageCache = { viewerId: viewer.id, data: nextState };
+        projectsPageCache = { viewerId: viewer!.id, data: nextState };
         setProjectsState(nextState);
         setSelectedProjectId((current) => current ?? projects[0]?.id ?? null);
       } catch (err) {
@@ -90,7 +90,7 @@ export default function ProjectsPage() {
 
   const projectList = projectsState?.projects ?? [];
   const hasCompanywideAccess = hasCompanywideProjectAccess(viewer.role, viewer.department);
-  const managesAnyProject = projectList.some((project) => project.managerId === viewer.id);
+  const managesAnyProject = projectList.some((project) => canManageProjectMembership(viewer, project));
   const canCreateProject = canCreateProjects(viewer.role, viewer.department);
   const canManage = hasCompanywideAccess || managesAnyProject || canCreateProject;
   const selectedProject =
@@ -110,13 +110,13 @@ export default function ProjectsPage() {
   }
 
   async function ensureAccessibleUsers() {
-    if (accessibleUsersCache?.viewerId === viewer.id && accessibleUsersCache.data.length) {
-      setAccessibleUsers(accessibleUsersCache.data);
-      return accessibleUsersCache.data;
+    if (accessibleUsersCache?.viewerId === viewer!.id && accessibleUsersCache!.data.length) {
+      setAccessibleUsers(accessibleUsersCache!.data);
+      return accessibleUsersCache!.data;
     }
 
     const { data: users } = await userApi.list(viewer);
-    accessibleUsersCache = { viewerId: viewer.id, data: users };
+    accessibleUsersCache = { viewerId: viewer!.id, data: users };
     setAccessibleUsers(users);
     return users;
   }
@@ -171,6 +171,7 @@ export default function ProjectsPage() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         viewerId={viewer.id}
+        viewerName={viewer.name}
         viewerRole={viewer.role}
         viewerDepartment={viewer.department ?? null}
         accessibleUsers={accessibleUsers}

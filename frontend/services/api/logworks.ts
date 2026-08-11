@@ -5,6 +5,7 @@ export interface PendingLogWork {
   task_id: number;
   project_member_id: number;
   user_name: string;
+  project_id?: number;
   project_name?: string;
   task_title?: string;
   work_date: string;

@@ -1,6 +1,6 @@
 import { Project, ProjectFilters, UserProfile, ApiResponse } from "@/types";
 import { isSupportedProjectRoleName, normalizeProjectRoleName } from "@/lib/utils/format";
-import { requestApi, apiEndpoints } from "./core";
+import { requestApi, apiEndpoints, BackendUserResponse, toFrontendUserProfile } from "./core";
 
 const PROJECT_ROLE_ORDER = ["PROJECT_MANAGER", "DEVELOPER", "QA", "VIEWER"] as const;
 
@@ -130,6 +130,26 @@ export const projectApi = {
     const endpoint = { method: "GET" as const, path: `/api/projects/${projectId}/members` };
     const response = await requestApi<ProjectMemberResponse[]>(endpoint);
     return { data: (response.data || []).map(mapBackendProjectMember), meta: response.meta };
+  },
+
+  async listMemberCandidates(
+    projectId: string,
+    params?: { department?: string; role?: string; search?: string },
+  ): Promise<ApiResponse<UserProfile[]>> {
+    const searchParams = new URLSearchParams();
+    if (params?.department) searchParams.set("department", params.department);
+    if (params?.role) searchParams.set("role", params.role);
+    if (params?.search) searchParams.set("search", params.search);
+    const query = searchParams.toString();
+    const endpoint = {
+      method: "GET" as const,
+      path: `/api/projects/${projectId}/member-candidates${query ? `?${query}` : ""}`,
+    };
+    const response = await requestApi<BackendUserResponse[]>(endpoint);
+    return {
+      data: (response.data || []).map(toFrontendUserProfile),
+      meta: response.meta,
+    };
   },
 
   async listRoles(): Promise<ApiResponse<ProjectRoleResponse[]>> {

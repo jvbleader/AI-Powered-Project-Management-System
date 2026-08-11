@@ -1,11 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { useRef, useState, type ChangeEvent } from "react";
 import { StatusPill } from "@/components/ui";
+import { UserAvatar } from "@/components/user-avatar";
 import { hasCompanywideProjectAccess, isAdminRole, isLeaderRole, isManagerRole, roleLabel } from "@/lib/utils/format";
 import { userApi } from "@/services/api";
-import { storeUserAvatar } from "@/lib/utils/avatar";
+import { markIntentionalLogout, signOutAll } from "@/services/auth/session";
 import type { UserProfile } from "@/types";
 import { AvatarCropper } from "./avatar-cropper";
 import styles from "../styles/profile.module.css";
@@ -19,6 +19,7 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [isSigningOutAll, setIsSigningOutAll] = useState(false);
   const roleTone = isAdminRole(user.role)
     ? "critical"
     : hasCompanywideProjectAccess(user.role, user.department)
@@ -70,7 +71,6 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
   async function handleCropSave(croppedBase64: string) {
     setCropImageSrc(null);
     try {
-      storeUserAvatar(user.id, croppedBase64);
       const { data: updatedProfile } = await userApi.updateCurrentAvatar(user, croppedBase64);
       onUpdate(updatedProfile);
       setAvatarNotice("Đã cập nhật ảnh đại diện.");
@@ -81,23 +81,33 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
     }
   }
 
+  async function handleSignOutAll() {
+    if (isSigningOutAll) {
+      return;
+    }
+
+    setIsSigningOutAll(true);
+    try {
+      markIntentionalLogout();
+      await signOutAll();
+      window.location.assign("/login");
+    } catch {
+      setIsSigningOutAll(false);
+      setAvatarNotice("Không thể đăng xuất tất cả thiết bị. Vui lòng thử lại.");
+    }
+  }
+
   return (
     <div className={styles.heroColumn}>
       <div className={styles.heroAvatarWrapper}>
-        <div className={styles.heroAvatar}>
-          {user.avatarUrl ? (
-            <Image
-              src={user.avatarUrl}
-              alt={user.name}
-              className="avatar-image"
-              width={104}
-              height={104}
-              unoptimized
-            />
-          ) : (
-            user.initials
-          )}
-        </div>
+        <UserAvatar
+          userId={user.id}
+          email={user.email}
+          name={user.name}
+          avatarUrl={user.avatarUrl}
+          size={104}
+          className={styles.heroAvatar}
+        />
         <input
           ref={fileInputRef}
           type="file"
@@ -131,6 +141,17 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
           />
         </div>
         {avatarNotice ? <p className={styles.avatarNotice}>{avatarNotice}</p> : null}
+      </div>
+
+      <div className={styles.heroFooter}>
+        <button
+          type="button"
+          className={styles.signOutAllButton}
+          onClick={handleSignOutAll}
+          disabled={isSigningOutAll}
+        >
+          {isSigningOutAll ? "Đang đăng xuất..." : "Đăng xuất tất cả"}
+        </button>
       </div>
 
       {cropImageSrc && (

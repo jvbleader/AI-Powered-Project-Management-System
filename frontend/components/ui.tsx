@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { UserAvatar } from "@/components/user-avatar";
 
 type Tone = "accent" | "on-track" | "watch" | "critical" | "neutral" | "todo" | "progress" | "done";
 
@@ -21,16 +22,26 @@ export function Surface({
   style?: React.CSSProperties;
   children: ReactNode;
 }) {
+  const isFlexColumn =
+    style?.display === "flex" &&
+    (style.flexDirection === "column" || style.flexDirection === undefined);
+
   return (
     <section className={classNames("surface", className)} style={style}>
-      <div className="surface-header">
+      <div className="surface-header" style={isFlexColumn ? { flexShrink: 0 } : undefined}>
         <div>
           {kicker ? <span className="kicker">{kicker}</span> : null}
           <h2>{title}</h2>
         </div>
         {aside ? <div>{aside}</div> : null}
       </div>
-      {children}
+      {isFlexColumn ? (
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {children}
+        </div>
+      ) : (
+        children
+      )}
     </section>
   );
 }
@@ -81,14 +92,19 @@ export function StatCard({
 export function AvatarRail({
   items,
 }: {
-  items: Array<{ id: string; initials: string; name: string }>;
+  items: Array<{ id: string; initials: string; name: string; email?: string; avatarUrl?: string }>;
 }) {
   return (
     <div className="avatar-rail">
       {items.map((item) => (
-        <span key={item.id} title={item.name} className="avatar-token">
-          {item.initials}
-        </span>
+        <UserAvatar
+          key={item.id}
+          userId={item.id}
+          email={item.email}
+          name={item.name}
+          avatarUrl={item.avatarUrl}
+          size={32}
+        />
       ))}
     </div>
   );
@@ -233,60 +249,308 @@ export function MiniBars({
 
 import Link from "next/link";
 
+const COLUMN_STATUS_COLORS = {
+  accent: "#2563eb",
+  "on-track": "#16a34a",
+  watch: "#facc15",
+  critical: "#dc2626",
+  neutral: "#94a3b8",
+} as const;
+
+export type ColumnChartTone = keyof typeof COLUMN_STATUS_COLORS;
+
 export function ColumnChart({
   items,
+  height = "100%",
 }: {
-  items: Array<{ label: string; value: number; tone?: "on-track" | "watch" | "critical"; href?: string }>;
+  items: Array<{
+    label: string;
+    value: number;
+    tone?: ColumnChartTone;
+    href?: string;
+  }>;
+  /** Fixed px or CSS size; use "100%" to fill the parent card body */
+  height?: number | string;
 }) {
   const max = Math.max(...items.map((item) => item.value), 100);
+  const columnWidth = 88;
+  const gap = 10;
 
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: "1.5rem", height: "100%", minHeight: "250px", padding: "1rem 0", width: "100%", overflowX: "auto", borderBottom: "1px solid rgba(148,163,184,0.2)" }}>
-      {items.map((item) => {
-        const height = Math.max(2, (item.value / max) * 100);
-        const color = item.tone === "critical" ? "#ef4444" : item.tone === "watch" ? "#facc15" : "#22c55e";
-        
-        const content = (
-          <div key={item.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, minWidth: "80px", gap: "0.5rem", height: "100%", justifyContent: "flex-end" }}>
-            <span style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--ink)" }}>{item.value}%</span>
-            <div style={{ 
-              width: "100%", 
-              maxWidth: "48px", 
-              height: `${height}%`, 
-              minHeight: "4px",
-              backgroundColor: color, 
-              borderRadius: "6px 6px 0 0",
-              transition: "all 0.4s ease",
-              boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)"
-            }} title={item.label} />
-            <span style={{ 
-              fontSize: "0.75rem", 
-              textAlign: "center", 
-              color: "var(--foreground-muted)",
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              width: "100%",
-              lineHeight: 1.2,
-              height: "2.4em"
-            }} title={item.label}>
-              {item.label}
-            </span>
-          </div>
-        );
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        flex: height === "100%" ? 1 : undefined,
+        height,
+        minHeight: 0,
+        overflowX: "auto",
+        overflowY: "hidden",
+        WebkitOverflowScrolling: "touch",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "stretch",
+          justifyContent: "space-evenly",
+          gap: `${gap}px`,
+          flex: 1,
+          minHeight: 0,
+          height: "100%",
+          width: "max-content",
+          minWidth: "100%",
+          padding: "0.1rem 0.15rem 0",
+          boxSizing: "border-box",
+          borderBottom: "1px solid rgba(148,163,184,0.28)",
+        }}
+      >
+        {items.map((item) => {
+          const barPct = Math.max(4, (item.value / max) * 100);
+          const color = COLUMN_STATUS_COLORS[item.tone ?? "accent"];
 
-        if (item.href) {
-          return (
-            <Link key={item.label} href={item.href} style={{ textDecoration: "none", color: "inherit", flex: 1, display: "flex", height: "100%" }}>
-              {content}
-            </Link>
+          const content = (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                width: "100%",
+                height: "100%",
+                minHeight: 0,
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "flex-end",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    width: "100%",
+                    height: `${barPct}%`,
+                    minHeight: "28px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      color: "var(--ink)",
+                      flexShrink: 0,
+                      lineHeight: 1,
+                      marginBottom: "0.25rem",
+                    }}
+                  >
+                    {item.value}%
+                  </span>
+                  <div
+                    style={{
+                      width: "36px",
+                      flex: 1,
+                      minHeight: "6px",
+                      backgroundColor: color,
+                      borderRadius: "6px 6px 0 0",
+                      transition: "height 0.4s ease",
+                      boxShadow: "0 2px 4px -1px rgba(0, 0, 0, 0.05)",
+                    }}
+                    title={`${item.label}: ${item.value}%`}
+                  />
+                </div>
+              </div>
+              <span
+                style={{
+                  fontSize: "0.68rem",
+                  textAlign: "center",
+                  color: "var(--foreground-muted)",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  width: "100%",
+                  lineHeight: 1.2,
+                  height: "2.4em",
+                  flexShrink: 0,
+                  marginTop: "0.3rem",
+                  paddingBottom: "0.1rem",
+                }}
+                title={item.label}
+              >
+                {item.label}
+              </span>
+            </div>
           );
-        }
 
-        return content;
-      })}
+          if (item.href) {
+            return (
+              <Link
+                key={`${item.href}-${item.label}`}
+                href={item.href}
+                style={{
+                  textDecoration: "none",
+                  color: "inherit",
+                  flex: `0 0 ${columnWidth}px`,
+                  width: columnWidth,
+                  height: "100%",
+                  display: "block",
+                  alignSelf: "stretch",
+                }}
+              >
+                {content}
+              </Link>
+            );
+          }
+
+          return (
+            <div
+              key={item.label}
+              style={{
+                flex: `0 0 ${columnWidth}px`,
+                width: columnWidth,
+                height: "100%",
+                alignSelf: "stretch",
+              }}
+            >
+              {content}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const HEALTH_BAR_COLORS = {
+  "on-track": "#22c55e",
+  watch: "#f59e0b",
+  critical: "#ef4444",
+} as const;
+
+export function HorizontalBarChart({
+  items,
+  maxHeight = 460,
+  valueSuffix = "%",
+}: {
+  items: Array<{
+    id: string;
+    label: string;
+    value: number;
+    max?: number;
+    tone?: "on-track" | "watch" | "critical";
+    meta?: string;
+    href?: string;
+  }>;
+  maxHeight?: number;
+  valueSuffix?: string;
+}) {
+  const scaleMax = Math.max(...items.map((item) => item.max ?? item.value), 1);
+
+  return (
+    <div
+      style={{
+        maxHeight,
+        overflowY: "auto",
+        overflowX: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.7rem",
+        paddingRight: "0.25rem",
+        minHeight: Math.min(maxHeight, Math.max(items.length * 36, 120)),
+      }}
+    >
+      {items.length === 0 ? (
+        <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--foreground-muted)", fontSize: "0.875rem" }}>
+          Chưa có dữ liệu
+        </div>
+      ) : (
+        items.map((item) => {
+          const width = Math.max(4, Math.round((item.value / scaleMax) * 100));
+          const color = HEALTH_BAR_COLORS[item.tone ?? "on-track"];
+          const row = (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 1.6fr) auto",
+                gap: "0.75rem",
+                alignItems: "center",
+              }}
+            >
+              <span
+                title={item.label}
+                style={{
+                  fontSize: "0.8125rem",
+                  fontWeight: 500,
+                  color: "var(--ink)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {item.label}
+              </span>
+              <div
+                style={{
+                  height: "10px",
+                  borderRadius: "999px",
+                  background: "rgba(148,163,184,0.16)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${width}%`,
+                    height: "100%",
+                    borderRadius: "999px",
+                    background: color,
+                    transition: "width 0.35s ease",
+                  }}
+                />
+              </div>
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--foreground-muted)",
+                  whiteSpace: "nowrap",
+                  textAlign: "right",
+                  minWidth: "4.5rem",
+                }}
+              >
+                <strong style={{ color: "var(--ink)", fontSize: "0.8125rem" }}>
+                  {item.value}
+                  {valueSuffix}
+                </strong>
+                {item.meta ? ` · ${item.meta}` : ""}
+              </span>
+            </div>
+          );
+
+          if (item.href) {
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                style={{ textDecoration: "none", color: "inherit", display: "block" }}
+              >
+                {row}
+              </Link>
+            );
+          }
+
+          return <div key={item.id}>{row}</div>;
+        })
+      )}
     </div>
   );
 }

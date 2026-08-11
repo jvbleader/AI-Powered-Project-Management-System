@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { useAuthSession } from "@/hooks/use-session";
-import { normalizeViewer } from "@/lib/mock/permissions";
 import {
   canManageProjectsByRole,
   hasCompanywideProjectAccess,
@@ -20,7 +19,7 @@ type DashboardState = {
 
 export default function DashboardPage() {
   const session = useAuthSession();
-  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
+  const viewer = useMemo(() => session?.currentUser as any, [session?.currentUser]);
   const [dashboardState, setDashboardState] = useState<DashboardState | null>(null);
 
   useEffect(() => {

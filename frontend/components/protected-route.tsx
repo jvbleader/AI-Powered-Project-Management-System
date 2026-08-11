@@ -1,70 +1,102 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { restoreSession, signOut, readSessionSnapshot } from "@/services/auth/session";
+import {
+  restoreSession,
+  readSessionSnapshot,
+  clearLocalSession,
+  consumeIntentionalLogout,
+} from "@/services/auth/session";
+import { NETWORK_ERROR_MESSAGE } from "@/services/api/core";
 import { useAuthSession } from "@/hooks/use-session";
 
 import styles from "./styles/auth-shell.module.css";
 
 type GuardStatus = "checking" | "ready";
 
+function redirectWhenUnauthenticated() {
+  if (consumeIntentionalLogout()) {
+    window.location.assign("/login");
+    return;
+  }
+
+  window.location.assign("/unauthorized");
+}
+
+function isTransientRestoreError(error: unknown) {
+  return error instanceof Error && error.message === NETWORK_ERROR_MESSAGE;
+}
+
 export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const session = useAuthSession();
-  const [guardStatus, setGuardStatus] = useState<GuardStatus>(session ? "ready" : "checking");
-  const isReady = guardStatus === "ready" || Boolean(session);
+  const hasCachedSession = Boolean(session);
+  const [guardStatus, setGuardStatus] = useState<GuardStatus>(
+    hasCachedSession ? "ready" : "checking",
+  );
+  const redirectingRef = useRef(false);
+
+  const rejectSession = () => {
+    if (redirectingRef.current) {
+      return;
+    }
+
+    redirectingRef.current = true;
+    clearLocalSession();
+    redirectWhenUnauthenticated();
+  };
 
   useEffect(() => {
     let isCancelled = false;
 
     async function verifySession() {
-      const hasStoredSession = Boolean(readSessionSnapshot());
-
-      if (!hasStoredSession) {
-        setGuardStatus("checking");
-      }
-
       try {
         await restoreSession();
 
         if (!isCancelled) {
           setGuardStatus("ready");
         }
-      } catch {
-        await signOut();
-
-        if (!isCancelled) {
-          window.location.assign("/unauthorized");
+      } catch (error) {
+        if (isCancelled) {
+          return;
         }
+
+        // Lỗi mạng tạm thời: giữ snapshot local, không đẩy unauthorized / không logout API.
+        if (readSessionSnapshot() && isTransientRestoreError(error)) {
+          setGuardStatus("ready");
+          return;
+        }
+
+        rejectSession();
       }
     }
 
-    const handleSessionExpired = async () => {
-      await signOut();
-      if (!isCancelled) {
-        router.replace("/unauthorized");
+    const handleSessionExpired = () => {
+      if (isCancelled) {
+        return;
       }
+
+      rejectSession();
     };
 
     window.addEventListener("flowpilot-session-expired", handleSessionExpired);
-
     void verifySession();
 
     return () => {
       isCancelled = true;
       window.removeEventListener("flowpilot-session-expired", handleSessionExpired);
     };
-  }, [router]);
+  }, []);
 
   useEffect(() => {
-    if (isReady && !session) {
-      window.location.assign("/unauthorized");
+    // Chỉ redirect khi đã xác minh xong mà session bị xóa (logout tab khác / force logout).
+    // Không redirect trong lúc đang checking — tránh race khi remount / chuyển tab.
+    if (guardStatus === "ready" && !session && !redirectingRef.current) {
+      rejectSession();
     }
-  }, [isReady, session]);
+  }, [guardStatus, session]);
 
-  if (!isReady || !session) {
+  if (guardStatus !== "ready" || !session) {
     return (
       <main className={styles.screen}>
         <section className={styles.card}>

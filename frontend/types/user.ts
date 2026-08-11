@@ -5,15 +5,18 @@ export type UserStatus = "ACTIVE" | "INACTIVE";
 
 export const SYSTEM_ROLE_OPTIONS = [
   "Lập trình viên",
+  "Chuyên viên",
   "Tester",
   "QA",
   "QC",
   "Project Manager / Product Owner / Group Member",
   "Leader",
+  "Trợ lý giám đốc",
+  "Kỹ sư cầu nối",
+  "Comtor",
   "Giám đốc",
-  "Admin",
   "HR",
-  "Chăm sóc khách hàng",
+  "Admin",
 ] as const;
 
 export interface Department {

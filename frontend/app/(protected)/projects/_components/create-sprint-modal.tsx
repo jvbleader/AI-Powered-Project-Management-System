@@ -134,6 +134,7 @@ export function CreateSprintModal({
       }}
     >
       <section
+        data-testid="create-sprint-modal"
         style={{
           background: "#ffffff",
           borderRadius: "20px",
@@ -181,10 +182,15 @@ export function CreateSprintModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.5rem", padding: "1.5rem", overflowY: "auto" }}>
+        <form
+          onSubmit={handleSubmit}
+          data-testid="create-sprint-form"
+          style={{ display: "flex", flexDirection: "column", gap: "1.5rem", padding: "1.5rem", overflowY: "auto" }}
+        >
           <div>
-            <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Tên Sprint *</label>
+            <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Tên Sprint<span className="required-asterisk" aria-hidden="true">*</span></label>
             <input
+              data-testid="sprint-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -209,6 +215,7 @@ export function CreateSprintModal({
           <div>
             <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Mục tiêu trọng tâm</label>
             <textarea
+              data-testid="sprint-goal"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder="VD: Hoàn thiện tính năng đăng nhập..."
@@ -232,8 +239,9 @@ export function CreateSprintModal({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
             <div>
-              <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Ngày bắt đầu *</label>
+              <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Ngày bắt đầu<span className="required-asterisk" aria-hidden="true">*</span></label>
               <input
+                data-testid="sprint-start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -254,8 +262,9 @@ export function CreateSprintModal({
               />
             </div>
             <div>
-              <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Ngày kết thúc *</label>
+              <label style={{ display: "block", marginBottom: "0.45rem", fontSize: "0.9rem", fontWeight: 500, color: "#334155" }}>Ngày kết thúc<span className="required-asterisk" aria-hidden="true">*</span></label>
               <input
+                data-testid="sprint-end-date"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
@@ -304,6 +313,7 @@ export function CreateSprintModal({
             {(!sprintToEdit || canManage) && (
               <button
                 type="submit"
+                data-testid="create-sprint-submit"
                 className="primary-button"
                 disabled={isLoading || !name.trim() || !startDate || !endDate}
               >

@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useParams, useSearchParams } from "next/navigation";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { dashboardApi, projectApi, sprintApi, taskApi, workspaceApi, userApi } from "@/services/api";
-import { normalizeViewer } from "@/lib/mock/permissions";
-import { hasCompanywideProjectAccess, isAdminRole, isManagerRole, isLeaderRole } from "@/lib/utils/format";
+import { canManageProjectMembership, isAdminRole } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
 import type {
   DashboardOverview,
@@ -38,6 +37,10 @@ type ProjectDetailState = {
 
 type ProjectDetailTab = "overview" | "gantt" | "kanban" | "members";
 
+type SearchParamsLike = {
+  entries(): IterableIterator<[string, string]>;
+};
+
 function resolveProjectDetailTab(value: string | null): ProjectDetailTab {
   if (value === "overview" || value === "gantt" || value === "kanban" || value === "members") {
     return value;
@@ -45,50 +48,114 @@ function resolveProjectDetailTab(value: string | null): ProjectDetailTab {
   return "overview";
 }
 
-function buildProjectDetailHref(projectId: string, tab: ProjectDetailTab) {
-  return `/projects/${projectId}?tab=${tab}`;
+function resolveProjectTaskTab(projectType: string | null | undefined): ProjectDetailTab {
+  return projectType === "waterfall" ? "gantt" : "kanban";
+}
+
+function buildProjectDetailHref(
+  projectId: string,
+  tab: ProjectDetailTab,
+  preserve?: { highlightTaskId?: string | null; highlightColor?: string | null },
+) {
+  const params = new URLSearchParams({ tab });
+  if (preserve?.highlightTaskId) {
+    params.set("highlightTaskId", preserve.highlightTaskId);
+  }
+  if (preserve?.highlightColor) {
+    params.set("highlightColor", preserve.highlightColor);
+  }
+  return `/projects/${projectId}?${params.toString()}`;
+}
+
+function buildNormalizedHref(pathname: string, params: SearchParamsLike | URLSearchParams) {
+  const normalized = new URLSearchParams();
+  const entries = Array.from(params.entries()).sort(([keyA, valueA], [keyB, valueB]) => {
+    if (keyA === keyB) {
+      return valueA.localeCompare(valueB);
+    }
+    return keyA.localeCompare(keyB);
+  });
+
+  entries.forEach(([key, value]) => normalized.append(key, value));
+
+  const query = normalized.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function normalizeHref(href: string) {
+  const url = new URL(href, "http://localhost");
+  return buildNormalizedHref(url.pathname, url.searchParams);
 }
 
 export default function ProjectDetailPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const params = useParams();
   const searchParams = useSearchParams();
   const projectId = typeof params?.projectId === "string" ? params.projectId : "";
   const searchTab = searchParams.get("tab");
+  const highlightTaskId = searchParams.get("highlightTaskId");
+  const highlightColor = searchParams.get("highlightColor");
+  const currentHref = buildNormalizedHref(pathname, searchParams);
+  const requestedTab = resolveProjectDetailTab(searchTab);
 
   const session = useAuthSession();
-  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
+  const viewer = session?.currentUser as UserProfile;
 
-  const [activeTab, setActiveTab] = useState<ProjectDetailTab>(() =>
-    resolveProjectDetailTab(searchTab),
-  );
   const [state, setState] = useState<ProjectDetailState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreateSprintModalOpen, setIsCreateSprintModalOpen] = useState(false);
   const [sprintToEdit, setSprintToEdit] = useState<Sprint | null>(null);
-  const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
   const [defaultParentTaskId, setDefaultParentTaskId] = useState<string>("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedSprintState, setSelectedSprintState] = useState<{ projectId: string; sprintId: string | null }>({
+    projectId,
+    sprintId: null,
+  });
   const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
 
-  const syncActiveTab = useEffectEvent((tab: ProjectDetailTab) => {
-    setActiveTab((currentTab) => (currentTab === tab ? currentTab : tab));
-  });
+  const selectedSprintId =
+    selectedSprintState.projectId === projectId ? selectedSprintState.sprintId : null;
+
+  const handleSelectedSprintIdChange = (sprintId: string | null) => {
+    setSelectedSprintState({ projectId, sprintId });
+  };
+
+  let activeTab: ProjectDetailTab = requestedTab;
+  if (state?.project) {
+    const taskTab = resolveProjectTaskTab(state.project.projectType);
+    const isWaterfall = state.project.projectType === "waterfall";
+
+    if (highlightTaskId && requestedTab !== taskTab) {
+      activeTab = taskTab;
+    } else if (isWaterfall && requestedTab === "kanban") {
+      activeTab = taskTab;
+    } else if (!isWaterfall && requestedTab === "gantt") {
+      activeTab = taskTab;
+    }
+  }
 
   useEffect(() => {
-    const resolvedTab = resolveProjectDetailTab(searchTab);
+    if (!state?.project || !projectId) return;
 
-    if (activeTab !== resolvedTab) {
-      queueMicrotask(() => {
-        syncActiveTab(resolvedTab);
-      });
-    }
+    const nextHref = buildProjectDetailHref(projectId, activeTab, {
+      highlightTaskId,
+      highlightColor,
+    });
 
-    if (projectId && searchTab !== resolvedTab) {
-      router.replace(buildProjectDetailHref(projectId, resolvedTab), { scroll: false });
+    if (normalizeHref(nextHref) !== currentHref) {
+      router.replace(nextHref, { scroll: false });
     }
-  }, [activeTab, projectId, router, searchTab]);
+  }, [
+    activeTab,
+    currentHref,
+    highlightColor,
+    highlightTaskId,
+    projectId,
+    router,
+    state?.project,
+  ]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -145,31 +212,21 @@ export default function ProjectDetailPage() {
       alertCount: 0,
     } satisfies WorkspaceShellData);
   const canManageCurrentProject = state
-    ? hasCompanywideProjectAccess(viewer.role, viewer.department) ||
-      state.project.managerId?.replace("usr-", "") === String(viewer.id) ||
-      isManagerRole(viewer.role) ||
-      isLeaderRole(viewer.role)
+    ? canManageProjectMembership(viewer, state.project)
     : false;
   const canManageProjectMembers = state
-    ? isAdminRole(viewer.role) || state.project.managerId?.replace("usr-", "") === String(viewer.id)
+    ? isAdminRole(viewer.role) || canManageProjectMembership(viewer, state.project)
     : false;
-  const projectOptions = (state?.projects ?? []).map((project) => ({
-    value: project.id,
-    label: project.name,
-  }));
 
   function handleTabChange(tab: ProjectDetailTab) {
     if (!projectId) {
       return;
     }
 
-    setActiveTab(tab);
-
-    if (tab === activeTab) {
-      return;
+    const nextHref = buildProjectDetailHref(projectId, tab);
+    if (normalizeHref(nextHref) !== currentHref) {
+      router.replace(nextHref, { scroll: false });
     }
-
-    router.replace(buildProjectDetailHref(projectId, tab), { scroll: false });
   }
 
   return (
@@ -187,7 +244,7 @@ export default function ProjectDetailPage() {
         </button>
 
         {state && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-end", width: "160px" }}>
+          <div style={{ display: "flex", flexDirection: "row", gap: "0.5rem", alignItems: "center" }}>
             <button
               type="button"
               className="primary-button"
@@ -195,7 +252,7 @@ export default function ProjectDetailPage() {
                 setDefaultParentTaskId("");
                 setIsCreateModalOpen(true);
               }}
-              style={{ fontWeight: 600, width: "100%" }}
+              style={{ fontWeight: 600 }}
             >
               + Tạo Task mới
             </button>
@@ -204,7 +261,7 @@ export default function ProjectDetailPage() {
                 type="button"
                 className="secondary-button"
                 onClick={() => setIsCreateSprintModalOpen(true)}
-                style={{ fontWeight: 500, fontSize: "0.875rem", width: "100%" }}
+                style={{ fontWeight: 500, fontSize: "0.875rem" }}
               >
                 + Tạo Sprint mới
               </button>
@@ -337,9 +394,9 @@ export default function ProjectDetailPage() {
                 <ProjectKanbanBoard
                   tasks={state.tasks}
                   sprints={state.sprints}
-                  viewerId={String(viewer.id)}
                   selectedSprintId={selectedSprintId}
-                  onSprintChange={setSelectedSprintId}
+                  viewerId={String(viewer.id)}
+                  onSelectedSprintIdChange={handleSelectedSprintIdChange}
                   onTaskClick={(taskId) => {
                     setSelectedTaskId(taskId);
                     setIsTaskDetailModalOpen(true);
@@ -467,6 +524,25 @@ export default function ProjectDetailPage() {
                 : null,
             );
           }}
+          onTaskDeleted={async () => {
+            setIsTaskDetailModalOpen(false);
+            setSelectedTaskId(null);
+            const [{ data: updatedTasks }, { data: dashboardOverview }] = await Promise.all([
+              taskApi.getEnrichedBoard({ projectId }, viewer),
+              dashboardApi
+                .getOverview(viewer, projectId)
+                .catch(() => ({ data: null as DashboardOverview | null })),
+            ]);
+            setState((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    tasks: updatedTasks,
+                    dashboardOverview: dashboardOverview ?? prev.dashboardOverview,
+                  }
+                : null,
+            );
+          }}
         />
       )}
       {state && (
@@ -487,7 +563,7 @@ export default function ProjectDetailPage() {
             sprintApi.list({ projectId }, viewer).then(({ data }) => {
               setState((prev) => prev ? { ...prev, sprints: data } : prev);
               if (newSprintId) {
-                setSelectedSprintId(newSprintId);
+                handleSelectedSprintIdChange(newSprintId);
               }
             });
           }}

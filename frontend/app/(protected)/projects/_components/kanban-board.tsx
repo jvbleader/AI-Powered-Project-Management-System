@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { taskApi } from "@/services/api";
 import { EnrichedTask } from "@/types";
 import { StatusPill } from "@/components/ui";
+import { UserAvatar } from "@/components/user-avatar";
 import { formatDate, taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
 
 interface KanbanBoardProps {
@@ -184,22 +185,14 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
                     }}
                   >
                     {task.assignee ? (
-                      <div
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: "50%",
-                          background: "var(--primary-subtle)",
-                          color: "var(--primary-base)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "0.75rem",
-                        }}
-                        title={task.assignee.name}
-                      >
-                        {task.assignee.name.charAt(0).toUpperCase()}
-                      </div>
+                      <UserAvatar
+                        userId={task.assignee.id}
+                        email={task.assignee.email}
+                        name={task.assignee.name}
+                        avatarUrl={task.assignee.avatarUrl}
+                        size={24}
+                        style={{ fontSize: "0.75rem" }}
+                      />
                     ) : (
                       <div
                         style={{

@@ -11,14 +11,6 @@ import {
   UserRolesUpdatePayload,
   UserStatusUpdatePayload,
 } from "@/types";
-import { users } from "@/lib/mock/data";
-import {
-  getDirectoryUsers,
-  updateDirectoryProfile,
-  updateDirectoryUserRoles,
-  updateDirectoryUserStatus,
-} from "@/services/users/directory";
-import { normalizeViewer } from "@/lib/mock/permissions";
 import {
   apiEndpoints,
   BackendPaginatedUsers,
@@ -73,9 +65,18 @@ export const userApi = {
     }
   },
 
-  async updateRole(userId: string, role: (typeof users)[number]["role"]) {
-    const updated = updateDirectoryUserRoles({ userId, roles: [role] });
-    return respond(updated, 150);
+  async updateRole(userId: string, role: any) {
+    try {
+      const result = await requestApi<BackendUserResponse>(
+        apiEndpoints.users.updateRole(userId),
+        {
+          body: JSON.stringify({ role: role, department: null }),
+        },
+      );
+      return wrapBackendResponse(toFrontendUserProfile(result.data));
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : USER_ADMIN_UNAVAILABLE_MESSAGE);
+    }
   },
 
   async listDirectory(
@@ -115,19 +116,27 @@ export const userApi = {
     try {
       const result = await requestApi<BackendUserResponse>(apiEndpoints.auth.me);
       return wrapBackendResponse(toFrontendUserProfile(result.data));
-    } catch {
-      return respond(normalizeViewer(viewer), 100);
+    } catch (error) {
+      if (viewer) return respond(viewer, 100);
+      throw error;
     }
   },
 
   async updateCurrentProfile(viewer: UserProfile, payload: UpdateProfilePayload) {
-    const updated = updateDirectoryProfile(normalizeViewer(viewer), payload);
-    return respond(updated, 140);
+    const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updateProfile, {
+      body: JSON.stringify({
+        name: payload.name,
+        department: payload.department,
+        job_title: payload.jobTitle,
+        address: payload.address,
+      }),
+    });
+    return wrapBackendResponse(toFrontendUserProfile(result.data));
   },
 
   async updateCurrentAvatar(viewer: UserProfile, avatarUrl?: string) {
     if (!avatarUrl) {
-      return respond(normalizeViewer(viewer), 120);
+      return wrapBackendResponse(viewer);
     }
     const result = await requestApi<BackendUserResponse>(apiEndpoints.users.updateAvatar, {
       body: JSON.stringify({ avatar_url: avatarUrl }),
@@ -209,25 +218,24 @@ export const userApi = {
       revokedAt: string | null;
     }>
   > {
-    const targetUser = getDirectoryUsers().find(
-      (user) => user.email.toLowerCase() === payload.email.toLowerCase(),
-    );
+    const listRes = await this.listDirectory({ search: payload.email, pageSize: 1 });
+    const targetUser = listRes.data.items[0];
 
-    if (!targetUser) {
-      throw new Error("Không tìm thấy người dùng trong danh sách preview.");
+    if (!targetUser || targetUser.email.toLowerCase() !== payload.email.toLowerCase()) {
+      throw new Error("Không tìm thấy người dùng.");
     }
 
-    const updated = updateDirectoryUserStatus({
+    const updated = await this.updateStatus({
       userId: targetUser.id,
       status: "INACTIVE",
     });
 
     return respond(
       {
-        email: updated.email,
-        isActive: updated.isActive,
-        message: "Đã khóa tài khoản trong chế độ preview của frontend.",
-        revokedRefreshTokens: 0,
+        email: updated.data.email,
+        isActive: updated.data.isActive,
+        message: "Đã khóa tài khoản thành công qua API thật.",
+        revokedRefreshTokens: 1,
         revokedAt: new Date().toISOString(),
       },
       140,

@@ -55,6 +55,7 @@ function mapTaskPreview(item: BackendRecord): DashboardTaskPreview {
     sprintName: asOptionalString(item.sprintName),
     projectId: item.projectId != null ? String(item.projectId) : null,
     projectName: asString(item.projectName),
+    projectType: asOptionalString(item.projectType) ?? "agile",
   };
 }
 
@@ -97,6 +98,7 @@ function mapWorkloadMember(item: BackendRecord): DashboardWorkloadMember {
 }
 
 function mapRecentLogwork(item: BackendRecord): DashboardRecentLogwork {
+  const status = asString(item.status || "PENDING").toUpperCase();
   return {
     id: String(item.id ?? ""),
     taskId: String(item.taskId ?? ""),
@@ -108,6 +110,10 @@ function mapRecentLogwork(item: BackendRecord): DashboardRecentLogwork {
     hours: asNumber(item.hours),
     note: asString(item.note),
     progressPercent: asNumber(item.progressPercent),
+    status,
+    projectId: item.projectId != null ? String(item.projectId) : null,
+    projectName: item.projectName != null ? asString(item.projectName) : null,
+    canApprove: Boolean(item.canApprove),
   };
 }
 
@@ -156,13 +162,28 @@ function mapDashboardOverview(data: unknown): DashboardOverview {
 }
 
 function mapProjectHealthPreview(item: BackendRecord): import("@/types").ProjectHealthPreview {
+  const rawStatus = asString(item.status, "ACTIVE");
+  const statusMap: Record<string, string> = {
+    active: "ACTIVE",
+    inactive: "PLANNING",
+    planning: "PLANNING",
+    completed: "COMPLETED",
+    at_risk: "AT_RISK",
+    on_hold: "ON_HOLD",
+  };
+  const status =
+    statusMap[rawStatus.toLowerCase()] ??
+    (rawStatus.toUpperCase() as string);
+
   return {
     id: String(item.id ?? ""),
     name: asString(item.name),
     code: asString(item.code),
-    status: asString(item.status, "ACTIVE"),
+    status,
     progress: asNumber(item.progress),
     totalTasks: asNumber(item.totalTasks),
+    doneCount: asNumber(item.doneCount),
+    overdueCount: asNumber(item.overdueCount),
     health: (asString(item.health, "on-track") as import("@/types").ProjectHealthPreview["health"]),
   };
 }

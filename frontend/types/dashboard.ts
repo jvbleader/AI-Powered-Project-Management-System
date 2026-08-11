@@ -40,6 +40,7 @@ export interface DashboardTaskPreview {
   sprintName?: string | null;
   projectId: string | null;
   projectName: string | null;
+  projectType?: string | null;
 }
 
 export interface DashboardWorkloadMember {
@@ -69,6 +70,10 @@ export interface DashboardRecentLogwork {
   hours: number;
   note: string;
   progressPercent: number;
+  status?: "PENDING" | "APPROVED" | "REJECTED" | string;
+  projectId?: string | null;
+  projectName?: string | null;
+  canApprove?: boolean;
 }
 
 export interface DashboardOverview {
@@ -109,6 +114,8 @@ export interface ProjectHealthPreview {
   status: string;
   progress: number;
   totalTasks: number;
+  doneCount?: number;
+  overdueCount?: number;
   health: "on-track" | "watch" | "critical";
 }
 

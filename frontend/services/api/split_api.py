@@ -172,7 +172,7 @@ export function toFrontendUserProfile(backendUser: BackendUserResponse): UserPro
     email: backendUser.email,
     role,
     roles: [role],
-    title: backendUser.department ? `${toRoleTitle(role)} - ${backendUser.department}` : toRoleTitle(role),
+    title: toRoleTitle(role),
     initials: toInitials(resolvedName),
     presence: backendUser.is_active ? "online" : "offline",
     capacityHours: 40,
@@ -183,6 +183,7 @@ export function toFrontendUserProfile(backendUser: BackendUserResponse): UserPro
     phoneNumber: backendUser.phone_number ?? undefined,
     department: backendUser.department ?? undefined,
     avatarUrl: backendUser.avatar_url ?? undefined,
+    jobTitle: toRoleTitle(role),
   };
 }
 
@@ -278,9 +279,9 @@ export const apiEndpoints = {
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
   },
   ai: {
-    quickQuery: { method: "POST" as EndpointMethod, path: "/api/ai/query" },
-    reports: { method: "GET" as EndpointMethod, path: "/api/ai/reports" },
-    memory: { method: "GET" as EndpointMethod, path: "/api/ai/memory" },
+    classifyIntent: { method: "POST" as EndpointMethod, path: "/api/ai/classify-intent" },
+    chat: { method: "POST" as EndpointMethod, path: "/api/ai/chat" },
+    sessions: { method: "GET" as EndpointMethod, path: "/api/ai/sessions" },
   },
 } as const;
 

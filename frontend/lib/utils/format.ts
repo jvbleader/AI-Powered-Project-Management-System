@@ -94,12 +94,17 @@ export function roleLabel(role: UserRole) {
     LEADER: "Trưởng nhóm",
     MEMBER: "Thành viên",
     "Lập trình viên": "Lập trình viên",
+    "Chuyên viên": "Chuyên viên",
     Tester: "Tester",
     QA: "QA",
     QC: "QC",
-    [ROLE_PM]: "Manager / PO / Group Manager",
+    [ROLE_PM]: "Manager / Group Manager",
     [ROLE_LEADER]: "Team Leader",
+    "Trợ lý giám đốc": "Trợ lý giám đốc",
+    "Kỹ sư cầu nối": "BrSE",
+    Comtor: "Comtor",
     [ROLE_DIRECTOR]: "Giám đốc",
+    HR: "HR",
     [ROLE_ADMIN]: "Admin",
   };
 
@@ -125,12 +130,22 @@ export function isLeaderRole(role: UserRole) {
 }
 
 export function getRoleTone(role: UserRole) {
+  // Legend: đỏ Manager | be Leader | xanh lá Giám đốc | còn lại xám / trung tính
   const roleStr = (role || "").trim();
   if (roleStr.includes("Manager") || roleStr.includes("PM") || roleStr.includes("Owner") || isManagerRole(roleStr)) {
     return "critical" as const;
   }
+  if (isDirectorRole(roleStr)) {
+    return "on-track" as const;
+  }
   if (roleStr.includes("Leader") || isLeaderRole(roleStr)) {
-    return "accent" as const;
+    return "watch" as const;
+  }
+  if (roleStr === "HR") {
+    return "todo" as const;
+  }
+  if (roleStr === "Trợ lý giám đốc" || roleStr === "Kỹ sư cầu nối" || roleStr === "Comtor") {
+    return "progress" as const;
   }
   return "neutral" as const;
 }
@@ -152,25 +167,30 @@ export function canManageUsers(role: UserRole) {
 
 export function canAccessTeamDirectoryRole(
   role: UserRole,
-  department?: string | null,
+  _department?: string | null,
 ) {
+  // Admin (quản trị TK) + PM/PO/GM + Giám đốc + Leader
   return (
     canManageUsers(role) ||
-    hasCompanywideProjectAccess(role, department) ||
+    isDirectorRole(role) ||
     isManagerRole(role) ||
     isLeaderRole(role)
   );
+}
+
+export function canAccessLogworkApprovalsRole(role: UserRole) {
+  // Chỉ PM/PO/GM + Giám đốc + Leader
+  return isDirectorRole(role) || isManagerRole(role) || isLeaderRole(role);
 }
 
 export function canCreateProjects(
   role: UserRole,
   department?: string | null,
 ) {
+  // Chỉ PM/PO/GM hoặc mọi thành viên phòng Head of Dev.
   return (
     !isAdminRole(role) &&
-    (hasCompanywideProjectAccess(role, department) ||
-      isManagerRole(role) ||
-      isLeaderRole(role))
+    (isHeadOfDevDepartment(department) || isManagerRole(role))
   );
 }
 
@@ -179,6 +199,23 @@ export function canManageProjectsByRole(
   department?: string | null,
 ) {
   return hasCompanywideProjectAccess(role, department) || isManagerRole(role) || isLeaderRole(role);
+}
+
+/** Aligns with backend `user_can_manage_project`: any PM/PO/GM (or Leader) who is a member can manage, not only `manager_id`. */
+export function canManageProjectMembership(
+  viewer: { id: string; role: UserRole; department?: string | null },
+  project: { managerId?: string | null; memberIds?: string[] | null },
+) {
+  if (hasCompanywideProjectAccess(viewer.role, viewer.department)) {
+    return true;
+  }
+
+  const viewerId = String(viewer.id);
+  const managerId = project.managerId ? String(project.managerId) : "";
+  const memberIds = project.memberIds ?? [];
+  const isMember = managerId === viewerId || memberIds.includes(viewerId);
+
+  return isMember && (isManagerRole(viewer.role) || isLeaderRole(viewer.role));
 }
 
 export function normalizeProjectRoleName(roleName: string) {
@@ -288,6 +325,36 @@ export function taskPriorityLabel(priority: TaskPriority) {
     HIGH: "Cao",
     CRITICAL: "Khẩn cấp",
   }[priority];
+}
+
+/** Chuẩn hóa priority từ draft AI (lowercase) hoặc API (UPPERCASE). */
+export function normalizeTaskPriority(
+  priority: string | null | undefined,
+): TaskPriority {
+  const key = String(priority || "MEDIUM").toUpperCase();
+  if (key === "LOW" || key === "HIGH" || key === "CRITICAL") return key;
+  return "MEDIUM";
+}
+
+/**
+ * Màu pill cấp thiết — khớp Gantt (`.priorityLow` / Medium / High / Critical).
+ */
+export function taskPriorityPillStyle(priority: string | null | undefined): {
+  color: string;
+  backgroundColor: string;
+  borderColor: string;
+} {
+  switch (normalizeTaskPriority(priority)) {
+    case "LOW":
+      return { color: "#0369a1", backgroundColor: "#e0f2fe", borderColor: "#bae6fd" };
+    case "HIGH":
+      return { color: "#b45309", backgroundColor: "#fef3c7", borderColor: "#fde68a" };
+    case "CRITICAL":
+      return { color: "#b91c1c", backgroundColor: "#fee2e2", borderColor: "#fecaca" };
+    case "MEDIUM":
+    default:
+      return { color: "#15803d", backgroundColor: "#dcfce7", borderColor: "#bbf7d0" };
+  }
 }
 
 export function healthToneLabel(tone: HealthTone) {

@@ -6,7 +6,9 @@ import { redirect } from "next/navigation";
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, hasAuthCookies } from "@/services/auth/cookies";
 
 const DEFAULT_SERVER_API_BASE_URL =
-  process.env.API_BASE_URL_INTERNAL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://backend:8000";
+  process.env.API_BASE_URL_INTERNAL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  `http://backend:${process.env.NEXT_PUBLIC_API_PORT ?? "8000"}`;
 
 function getServerAuthCookieHeader(
   cookieStore: Awaited<ReturnType<typeof cookies>>,

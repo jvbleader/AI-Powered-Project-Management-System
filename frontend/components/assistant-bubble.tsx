@@ -5,28 +5,16 @@ import { createPortal } from "react-dom";
 
 import ReactMarkdown from "react-markdown";
 
-import { aiApi, projectApi } from "@/services/api";
+import { aiApi } from "@/services/api";
 import { getApiBaseUrl } from "@/services/api/core";
-import {
-  AiQuickResponse,
-  AiQuickResponseAction,
-  AiQuickResponseRequest,
-} from "@/types";
 import { TaskDraftConfirm } from "./task-draft-confirm";
 import { SprintDraftConfirm } from "./sprint-draft-confirm";
-
-type SuggestedPrompt = {
-  action: AiQuickResponseAction;
-  prompt: string;
-};
-
-
+import { SprintStatusDraftConfirm } from "./sprint-status-draft-confirm";
 
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  response?: AiQuickResponse;
 };
 
 type ChatSession = {
@@ -35,29 +23,6 @@ type ChatSession = {
   createdAt: string;
   messages: ChatMessage[];
 };
-
-const suggestedPrompts: SuggestedPrompt[] = [
-  {
-    action: "daily_priority",
-    prompt: "Hôm nay tôi nên chú ý việc gì trước?",
-  },
-  {
-    action: "stalled_tasks",
-    prompt: "Task nào đang đứng yên?",
-  },
-  {
-    action: "critical_overdue",
-    prompt: "Task nào đang trễ hạn đáng lo nhất?",
-  },
-  {
-    action: "follow_up_members",
-    prompt: "Ai cần được nhắc hôm nay?",
-  },
-  {
-    action: "leader_brief",
-    prompt: "Viết cho tôi 4 dòng cập nhật để báo leader.",
-  },
-];
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -77,31 +42,6 @@ function formatGeneratedAt(value: string) {
   }).format(new Date(timestamp));
 }
 
-function normalizePrompt(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractTaskId(prompt: string) {
-  const match = prompt.match(/\btask[-\s]?(\d+)\b/i);
-  return match ? match[1] : null;
-}
-
-
-
-function createAssistantMessage(content: string, response?: AiQuickResponse): ChatMessage {
-  return {
-    id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    role: "assistant",
-    content,
-    response,
-  };
-}
-
 function createUserMessage(content: string): ChatMessage {
   return {
     id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -119,13 +59,18 @@ const MemoizedMarkdown = memo(({ content, messageId, projectId }: { content: str
     code({ node, inline, className, children, ...props }: any) {
       const match = /language-json_task_draft(?:_(confirmed|rejected))?/.exec(className || "");
       if (!inline && match) {
-        const initialStatus = match[1] || "pending"; // "confirmed" | "rejected" | "pending"
+        const initialStatus = match[1] || "pending";
         return <TaskDraftConfirm draft={String(children)} projectId={projectId} messageId={messageId} initialStatus={initialStatus as any} />;
       }
       const sprintMatch = /language-json_sprint_draft(?:_(confirmed|rejected))?/.exec(className || "");
       if (!inline && sprintMatch) {
-        const initialStatus = sprintMatch[1] || "pending"; // "confirmed" | "rejected" | "pending"
+        const initialStatus = sprintMatch[1] || "pending";
         return <SprintDraftConfirm draft={String(children)} projectId={projectId} messageId={messageId} initialStatus={initialStatus as any} />;
+      }
+      const sprintStatusMatch = /language-json_sprint_status_draft(?:_(confirmed|rejected))?/.exec(className || "");
+      if (!inline && sprintStatusMatch) {
+        const initialStatus = sprintStatusMatch[1] || "pending";
+        return <SprintStatusDraftConfirm draft={String(children)} messageId={messageId} initialStatus={initialStatus as any} />;
       }
       return (
         <code className={className} {...props}>
@@ -159,8 +104,6 @@ export function AssistantBubble({
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const messageStackRef = useRef<HTMLDivElement | null>(null);
   const isAutoScrollEnabledRef = useRef<boolean>(true);
-
-  const promptChips = useMemo(() => suggestedPrompts.slice(0, 4), []);
 
   useEffect(() => {
     setIsPortalReady(true);
@@ -304,12 +247,6 @@ export function AssistantBubble({
 
 
 
-  function pushAssistantText(content: string) {
-    const message = createAssistantMessage(content);
-    isAutoScrollEnabledRef.current = true;
-    setMessages((current) => [...current, message]);
-  }
-
   async function submitPrompt(rawPrompt: string) {
     const cleanPrompt = rawPrompt.trim();
     if (!cleanPrompt || !activeSessionId) {
@@ -364,7 +301,7 @@ export function AssistantBubble({
 
       if (response.status === 401) {
         // Token có thể đã hết hạn, gọi 1 API axios bất kỳ để trigger auto-refresh
-        await aiApi.classifyIntent({ action: null, prompt: "ping" }).catch(() => {});
+        await aiApi.classifyIntent({ prompt: "ping" }).catch(() => {});
         // Retry
         response = await fetch(`${getApiBaseUrl()}${aiApi.streamChatUrl}`, {
           method: "POST",

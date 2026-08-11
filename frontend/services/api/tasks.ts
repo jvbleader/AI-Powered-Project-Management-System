@@ -7,15 +7,16 @@ import {
   ApiResponse,
   EnrichedTask,
   Project,
+  TaskLog,
 } from "@/types";
 import {
   requestApi,
   apiEndpoints,
-  filterAttachments,
   respond,
   toInitials,
   wrapBackendResponse,
 } from "./core";
+import { resolveAvatarUrl } from "@/lib/utils/avatar";
 import { projectApi } from "./projects";
 import { userApi } from "./users";
 type BoardContext = {
@@ -107,6 +108,11 @@ function buildSyntheticAssignee(task: Task): UserProfile | null {
     focusScore: 0,
     isActive: true,
     status: "ACTIVE",
+    avatarUrl: resolveAvatarUrl({
+      userId: task.assigneeId,
+      email: task.assigneeEmail,
+      name: task.assigneeName,
+    }),
   };
 }
 
@@ -378,7 +384,7 @@ export const taskApi = {
     const logworks: TaskLogworkEntry[] = response.data.map((item) => ({
       id: item.id.toString(),
       taskId: item.task_id.toString(),
-      userId: `usr-${item.project_member_id}`,
+      userId: item.user_id ? `usr-${item.user_id}` : "",
       userName: item.user_name || "Chưa rõ",
       workDate: item.work_date,
       hoursSpent: Number(item.hours_spent || 0),
@@ -436,7 +442,12 @@ export const taskApi = {
   },
 
   async getAttachments(taskId: string, viewer?: UserProfile | null) {
-    return respond(filterAttachments(taskId, viewer), 90);
+    const endpoint = {
+      method: "GET" as const,
+      path: `/api/v1/tasks/${taskId}/attachments`,
+    };
+    const response = await requestApi<any[]>(endpoint);
+    return { data: response.data, meta: response.meta };
   },
 
   async updateComment(commentId: string, content: string): Promise<ApiResponse<any>> {

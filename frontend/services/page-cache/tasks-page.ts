@@ -1,4 +1,3 @@
-import { normalizeViewer } from "@/lib/mock/permissions";
 import { projectApi } from "@/services/api/projects";
 import { taskApi } from "@/services/api/tasks";
 import { workspaceApi } from "@/services/api/workspace";
@@ -40,7 +39,7 @@ export function clearTasksPageCache(viewerId?: string) {
 }
 
 export async function primeTasksPageData(viewer?: UserProfile | null) {
-  const resolvedViewer = normalizeViewer(viewer);
+  const resolvedViewer = viewer as any;
   const cached = getTasksPageCache(resolvedViewer.id);
 
   if (cached) {
@@ -48,7 +47,7 @@ export async function primeTasksPageData(viewer?: UserProfile | null) {
   }
 
   if (pendingTaskPageRequest?.viewerId === resolvedViewer.id) {
-    return pendingTaskPageRequest.promise;
+    return pendingTaskPageRequest!.promise;
   }
 
     const promise = (async () => {

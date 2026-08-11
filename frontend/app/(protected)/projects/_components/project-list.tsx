@@ -4,11 +4,11 @@ import { EmptyState, ProgressBar, StatusPill, Surface } from "@/components/ui";
 import { FilterSelect } from "@/components/filter-select";
 import {
   formatRange,
-  hasCompanywideProjectAccess,
+  canManageProjectMembership,
   projectStatusLabel,
 } from "@/lib/utils/format";
-import type { Project } from "@/types";
-import styles from "../../team/styles/team.module.css";
+import type { Project, UserRole } from "@/types";
+import styles from "./project-list.module.css";
 
 interface ProjectListProps {
   projects: Project[];
@@ -22,7 +22,7 @@ interface ProjectListProps {
   onEditProjectClick?: (project: Project) => void;
 }
 
-const PROJECTS_PER_PAGE = 10;
+const PROJECTS_PER_PAGE = 15;
 
 export function ProjectList({
   projects,
@@ -59,13 +59,15 @@ export function ProjectList({
 
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PROJECTS_PER_PAGE));
   const validPage = Math.min(page, totalPages);
-  const canEditProject = (project: Project) => {
-    if (hasCompanywideProjectAccess(viewerRole, viewerDepartment) || project.managerId === viewerId) {
-      return true;
-    }
-
-    return false;
-  };
+  const canEditProject = (project: Project) =>
+    canManageProjectMembership(
+      {
+        id: viewerId,
+        role: viewerRole as UserRole,
+        department: viewerDepartment,
+      },
+      project,
+    );
   
   const paginatedProjects = filteredProjects.slice(
     (validPage - 1) * PROJECTS_PER_PAGE,
@@ -74,6 +76,7 @@ export function ProjectList({
 
   return (
     <Surface
+      className={styles.compactSurface}
       title={canManage ? "Danh mục điều phối" : "Các dự án đang tham gia"}
       kicker="Projects"
       aside={
@@ -85,42 +88,24 @@ export function ProjectList({
         )
       }
     >
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", gap: "1rem", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: "0.75rem", flex: 1, minWidth: "250px" }}>
-          <div style={{ position: "relative", flex: 1 }}>
-            <div style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--foreground-muted)" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarFilters}>
+          <div className={styles.searchWrap}>
+            <div className={styles.searchIcon}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
             </div>
             <input
               type="text"
+              className={styles.searchInput}
               placeholder="Tìm kiếm dự án..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.6rem 1rem 0.6rem 2.5rem",
-                borderRadius: "9999px",
-                border: "1px solid var(--border)",
-                background: "var(--surface-sunken)",
-                color: "var(--foreground)",
-                fontSize: "0.875rem",
-                outline: "none",
-                transition: "border-color 0.2s ease, box-shadow 0.2s ease"
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = "var(--primary)";
-                e.target.style.boxShadow = "0 0 0 2px rgba(var(--primary-rgb), 0.2)";
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = "var(--border)";
-                e.target.style.boxShadow = "none";
-              }}
             />
           </div>
-          <div style={{ position: "relative", minWidth: "180px" }}>
+          <div className={styles.statusFilter}>
             <FilterSelect
               value={statusFilter}
               onChange={(val) => setStatusFilter(val)}
@@ -147,16 +132,16 @@ export function ProjectList({
                     <th>Mã dự án</th>
                     <th>Trạng thái</th>
                     <th>Phòng ban</th>
-                    <th style={{ width: "25%" }}>Tiến độ</th>
+                    <th className={styles.colProgress}>Tiến độ</th>
                     <th>Thời gian</th>
-                    <th />
+                    <th className={styles.colActions} />
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedProjects.map((project) => (
                     <tr
                       key={project.id}
-                      className={selectedProjectId === project.id ? styles.selectedRow : ""}
+                      className={selectedProjectId === project.id ? "selected-row" : undefined}
                     >
                       <td>
                         <button
@@ -175,7 +160,9 @@ export function ProjectList({
                           </span>
                         </button>
                       </td>
-                      <td>{project.code}</td>
+                      <td>
+                        <code className={styles.projectCode}>{project.code}</code>
+                      </td>
                       <td>
                         <StatusPill
                           label={projectStatusLabel(project.status)}
@@ -193,33 +180,28 @@ export function ProjectList({
                         />
                       </td>
                       <td>{project.departmentName || "---"}</td>
-                      <td>
-                        <ProgressBar value={project.progress} label="Tiến độ triển khai" />
+                      <td className={styles.colProgress}>
+                        <div className={styles.progressCell}>
+                          <ProgressBar value={project.progress} />
+                        </div>
                       </td>
                       <td>
                         <div className={styles.contactCell}>
                           <span>{formatRange(project.startDate, project.endDate)}</span>
                         </div>
                       </td>
-                      <td>
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center", justifyContent: "flex-end" }}>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => openProjectOverview(project.id)}
-                          >
-                            Xem
-                          </button>
+                      <td className={styles.colActions}>
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
                           {onEditProjectClick && canEditProject(project) && (
                             <button
                               type="button"
-                              className="icon-button"
-                              style={{ color: "var(--primary-base)", background: "transparent", border: "1px solid var(--primary-subtle)", width: "36px", height: "36px", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}
+                              className={styles.editButton}
                               title="Chỉnh sửa dự án"
                               onClick={() => onEditProjectClick(project)}
                             >
-                              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                               </svg>
                             </button>
                           )}
@@ -232,7 +214,7 @@ export function ProjectList({
           </div>
 
           {totalPages > 1 && (
-            <div className={styles.paginationBar} style={{ marginTop: "1rem" }}>
+            <div className={styles.paginationBar}>
               <p>
                 Hiển thị {(validPage - 1) * PROJECTS_PER_PAGE + 1} -{" "}
                 {Math.min(validPage * PROJECTS_PER_PAGE, filteredProjects.length)} / {filteredProjects.length} dự án.

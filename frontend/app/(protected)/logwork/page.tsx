@@ -5,26 +5,24 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, ProgressBar, StatCard, StatusPill, Surface } from "@/components/ui";
 import { logworkApi, projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
-import {
-  DEMO_TODAY,
-  getLogworkTrackedUsers,
-  normalizeViewer,
-} from "@/lib/mock/permissions";
 import { formatDate, formatHours, hasCompanywideProjectAccess } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
-import type { EnrichedTask, LogworkEntry, Project, UserProfile, WorkspaceShellData } from "@/types";
+import { LogworkEntryDetailModal } from "../tasks/_components/logwork-entry-detail-modal";
+import type { EnrichedTask, TaskLogworkEntry, Project, UserProfile, WorkspaceShellData } from "@/types";
 
 type LogworkPageState = {
   shellData: WorkspaceShellData;
-  entries: LogworkEntry[];
+  entries: TaskLogworkEntry[];
   tasks: EnrichedTask[];
   users: UserProfile[];
   projects: Project[];
 };
 
+const DEMO_TODAY = new Date().toISOString().split("T")[0];
+
 export default function LogworkPage() {
   const session = useAuthSession();
-  const viewer = useMemo(() => normalizeViewer(session?.currentUser), [session?.currentUser]);
+  const viewer = useMemo(() => session?.currentUser as any, [session?.currentUser]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string>("ALL");
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -32,6 +30,8 @@ export default function LogworkPage() {
   const [entryHours, setEntryHours] = useState("2");
   const [entryNote, setEntryNote] = useState("");
   const [pageState, setPageState] = useState<LogworkPageState | null>(null);
+  const [viewingEntry, setViewingEntry] = useState<TaskLogworkEntry | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -55,7 +55,7 @@ export default function LogworkPage() {
         return;
       }
 
-      setPageState({ shellData, entries, tasks, users, projects });
+      setPageState({ shellData, entries: entries.items, tasks, users, projects });
     }
 
     void loadLogwork();
@@ -103,11 +103,11 @@ export default function LogworkPage() {
     });
   }, [filteredTasks, pageState?.entries, selectedTaskId]);
 
-  const todayEntries = filteredEntries.filter((entry) => entry.date === DEMO_TODAY);
-  const totalHours = filteredEntries.reduce((sum, entry) => sum + entry.hours, 0);
-  const trackedUsers = getLogworkTrackedUsers(viewer);
+  const todayEntries = filteredEntries.filter((entry) => entry.workDate === DEMO_TODAY);
+  const totalHours = filteredEntries.reduce((sum, entry) => sum + (entry.hoursSpent || 0), 0);
+  const trackedUsers = pageState?.users ?? [];
   const todayUserIds = new Set(todayEntries.map((entry) => entry.userId));
-  const missingUsers = trackedUsers.filter((user) => !todayUserIds.has(user.id));
+  const missingUsers = trackedUsers.filter((user: UserProfile) => !todayUserIds.has(user.id));
   const coverage = trackedUsers.length
     ? Math.round((todayUserIds.size / trackedUsers.length) * 100)
     : 0;
@@ -130,7 +130,7 @@ export default function LogworkPage() {
       projectApi.list(undefined, viewer),
     ]);
 
-    setPageState({ shellData, entries, tasks, users, projects });
+    setPageState({ shellData, entries: entries.items, tasks, users, projects });
     setSelectedTaskId(nextTaskId ?? selectedTaskId);
   }
 
@@ -235,7 +235,7 @@ export default function LogworkPage() {
           <ProgressBar value={coverage} label="Thành viên đã cập nhật logwork hôm nay" />
           <div className="stack-list">
             {missingUsers.length ? (
-              missingUsers.map((user) => (
+              missingUsers.map((user: UserProfile) => (
                 <div key={user.id} className="line-item">
                   <div>
                     <strong>{user.name}</strong>
@@ -308,21 +308,30 @@ export default function LogworkPage() {
               const canEdit = canManageScopedLogwork || entry.userId === viewer.id;
 
               return (
-                <div key={entry.id} className="table-row">
-                  <span>{formatDate(entry.date)}</span>
+                <div 
+                  key={entry.id} 
+                  className="table-row" 
+                  onClick={() => {
+                    setViewingEntry(entry);
+                    setIsDetailModalOpen(true);
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
+                  <span>{formatDate(entry.workDate)}</span>
                   <strong>{user?.name ?? viewer.name}</strong>
                   <p>{task?.title ?? "Task đã ẩn"}</p>
-                  <span>{formatHours(entry.hours)}</span>
+                  <span>{formatHours(entry.hoursSpent)}</span>
                   {canEdit ? (
                     <div className="inline-actions">
                       <button
                         type="button"
                         className="text-button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setEditingEntryId(entry.id);
-                          setEntryDate(entry.date);
-                          setEntryHours(String(entry.hours));
-                          setEntryNote(entry.note);
+                          setEntryDate(entry.workDate);
+                          setEntryHours(String(entry.hoursSpent));
+                          setEntryNote(entry.workContent);
                           setSelectedTaskId(entry.taskId);
                         }}
                       >
@@ -331,7 +340,10 @@ export default function LogworkPage() {
                       <button
                         type="button"
                         className="text-button text-button-danger"
-                        onClick={() => void handleRemove(entry.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleRemove(entry.id);
+                        }}
                       >
                         Xóa
                       </button>
@@ -348,6 +360,21 @@ export default function LogworkPage() {
           />
         )}
       </Surface>
+
+      <LogworkEntryDetailModal
+        entry={viewingEntry}
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        canEdit={viewingEntry ? canManageScopedLogwork || viewingEntry.userId === viewer.id : false}
+        onEdit={() => {
+          if (!viewingEntry) return;
+          setEditingEntryId(viewingEntry.id);
+          setEntryDate(viewingEntry.workDate);
+          setEntryHours(String(viewingEntry.hoursSpent));
+          setEntryNote(viewingEntry.workContent);
+          setSelectedTaskId(viewingEntry.taskId);
+        }}
+      />
     </WorkspaceShell>
   );
 }

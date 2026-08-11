@@ -242,16 +242,51 @@
   0% {
     outline: 4px solid rgba(34, 197, 94, 0.8);
     outline-offset: 2px;
+    box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.18);
+  }
+
+  70% {
+    outline: 4px solid rgba(34, 197, 94, 0.55);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.12);
   }
 
   100% {
     outline: 4px solid transparent;
     outline-offset: 2px;
+    box-shadow: none;
+  }
+}
+
+@keyframes flashOutlineRed {
+  0% {
+    outline: 4px solid rgba(220, 38, 38, 0.85);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 10px rgba(220, 38, 38, 0.22);
+    background-color: rgba(254, 226, 226, 0.65);
+  }
+
+  70% {
+    outline: 4px solid rgba(220, 38, 38, 0.5);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.12);
+    background-color: rgba(254, 226, 226, 0.25);
+  }
+
+  100% {
+    outline: 4px solid transparent;
+    outline-offset: 2px;
+    box-shadow: none;
+    background-color: transparent;
   }
 }
 
 .highlightFlash {
   animation: flashOutlineGreen 5s ease-out forwards;
+}
+
+.highlightFlashRed {
+  animation: flashOutlineRed 5s ease-out forwards;
 }
 
 .dueDate {
