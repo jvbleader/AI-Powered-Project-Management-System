@@ -1,7 +1,7 @@
 import { Surface } from "@/components/ui";
 import { FilterSelect } from "@/components/filter-select";
 
-import { roleLabel, userStatusLabel } from "@/lib/utils/format";
+import { roleLabel, userStatusLabel, ROLE_DIRECTOR } from "@/lib/utils/format";
 import { SYSTEM_ROLE_OPTIONS, type UserDirectoryFilters, type UserStatus } from "@/types";
 import styles from "../styles/team.module.css";
 
@@ -19,6 +19,7 @@ interface TeamFilterProps {
   departments: { id: number; name: string }[];
   canFilterDepartment?: boolean;
   currentDepartment?: string;
+  hideDirectorRoles?: boolean;
 }
 
 export function TeamFilter({
@@ -33,7 +34,14 @@ export function TeamFilter({
   departments,
   canFilterDepartment = true,
   currentDepartment = "",
+  hideDirectorRoles = false,
 }: TeamFilterProps) {
+  const roleOptions = hideDirectorRoles
+    ? SYSTEM_ROLE_OPTIONS.filter(
+        (role) => role !== ROLE_DIRECTOR && role !== "Trợ lý giám đốc",
+      )
+    : SYSTEM_ROLE_OPTIONS;
+
   return (
     <Surface title="Bộ lọc danh sách" kicker="Search & Pagination" className={styles.filterSurface}>
       <div className={styles.filterGrid}>
@@ -42,7 +50,7 @@ export function TeamFilter({
           <input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Tên, email hoặc mã người dùng"
+            placeholder="Họ tên hoặc email"
           />
         </label>
 
@@ -68,7 +76,7 @@ export function TeamFilter({
             onChange={(value) => onRoleFilterChange(value as UserDirectoryFilters["role"])}
             options={[
               { value: "ALL", label: "Tất cả vai trò" },
-              ...SYSTEM_ROLE_OPTIONS.map((role) => ({
+              ...roleOptions.map((role) => ({
                 value: role,
                 label: roleLabel(role),
               })),
@@ -86,7 +94,6 @@ export function TeamFilter({
               }
               options={[
                 { value: "ALL", label: "Tất cả phòng ban" },
-                { value: "UNASSIGNED", label: "Chưa cập nhật phòng ban" },
                 ...departments.map((dept) => ({
                   value: dept.name,
                   label: dept.name,
@@ -96,7 +103,7 @@ export function TeamFilter({
           ) : (
             <input
               type="text"
-              value={currentDepartment || "Chưa cập nhật phòng ban"}
+              value={currentDepartment || "—"}
               disabled
               style={{
                 backgroundColor: "var(--surface-sunken)",

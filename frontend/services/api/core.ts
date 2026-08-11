@@ -1,26 +1,4 @@
-import {
-  logworkEntries,
-  projects,
-  sprints,
-  taskAttachments,
-  taskComments,
-  tasks,
-  users,
-} from "@/lib/mock/data";
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
-import {
-  DEMO_TODAY,
-  getAccessibleLogwork,
-  getAccessibleSprints,
-  getAccessibleTasks,
-  getLogworkTrackedUsers,
-  getTaskAssignee,
-  getTaskReporter,
-  normalizeViewer,
-} from "@/lib/mock/permissions";
-import {
-  getDirectoryUserByEmail,
-} from "@/services/users/directory";
 import type {
   AiMessage,
   AiReport,
@@ -53,6 +31,7 @@ import type {
   WorkspaceShellData,
 } from "@/types";
 import { roleLabel } from "@/lib/utils/format";
+import { resolveAvatarUrl } from "@/lib/utils/avatar";
 
 export type EndpointMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -78,14 +57,19 @@ export type BackendPaginatedUsers = {
   totalPages: number;
 };
 
-export const DEFAULT_API_PORT = "8000";
+export const DEFAULT_API_PORT = process.env.NEXT_PUBLIC_API_PORT ?? "8000";
 export const NETWORK_ERROR_MESSAGE =
-  "Không kết nối được API backend. Vui lòng kiểm tra backend đang chạy ở http://127.0.0.1:8000.";
+  "Không kết nối được API backend. Vui lòng kiểm tra backend đang chạy và biến NEXT_PUBLIC_API_BASE_URL.";
 export const BACKEND_WORKSPACE_ID = "flowpilot";
 export const BACKEND_SESSION_EXPIRES_IN = 60;
 export const USER_ADMIN_UNAVAILABLE_MESSAGE =
   "Backend hiện tại chưa hỗ trợ API quản trị người dùng. Tác vụ này mới chỉ chạy ở chế độ preview trên frontend.";
-export const DEFAULT_INTERNAL_API_BASE_URL = `http://backend:${DEFAULT_API_PORT}`;
+export const DEFAULT_INTERNAL_API_BASE_URL =
+  process.env.API_BASE_URL_INTERNAL ?? `http://backend:${DEFAULT_API_PORT}`;
+
+function isLoopbackHostname(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
+}
 
 export function getBackendMeta(): ApiResponse<null>["meta"] {
   return {
@@ -130,16 +114,21 @@ export function toFrontendUserProfile(backendUser: BackendUserResponse): UserPro
   const resolvedName =
     backendUser.full_name?.trim() || backendUser.email.split("@")[0] || "Người dùng";
   const role = toFrontendRole(backendUser);
+  const userId = `usr-${backendUser.id}`;
+  const avatarUrl = resolveAvatarUrl({
+    userId,
+    email: backendUser.email,
+    name: resolvedName,
+    avatarUrl: backendUser.avatar_url,
+  });
 
   return {
-    id: `usr-${backendUser.id}`,
+    id: userId,
     name: resolvedName,
     email: backendUser.email,
     role,
     roles: [role],
-    title: backendUser.department
-      ? `${toRoleTitle(role)} - ${backendUser.department}`
-      : toRoleTitle(role),
+    title: toRoleTitle(role),
     initials: toInitials(resolvedName),
     presence: backendUser.is_active ? "online" : "offline",
     capacityHours: 40,
@@ -149,7 +138,8 @@ export function toFrontendUserProfile(backendUser: BackendUserResponse): UserPro
     status: backendUser.is_active ? "ACTIVE" : "INACTIVE",
     phoneNumber: backendUser.phone_number ?? undefined,
     department: backendUser.department ?? undefined,
-    avatarUrl: backendUser.avatar_url ?? undefined,
+    avatarUrl,
+    jobTitle: toRoleTitle(role),
   };
 }
 
@@ -181,10 +171,7 @@ export function getApiBaseUrl() {
 
   try {
     const url = new URL(configuredBaseUrl);
-    const isLocalConfiguredHost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const isLocalCurrentHost = currentHostname === "localhost" || currentHostname === "127.0.0.1";
-
-    if (isLocalConfiguredHost && isLocalCurrentHost) {
+    if (isLoopbackHostname(url.hostname) && currentHostname) {
       url.protocol = currentProtocol;
       url.hostname = currentHostname;
       if (!url.port) {
@@ -275,12 +262,12 @@ export const apiEndpoints = {
       method: "PATCH" as EndpointMethod,
       path: `/api/users/${userId.replace("usr-", "")}/status`,
     }),
+    updateProfile: { method: "PUT" as EndpointMethod, path: "/me/profile" },
     updatePhone: { method: "PUT" as EndpointMethod, path: "/me/phone" },
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
   },
   ai: {
     classifyIntent: { path: "/api/ai/classify-intent", method: "POST" },
-    executeAi: { path: "/api/ai/execute", method: "POST" },
     chat: { path: "/api/ai/chat", method: "POST" },
     sessions: { path: "/api/ai/sessions", method: "GET" },
     sessionMessages: (id: string) => ({
@@ -295,9 +282,6 @@ export const apiEndpoints = {
       path: `/api/ai/sessions/${id}`,
       method: "DELETE" as EndpointMethod,
     }),
-    quickQuery: { method: "POST" as EndpointMethod, path: "/api/ai/query" },
-    reports: { method: "GET" as EndpointMethod, path: "/api/ai/reports" },
-    memory: { method: "GET" as EndpointMethod, path: "/api/ai/memory" },
   },
 } as const;
 
@@ -350,9 +334,9 @@ axiosInstance.interceptors.request.use((config) => {
 });
 
 let isRefreshing = false;
-let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (reason?: any) => void }> = [];
+let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (reason?: unknown) => void }> = [];
 
-const processQueue = (error: any, token: string | null = null) => {
+const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);
@@ -362,6 +346,15 @@ const processQueue = (error: any, token: string | null = null) => {
   });
   failedQueue = [];
 };
+
+function isRefreshAuthFailure(error: unknown) {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
+
+  const status = error.response?.status;
+  return status === 401 || status === 403;
+}
 
 axiosInstance.interceptors.response.use(
   (response) => response,
@@ -400,7 +393,9 @@ axiosInstance.interceptors.response.use(
       } catch (e) {
         isRefreshing = false;
         processQueue(e);
-        if (typeof window !== "undefined") {
+        // Only force logout when the refresh token is truly invalid/revoked.
+        // Temporary network errors should not wipe the local session snapshot.
+        if (typeof window !== "undefined" && isRefreshAuthFailure(e)) {
           window.dispatchEvent(new Event("flowpilot-session-expired"));
         }
         return Promise.reject(e);
@@ -449,33 +444,7 @@ export async function requestApi<T>(
 export async function fetchCurrentUserProfile() {
   const response = await requestApi<BackendUserResponse>(apiEndpoints.auth.me);
   const backendProfile = toFrontendUserProfile(response.data);
-  const storedProfile = getDirectoryUserByEmail(backendProfile.email, backendProfile);
-
-  if (!storedProfile) {
-    return backendProfile;
-  }
-
-  const effectiveDepartment = backendProfile.department ?? storedProfile.department ?? "";
-  const effectiveTitle = effectiveDepartment
-    ? `${toRoleTitle(backendProfile.role)} - ${effectiveDepartment}`
-    : toRoleTitle(backendProfile.role);
-
-  return {
-    ...storedProfile,
-    ...backendProfile,
-    role: backendProfile.role,
-    roles: [backendProfile.role],
-    title: effectiveTitle,
-    avatarUrl: storedProfile.avatarUrl ?? backendProfile.avatarUrl,
-    phoneNumber: storedProfile.phoneNumber ?? "",
-    department: effectiveDepartment,
-    jobTitle: storedProfile.jobTitle ?? effectiveTitle,
-    address: storedProfile.address ?? "",
-    employeeCode: storedProfile.employeeCode,
-    status: storedProfile.status ?? (backendProfile.isActive ? "ACTIVE" : "INACTIVE"),
-    lastLoginAt: storedProfile.lastLoginAt,
-    lastUpdatedAt: storedProfile.lastUpdatedAt,
-  };
+  return backendProfile;
 }
 
 export function containsSearch(value: string, search?: string) {
@@ -485,122 +454,6 @@ export function containsSearch(value: string, search?: string) {
 
   return value.toLowerCase().includes(search.toLowerCase());
 }
-
-export function getCurrentUser(viewer?: UserProfile | null) {
-  return normalizeViewer(viewer);
-}
-
-export function getProject(projectId: string) {
-  return projects.find((project) => project.id === projectId) ?? projects[0];
-}
-
-export function getSprint(sprintId: string) {
-  return sprints.find((sprint) => sprint.id === sprintId) ?? sprints[0];
-}
-
 export function isTaskOpen(task: Task) {
   return task.status !== "DONE";
 }
-
-export function missingLogworkCount(viewer?: UserProfile | null) {
-  const currentViewer = normalizeViewer(viewer);
-  const visibleUsers = getLogworkTrackedUsers(currentViewer);
-
-  return visibleUsers.filter((user) => {
-    return !logworkEntries.some((entry) => entry.userId === user.id && entry.date === DEMO_TODAY);
-  }).length;
-}
-
-export function enrichTask(task: Task): EnrichedTask {
-  return {
-    ...task,
-    assignee: getTaskAssignee(task),
-    reporter: getTaskReporter(task),
-    project: getProject(task.projectId),
-    sprint: task.sprintId ? getSprint(task.sprintId) : null,
-  };
-}
-
-
-export function filterSprints(filters?: SprintFilters, viewer?: UserProfile | null) {
-  return getAccessibleSprints(viewer).filter((sprint) => {
-    if (filters?.projectId && sprint.projectId !== filters.projectId) {
-      return false;
-    }
-
-    if (filters?.status && sprint.status !== filters.status) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-export function filterTasks(filters?: TaskFilters, viewer?: UserProfile | null) {
-  return getAccessibleTasks(viewer).filter((task) => {
-    if (filters?.projectId && task.projectId !== filters.projectId) {
-      return false;
-    }
-
-    if (filters?.sprintId && task.sprintId !== filters.sprintId) {
-      return false;
-    }
-
-    if (filters?.assigneeId && task.assigneeId !== filters.assigneeId) {
-      return false;
-    }
-
-    if (filters?.status && task.status !== filters.status) {
-      return false;
-    }
-
-    if (filters?.search) {
-      return containsSearch(`${task.title} ${task.description} ${task.key}`, filters.search);
-    }
-
-    return true;
-  });
-}
-
-export function filterLogwork(filters?: LogworkFilters, viewer?: UserProfile | null) {
-  const projectTaskIds = filters?.projectId
-    ? tasks.filter((task) => task.projectId === filters.projectId).map((task) => task.id)
-    : [];
-
-  return getAccessibleLogwork(viewer).filter((entry) => {
-    if (filters?.userId && entry.userId !== filters.userId) {
-      return false;
-    }
-
-    if (filters?.projectId && !projectTaskIds.includes(entry.taskId)) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-export function filterComments(taskId: string, viewer?: UserProfile | null) {
-  const accessibleTaskIds = new Set(getAccessibleTasks(viewer).map((task) => task.id));
-
-  if (!accessibleTaskIds.has(taskId)) {
-    return [];
-  }
-
-  return taskComments.filter((comment) => comment.taskId === taskId);
-}
-
-export function filterAttachments(taskId: string, viewer?: UserProfile | null) {
-  const accessibleTaskIds = new Set(getAccessibleTasks(viewer).map((task) => task.id));
-
-  if (!accessibleTaskIds.has(taskId)) {
-    return [];
-  }
-
-  return taskAttachments.filter((attachment) => attachment.taskId === taskId);
-}
-
-export const backendCapabilities = {
-  userAdmin: false,
-  userAdminPreview: true,
-} as const;

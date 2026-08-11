@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { aiApi } from "@/services/api";
 import { CustomSelect } from "@/components/custom-select";
 import ReactMarkdown from "react-markdown";
+import {
+  normalizeTaskPriority,
+  taskPriorityLabel,
+  taskPriorityPillStyle,
+} from "@/lib/utils/format";
 
 type TaskDraft = {
   title: string;
@@ -16,6 +21,111 @@ type TaskDraft = {
   deadline?: string;
   estimated_hours?: number;
   subtasks?: TaskDraft[];
+};
+
+function stripMarkdown(md: string): string {
+  if (!md) return "";
+  let output = md;
+  output = output.replace(/^#{1,6}\s+(.*)/gm, "$1");
+  output = output.replace(/\*\*(.*?)\*\*/g, "$1");
+  output = output.replace(/__(.*?)__/g, "$1");
+  output = output.replace(/\*(.*?)\*/g, "$1");
+  output = output.replace(/_(.*?)_/g, "$1");
+  output = output.replace(/~~(.*?)~~/g, "$1");
+  output = output.replace(/`(.*?)`/g, "$1");
+  output = output.replace(/!\[(.*?)\]\(.*?\)/g, "$1");
+  output = output.replace(/\[(.*?)\]\(.*?\)/g, "$1");
+  output = output.replace(/^\s*>\s+(.*)/gm, "$1");
+  return output;
+}
+
+type DescSections = {
+  objective: string;
+  criteria: string;
+  implementation: string;
+  output: string;
+  acceptance: string;
+};
+
+const DESC_SECTION_META: { key: keyof DescSections; label: string; placeholder: string }[] = [
+  { key: "objective", label: "1. Mục tiêu", placeholder: "Task này cần đạt được gì?" },
+  { key: "criteria", label: "2. Tiêu chí / ràng buộc", placeholder: "Điều kiện, giới hạn, trường hợp biên…" },
+  { key: "implementation", label: "3. Cách làm", placeholder: "Các bước chính cần thực hiện…" },
+  { key: "output", label: "4. Đầu ra", placeholder: "Kết quả bàn giao được (màn hình, dịch vụ, báo cáo…)" },
+  { key: "acceptance", label: "5. Tiêu chí chấp nhận", placeholder: "Checklist nghiệm thu ngắn…" },
+];
+
+const EMPTY_DESC_SECTIONS: DescSections = {
+  objective: "",
+  criteria: "",
+  implementation: "",
+  output: "",
+  acceptance: "",
+};
+
+function parseAiDescription(raw: string): { structured: boolean; sections: DescSections; plain: string } {
+  const text = stripMarkdown(raw || "").trim();
+  if (!text) {
+    return { structured: true, sections: { ...EMPTY_DESC_SECTIONS }, plain: "" };
+  }
+
+  const headerRe =
+    /(?:^|\n)\s*(\d+)\.\s*(Mục tiêu(?:\s+task)?|Tiêu chí(?:\s*\/\s*ràng buộc)?|Tiêu chí chấp nhận|Cách làm|Output|Đầu ra)\s*:\s*/gi;
+  const matches = [...text.matchAll(headerRe)];
+  if (matches.length < 2) {
+    return { structured: false, sections: { ...EMPTY_DESC_SECTIONS }, plain: text };
+  }
+
+  const sections = { ...EMPTY_DESC_SECTIONS };
+  const mapLabel = (label: string, num: string): keyof DescSections | null => {
+    const l = label.toLowerCase();
+    if (l.startsWith("mục tiêu") || num === "1") return "objective";
+    if (l.startsWith("tiêu chí chấp nhận") || num === "5") return "acceptance";
+    if (l.startsWith("tiêu chí") || num === "2") return "criteria";
+    if (l.startsWith("cách làm") || num === "3") return "implementation";
+    if (l.startsWith("output") || l.startsWith("đầu ra") || num === "4") return "output";
+    return null;
+  };
+
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const key = mapLabel(m[2], m[1]);
+    if (!key) continue;
+    const start = (m.index ?? 0) + m[0].length;
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? text.length) : text.length;
+    sections[key] = text.slice(start, end).trim();
+  }
+
+  const hasAny = Object.values(sections).some((v) => v.length > 0);
+  return hasAny
+    ? { structured: true, sections, plain: text }
+    : { structured: false, sections: { ...EMPTY_DESC_SECTIONS }, plain: text };
+}
+
+function serializeDescSections(sections: DescSections): string {
+  const parts: string[] = [];
+  if (sections.objective.trim()) parts.push(`**1. Mục tiêu:** ${sections.objective.trim()}`);
+  if (sections.criteria.trim()) parts.push(`**2. Tiêu chí / ràng buộc:** ${sections.criteria.trim()}`);
+  if (sections.implementation.trim()) parts.push(`**3. Cách làm:** ${sections.implementation.trim()}`);
+  if (sections.output.trim()) parts.push(`**4. Đầu ra:** ${sections.output.trim()}`);
+  if (sections.acceptance.trim()) parts.push(`**5. Tiêu chí chấp nhận:** ${sections.acceptance.trim()}`);
+  return parts.join("\n\n");
+}
+
+const textareaStyle: CSSProperties = {
+  width: "100%",
+  padding: "0.75rem 0.9rem",
+  borderRadius: "12px",
+  border: "1px solid rgba(148, 163, 184, 0.2)",
+  background: "rgba(248, 250, 252, 0.45)",
+  color: "var(--ink)",
+  resize: "vertical",
+  fontSize: "0.9rem",
+  lineHeight: "1.55",
+  outline: "none",
+  fontFamily: "inherit",
+  whiteSpace: "pre-wrap",
+  transition: "border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease",
 };
 
 export function TaskDraftConfirm({
@@ -35,45 +145,7 @@ export function TaskDraftConfirm({
   const [error, setError] = useState<string | null>(null);
   const [rejectedPaths, setRejectedPaths] = useState<Set<string>>(new Set());
   const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
-  const [descPreviewMode, setDescPreviewMode] = useState(false);
-
-  // Xử lý auto-format list khi nhấn Enter
-  const handleDescKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter') {
-      const el = e.currentTarget;
-      const val = el.value;
-      const start = el.selectionStart;
-      const end = el.selectionEnd;
-
-      const lastNewline = val.lastIndexOf('\n', start - 1);
-      const currentLine = val.substring(lastNewline + 1, start);
-
-      const match = currentLine.match(/^(\s*)([-*]\s+|\d+\.\s+)(.*)$/);
-      if (match) {
-        e.preventDefault();
-        const [, spaces, bullet, content] = match;
-        if (!content.trim()) {
-          const newVal = val.substring(0, lastNewline + 1) + val.substring(end);
-          setEditingTask({ ...editingTask!, description: newVal });
-          setTimeout(() => {
-            el.selectionStart = el.selectionEnd = lastNewline + 1;
-          }, 0);
-        } else {
-          let newBullet = bullet;
-          const numMatch = bullet.match(/^(\d+)\.\s+/);
-          if (numMatch) {
-            newBullet = `${parseInt(numMatch[1], 10) + 1}. `;
-          }
-          const insertText = `\n${spaces}${newBullet}`;
-          const newVal = val.substring(0, start) + insertText + val.substring(end);
-          setEditingTask({ ...editingTask!, description: newVal });
-          setTimeout(() => {
-            el.selectionStart = el.selectionEnd = start + insertText.length;
-          }, 0);
-        }
-      }
-    }
-  };
+  const descRef = useRef<HTMLTextAreaElement>(null);
 
   const draftHash = useMemo(() => {
     let hash = 0;
@@ -122,6 +194,16 @@ export function TaskDraftConfirm({
 
   const [editingTaskPath, setEditingTaskPath] = useState<number[] | null>(null);
   const [editingTask, setEditingTask] = useState<TaskDraft | null>(null);
+  const [descSections, setDescSections] = useState<DescSections | null>(null);
+  const [descPlain, setDescPlain] = useState("");
+  const [descStructured, setDescStructured] = useState(true);
+
+  useEffect(() => {
+    if (!editingTask || !descRef.current) return;
+    const el = descRef.current;
+    el.style.height = "auto";
+    el.style.height = `${Math.max(120, el.scrollHeight)}px`;
+  }, [descPlain, descSections, editingTaskPath]);
 
   if (tasksData.length === 0) {
     try {
@@ -179,7 +261,11 @@ export function TaskDraftConfirm({
         return handleRejectAll();
       }
 
-      await aiApi.confirmTasks(projectId ? Number(projectId) : null, payload);
+      await aiApi.confirmTasks(
+        projectId ? Number(projectId) : null,
+        payload,
+        messageId && !messageId.startsWith("assistant-") ? Number(messageId) : null
+      );
 
       if (messageId && !messageId.startsWith("assistant-")) {
         const editedDraft = JSON.stringify(payload, null, 2);
@@ -278,6 +364,10 @@ export function TaskDraftConfirm({
                     e.stopPropagation();
                     setEditingTaskPath(path);
                     setEditingTask({ ...task });
+                    const parsed = parseAiDescription(task.description || "");
+                    setDescStructured(parsed.structured);
+                    setDescSections(parsed.sections);
+                    setDescPlain(parsed.plain);
                   }}
                   style={{
                     position: "relative", borderRadius: "12px", border: "1px solid #e4e4e7",
@@ -339,16 +429,21 @@ export function TaskDraftConfirm({
                   )}
 
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", fontSize: "11px", fontWeight: 600, letterSpacing: "0.025em" }}>
-                    {task.priority && (
-                      <span style={{
-                        display: "inline-flex", alignItems: "center", borderRadius: "6px", padding: "4px 8px", textTransform: "uppercase",
-                        backgroundColor: task.priority === 'high' ? '#fee2e2' : task.priority === 'medium' ? '#fef3c7' : '#dcfce7',
-                        color: task.priority === 'high' ? '#b91c1c' : task.priority === 'medium' ? '#b45309' : '#15803d',
-                        border: `1px solid ${task.priority === 'high' ? '#fca5a5' : task.priority === 'medium' ? '#fde68a' : '#86efac'}`
-                      }}>
-                        {task.priority}
-                      </span>
-                    )}
+                    {task.priority && (() => {
+                      const priorityKey = normalizeTaskPriority(task.priority);
+                      const pill = taskPriorityPillStyle(priorityKey);
+                      return (
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", borderRadius: "6px", padding: "4px 8px",
+                          textTransform: "uppercase",
+                          color: pill.color,
+                          backgroundColor: pill.backgroundColor,
+                          border: `1px solid ${pill.borderColor}`,
+                        }}>
+                          {taskPriorityLabel(priorityKey)}
+                        </span>
+                      );
+                    })()}
                     {task.assignee_name && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", borderRadius: "6px", backgroundColor: "#eff6ff", padding: "4px 10px", color: "#1d4ed8", border: "1px solid #bfdbfe" }}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -444,10 +539,15 @@ export function TaskDraftConfirm({
                   }}
                 />
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexShrink: 0, paddingTop: "1.15rem" }}>
                 <button
-                  className="primary-button"
+                  type="button"
                   onClick={() => {
+                    if (!editingTask || editingTaskPath === null) return;
+                    const description = descStructured && descSections
+                      ? serializeDescSections(descSections)
+                      : descPlain.trim();
+                    const nextTask = { ...editingTask, description };
                     const newData = JSON.parse(JSON.stringify(tasksData));
                     let current: any = newData;
                     for (let i = 0; i < editingTaskPath.length - 1; i++) {
@@ -455,94 +555,157 @@ export function TaskDraftConfirm({
                       else current = current.subtasks[editingTaskPath[i]];
                     }
                     if (editingTaskPath.length === 1) {
-                      newData[editingTaskPath[0]] = editingTask;
+                      newData[editingTaskPath[0]] = nextTask;
                     } else {
-                      current.subtasks[editingTaskPath[editingTaskPath.length - 1]] = editingTask;
+                      current.subtasks[editingTaskPath[editingTaskPath.length - 1]] = nextTask;
                     }
                     saveTasksData(newData);
                     setEditingTaskPath(null);
+                    setEditingTask(null);
+                    setDescSections(null);
                   }}
-                  style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}
+                  style={{
+                    padding: "0.55rem 0.95rem",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                    borderRadius: "12px",
+                    border: "1px solid rgba(37, 99, 235, 0.18)",
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    boxShadow: "none",
+                    fontFamily: "inherit",
+                    lineHeight: 1.25,
+                    transition: "background 0.15s ease, border-color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#1d4ed8";
+                    e.currentTarget.style.borderColor = "rgba(29, 78, 216, 0.35)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#2563eb";
+                    e.currentTarget.style.borderColor = "rgba(37, 99, 235, 0.18)";
+                  }}
                 >
                   Lưu nháp
                 </button>
-                <button onClick={() => setEditingTaskPath(null)} style={{ background: "none", border: "none", fontSize: "1.35rem", cursor: "pointer", color: "var(--foreground-muted)", padding: "0.25rem 0.5rem" }}>&times;</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTaskPath(null);
+                    setEditingTask(null);
+                    setDescSections(null);
+                  }}
+                  aria-label="Đóng"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "1.35rem",
+                    cursor: "pointer",
+                    color: "var(--foreground-muted)",
+                    padding: "0.25rem 0.4rem",
+                    lineHeight: 1,
+                    borderRadius: "8px",
+                  }}
+                >
+                  &times;
+                </button>
               </div>
             </div>
 
             <div className="task-detail-layout" style={{ padding: "0 1.5rem 1.5rem 1.5rem", overflow: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
               <div style={{ flexShrink: 0, marginBottom: "0.5rem" }}>
                 <div style={{ marginBottom: "0.75rem" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                    <span className="task-detail-field-label">Mô tả công việc (Hỗ trợ Markdown)</span>
-                    <div style={{ display: "flex", gap: "0.25rem", background: "rgba(15, 23, 42, 0.05)", padding: "0.25rem", borderRadius: "8px" }}>
-                      <button
-                        onClick={() => setDescPreviewMode(false)}
-                        style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem", borderRadius: "6px", border: "none", cursor: "pointer", background: !descPreviewMode ? "#ffffff" : "transparent", color: !descPreviewMode ? "var(--ink)" : "var(--foreground-muted)", boxShadow: !descPreviewMode ? "0 1px 2px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s", fontWeight: !descPreviewMode ? 600 : 400 }}
-                      >
-                        Chỉnh sửa
-                      </button>
-                      <button
-                        onClick={() => setDescPreviewMode(true)}
-                        style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem", borderRadius: "6px", border: "none", cursor: "pointer", background: descPreviewMode ? "#ffffff" : "transparent", color: descPreviewMode ? "var(--ink)" : "var(--foreground-muted)", boxShadow: descPreviewMode ? "0 1px 2px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s", fontWeight: descPreviewMode ? 600 : 400 }}
-                      >
-                        Xem trước
-                      </button>
-                    </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.65rem" }}>
+                    <span className="task-detail-field-label" style={{ display: "block", margin: 0 }}>
+                      Mô tả công việc
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (descStructured && descSections) {
+                          setDescPlain(stripMarkdown(serializeDescSections(descSections)));
+                          setDescStructured(false);
+                        } else {
+                          const parsed = parseAiDescription(descPlain);
+                          if (parsed.structured) {
+                            setDescSections(parsed.sections);
+                            setDescStructured(true);
+                          } else {
+                            setDescSections({ ...EMPTY_DESC_SECTIONS, objective: descPlain });
+                            setDescStructured(true);
+                          }
+                        }
+                      }}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: "#2563eb",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        padding: 0,
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {descStructured ? "Sửa dạng văn bản" : "Sửa theo 5 mục"}
+                    </button>
                   </div>
 
-                  {!descPreviewMode ? (
+                  {descStructured && descSections ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                      {DESC_SECTION_META.map(({ key, label, placeholder }) => (
+                        <label key={key} style={{ display: "block" }}>
+                          <span style={{ display: "block", fontSize: "0.78rem", fontWeight: 650, color: "#475569", marginBottom: "0.35rem" }}>
+                            {label}
+                          </span>
+                          <textarea
+                            ref={key === "objective" ? descRef : undefined}
+                            value={descSections[key]}
+                            onChange={(event) => {
+                              setDescSections({ ...descSections, [key]: event.target.value });
+                              event.target.style.height = "auto";
+                              event.target.style.height = `${Math.max(72, event.target.scrollHeight)}px`;
+                            }}
+                            placeholder={placeholder}
+                            rows={key === "acceptance" || key === "implementation" ? 3 : 2}
+                            style={textareaStyle}
+                            onFocus={(e) => {
+                              e.target.style.borderColor = "var(--accent)";
+                              e.target.style.boxShadow = "0 0 0 4px rgba(37, 99, 235, 0.1)";
+                              e.target.style.background = "#ffffff";
+                            }}
+                            onBlur={(e) => {
+                              e.target.style.borderColor = "rgba(148, 163, 184, 0.2)";
+                              e.target.style.boxShadow = "none";
+                              e.target.style.background = "rgba(248, 250, 252, 0.45)";
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
                     <textarea
-                      value={editingTask.description || ""}
-                      onChange={(event) => setEditingTask({ ...editingTask, description: event.target.value })}
-                      onKeyDown={handleDescKeyDown}
-                      rows={8}
-                      style={{
-                        width: "100%",
-                        padding: "0.85rem 1rem",
-                        borderRadius: "12px",
-                        border: "1px solid rgba(148, 163, 184, 0.25)",
-                        background: "rgba(248, 250, 252, 0.5)",
-                        color: "var(--ink)",
-                        resize: "vertical",
-                        marginBottom: "0.25rem",
-                        fontSize: "0.92rem",
-                        lineHeight: "1.6",
-                        outline: "none",
-                        fontFamily: "inherit",
-                        transition: "all 0.2s"
+                      ref={descRef}
+                      value={descPlain}
+                      onChange={(event) => {
+                        setDescPlain(event.target.value);
+                        event.target.style.height = "auto";
+                        event.target.style.height = `${Math.max(160, event.target.scrollHeight)}px`;
                       }}
+                      placeholder="Mô tả ngắn: mục tiêu, phạm vi và đầu ra mong đợi…"
+                      style={{ ...textareaStyle, minHeight: "160px" }}
                       onFocus={(e) => {
                         e.target.style.borderColor = "var(--accent)";
                         e.target.style.boxShadow = "0 0 0 4px rgba(37, 99, 235, 0.1)";
                         e.target.style.background = "#ffffff";
                       }}
                       onBlur={(e) => {
-                        e.target.style.borderColor = "rgba(148, 163, 184, 0.25)";
+                        e.target.style.borderColor = "rgba(148, 163, 184, 0.2)";
                         e.target.style.boxShadow = "none";
-                        e.target.style.background = "rgba(248, 250, 252, 0.5)";
+                        e.target.style.background = "rgba(248, 250, 252, 0.45)";
                       }}
                     />
-                  ) : (
-                    <div
-                      className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1"
-                      style={{
-                        width: "100%",
-                        padding: "0.85rem 1rem",
-                        borderRadius: "12px",
-                        border: "1px solid rgba(148, 163, 184, 0.15)",
-                        background: "rgba(248, 250, 252, 0.3)",
-                        color: "var(--ink)",
-                        marginBottom: "0.25rem",
-                        fontSize: "0.92rem",
-                        lineHeight: "1.6",
-                        minHeight: "180px",
-                        maxHeight: "400px",
-                        overflowY: "auto"
-                      }}
-                    >
-                      {editingTask.description ? <ReactMarkdown>{editingTask.description}</ReactMarkdown> : <span style={{ color: "var(--foreground-muted)", fontStyle: "italic" }}>Chưa có mô tả</span>}
-                    </div>
                   )}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.25rem", paddingTop: "0.5rem" }}>
@@ -569,11 +732,15 @@ export function TaskDraftConfirm({
                     <CustomSelect
                       className="task-detail-control"
                       value={editingTask.priority || "medium"}
-                      onChange={(val) => setEditingTask({ ...editingTask, priority: val as any })}
-                      style={{
-                        color: editingTask.priority === "high" ? "#b45309" : editingTask.priority === "medium" ? "#15803d" : "#0369a1",
-                        backgroundColor: editingTask.priority === "high" ? "rgba(217, 119, 6, 0.15)" : editingTask.priority === "medium" ? "rgba(22, 163, 74, 0.15)" : "rgba(2, 132, 199, 0.15)"
-                      }}
+                      onChange={(val) => setEditingTask({ ...editingTask, priority: val as TaskDraft["priority"] })}
+                      style={(() => {
+                        const pill = taskPriorityPillStyle(editingTask.priority);
+                        return {
+                          color: pill.color,
+                          backgroundColor: pill.backgroundColor,
+                          borderColor: pill.borderColor,
+                        };
+                      })()}
                       options={[
                         { value: "low", label: "Thấp" },
                         { value: "medium", label: "Trung bình" },

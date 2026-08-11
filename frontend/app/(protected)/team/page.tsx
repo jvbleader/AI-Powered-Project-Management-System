@@ -3,15 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
+import { taskApi, userApi, workspaceApi } from "@/services/api";
 import { updateSessionCurrentUser } from "@/services/auth/session";
 import { useAuthSession } from "@/hooks/use-session";
-import { normalizeViewer } from "@/lib/mock/permissions";
 import {
   canAccessTeamDirectoryRole,
   canManageUsers as canManageUsersByRole,
   hasCompanywideProjectAccess,
+  isAdminRole,
+  isHeadOfDevDepartment,
   ROLE_ADMIN,
+  ROLE_DIRECTOR,
 } from "@/lib/utils/format";
 import type {
   EnrichedTask,
@@ -41,7 +43,7 @@ const EMPTY_DIRECTORY: PaginatedUsers = {
 export default function TeamPage() {
   const session = useAuthSession();
   const currentActor = useMemo(
-    () => normalizeViewer(session?.currentUser as UserProfile),
+    () => session?.currentUser as any,
     [session?.currentUser],
   );
   const [shellData, setShellData] = useState<WorkspaceShellData>({
@@ -60,7 +62,7 @@ export default function TeamPage() {
   const [roleFilter, setRoleFilter] = useState<UserDirectoryFilters["role"]>("ALL");
   const [departmentFilter, setDepartmentFilter] =
     useState<UserDirectoryFilters["department"]>("ALL");
-  const [pageSize] = useState(10);
+  const [pageSize] = useState(15);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
@@ -86,34 +88,15 @@ export default function TeamPage() {
   );
   const canManageUsers = canManageUsersByRole(currentActor.role);
   const canFilterDepartment = hasCompanywideProjectAccess(currentActor.role, currentActor.department) || canManageUsers;
+  const isHeadOfDevViewer =
+    isHeadOfDevDepartment(currentActor.department) && !isAdminRole(currentActor.role);
+  const directoryDepartments = isHeadOfDevViewer
+    ? departments.filter((dept) => dept.name !== ROLE_DIRECTOR)
+    : departments;
   const router = useRouter();
 
   useEffect(() => {
-    let isCancelled = false;
-
-    async function resolveTeamAccess() {
-      if (canAccessTeamDirectoryRole(currentActor.role, currentActor.department)) {
-        setCanAccessTeamPage(true);
-        return;
-      }
-
-      try {
-        const { data: projects } = await projectApi.list(undefined, currentActor);
-        if (!isCancelled) {
-          setCanAccessTeamPage(projects.some((project) => project.managerId === currentActor.id));
-        }
-      } catch {
-        if (!isCancelled) {
-          setCanAccessTeamPage(false);
-        }
-      }
-    }
-
-    void resolveTeamAccess();
-
-    return () => {
-      isCancelled = true;
-    };
+    setCanAccessTeamPage(canAccessTeamDirectoryRole(currentActor.role, currentActor.department));
   }, [currentActor]);
 
   useEffect(() => {
@@ -365,9 +348,10 @@ export default function TeamPage() {
             setDepartmentFilter(v);
             setPage(1);
           }}
-          departments={departments}
+          departments={directoryDepartments}
           canFilterDepartment={canFilterDepartment}
           currentDepartment={currentActor.department || ""}
+          hideDirectorRoles={isHeadOfDevViewer}
         />
 
         <UserTable

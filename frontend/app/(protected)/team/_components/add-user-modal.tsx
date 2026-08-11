@@ -47,6 +47,7 @@ export function AddUserModal({
       <section
         className={`password-modal ${styles.addModal}`}
         role="dialog"
+        data-testid="create-user-modal"
         aria-modal="true"
         aria-labelledby="add-user-title"
         onMouseDown={(event) => event.stopPropagation()}
@@ -66,14 +67,21 @@ export function AddUserModal({
 
         <form
           className={styles.addForm}
+          data-testid="create-user-form"
           onSubmit={(e) => {
             e.preventDefault();
             onSave();
           }}
         >
           <label className={styles.filterField}>
-            <span>Họ và tên</span>
+            <span>
+              Họ và tên
+              <span className="required-asterisk" aria-hidden="true">
+                *
+              </span>
+            </span>
             <input
+              data-testid="user-name"
               type="text"
               value={addName}
               onChange={(e) => onAddNameChange(e.target.value)}
@@ -83,8 +91,14 @@ export function AddUserModal({
           </label>
 
           <label className={styles.filterField}>
-            <span>Email</span>
+            <span>
+              Email
+              <span className="required-asterisk" aria-hidden="true">
+                *
+              </span>
+            </span>
             <input
+              data-testid="user-email"
               type="email"
               value={addEmail}
               onChange={(e) => onAddEmailChange(e.target.value)}
@@ -94,8 +108,14 @@ export function AddUserModal({
           </label>
 
           <label className={styles.filterField}>
-            <span>Phòng ban</span>
+            <span>
+              Phòng ban
+              <span className="required-asterisk" aria-hidden="true">
+                *
+              </span>
+            </span>
             <CustomSelect 
+              testId="user-department"
               value={addDepartment} 
               onChange={onAddDepartmentChange}
               options={[
@@ -106,8 +126,14 @@ export function AddUserModal({
           </label>
 
           <label className={styles.filterField}>
-            <span>Chức danh (Vai trò)</span>
+            <span>
+              Chức danh (Vai trò)
+              <span className="required-asterisk" aria-hidden="true">
+                *
+              </span>
+            </span>
             <CustomSelect
+              testId="user-role"
               value={addRole}
               onChange={(val) => onAddRoleChange(val as UserRole)}
               options={SYSTEM_ROLE_OPTIONS.map((r) => ({ value: r, label: roleLabel(r) }))}
@@ -117,11 +143,11 @@ export function AddUserModal({
           <label className={styles.filterField}>
             <span>Mật khẩu khởi tạo</span>
             <input
+              data-testid="user-initial-password"
               type="text"
               value={addPassword}
               onChange={(e) => onAddPasswordChange(e.target.value)}
               placeholder="Nhập mật khẩu"
-              required
             />
           </label>
 
@@ -138,7 +164,12 @@ export function AddUserModal({
             <button type="button" className="secondary-button" onClick={onClose}>
               Hủy bỏ
             </button>
-            <button type="submit" className="primary-button" disabled={isAddingUser}>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={isAddingUser}
+              data-testid="create-user-submit"
+            >
               {isAddingUser ? "Đang tạo..." : "Xác nhận tạo mới"}
             </button>
           </div>

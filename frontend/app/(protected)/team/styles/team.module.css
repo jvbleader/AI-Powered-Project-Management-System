@@ -1,6 +1,19 @@
 .pageStack {
   display: grid;
-  gap: 1.2rem;
+  gap: 0.65rem;
+}
+
+.pageStack :global(.surface-header) {
+  margin-bottom: 0.45rem;
+}
+
+.pageStack :global(.surface h2) {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.pageStack :global(.kicker) {
+  font-size: 0.64rem;
 }
 
 .previewBanner {
@@ -58,8 +71,8 @@
 
 .filterSurface,
 .tableSurface {
-  padding: 1.35rem;
-  border-radius: 32px;
+  padding: 0.7rem 0.85rem;
+  border-radius: 14px;
 }
 
 .filterSurface {
@@ -70,28 +83,34 @@
 .filterGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1.5rem;
+  gap: 0.65rem;
 }
 
 .filterField {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.25rem;
 }
 
 .filterField span {
   color: #334155;
   font-weight: 650;
+  font-size: 0.72rem;
+}
+
+.filterField span:global(.required-asterisk) {
+  color: #dc2626;
+  font-weight: 700;
 }
 
 .filterField input,
 .filterField select {
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 18px;
-  padding: 0.92rem 1rem;
+  border-radius: 10px;
+  padding: 0.4rem 0.6rem;
   color: var(--ink);
   background: rgba(248, 250, 252, 0.98);
-  font-size: 0.95rem;
+  font-size: 0.76rem;
   outline: none;
   transition:
     border-color 0.2s,
@@ -119,20 +138,21 @@
 
 .table {
   width: 100%;
-  min-width: 960px;
+  min-width: 860px;
   border-collapse: collapse;
 }
 
 .table th,
 .table td {
-  padding: 0.95rem 0.85rem;
+  padding: 0.28rem 0.4rem;
   text-align: left;
   border-bottom: 1px solid rgba(226, 232, 240, 0.85);
   vertical-align: middle;
+  font-size: 0.72rem;
 }
 
 .table th {
-  font-size: 0.82rem;
+  font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #64748b;
@@ -145,7 +165,7 @@
 .userCellButton {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.4rem;
   border: 0;
   padding: 0;
   color: inherit;
@@ -167,75 +187,283 @@
 }
 
 .avatarToken {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 1.45rem;
+  height: 1.45rem;
   flex: 0 0 auto;
+  font-size: 0.62rem;
 }
 
 .detailAvatar {
-  width: 5.25rem;
-  height: 5.25rem;
+  width: 4.5rem;
+  height: 4.5rem;
   flex: 0 0 auto;
-  font-size: 1.45rem;
-  box-shadow: 0 16px 32px rgba(37, 99, 235, 0.2);
+  font-size: 1.25rem;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
 }
 
 .userCellCopy {
   display: grid;
-  gap: 0.15rem;
+  gap: 0.05rem;
+  min-width: 0;
 }
 
 .userCellCopy strong {
   color: var(--ink);
+  font-size: 0.74rem;
+  line-height: 1.2;
 }
 
 .userCellCopy small,
 .contactCell small {
   color: var(--muted);
+  font-size: 0.64rem;
 }
 
 .contactCell {
   display: grid;
-  gap: 0.18rem;
+  gap: 0.08rem;
+  font-size: 0.7rem;
 }
 
 .roleStack {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.2rem;
+}
+
+.table :global(.pill) {
+  padding: 0.1rem 0.32rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+}
+
+.detailButton {
+  padding: 0.14rem 0.45rem;
+  font-size: 0.66rem;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
 .paginationBar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-top: 1rem;
+  gap: 0.65rem;
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
 }
 
 .paginationActions {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.4rem;
 }
 
 .detailModal {
-  width: min(980px, 100%);
+  width: min(1040px, 100%);
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden !important;
+}
+
+.detailModalReadonly {
+  width: min(760px, 100%);
+  max-height: none;
+  overflow: visible !important;
+}
+
+.detailReadonlyBody {
+  padding: 0 1.35rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.readonlyGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.readonlyWide {
+  grid-column: 1 / -1;
+}
+
+.readonlyGrid article {
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.readonlyGrid span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.readonlyGrid strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 650;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.detailTopBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.35rem 1.35rem 1rem;
+}
+
+.detailHero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.detailHeroCopy {
+  min-width: 0;
+}
+
+.detailEyebrow {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.detailHeroCopy h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.detailTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.detailHeroCopy p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.detailHeroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.detailMetaChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(248, 250, 252, 0.95);
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.detailStats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.7rem;
+  padding: 0 1.35rem 1rem;
+}
+
+.detailStats article {
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.detailStats span {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.detailStats strong {
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.detailTaskStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.65rem;
+}
+
+.detailTaskStrip article {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.95);
+}
+
+.detailTaskStrip span {
+  display: block;
+  margin-bottom: 0.28rem;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.detailTaskStrip strong {
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.detailActionStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: auto;
 }
 
 .detailLayout {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.15fr);
   gap: 1rem;
   padding: 0 1.35rem 1.35rem;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .detailPanel {
-  display: grid;
-  gap: 1rem;
-  padding: 1rem;
-  border-radius: 24px;
-  border: 1px solid rgba(191, 219, 254, 0.28);
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 0.98));
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
+  min-height: 0;
+}
+
+.detailPanelRoles {
+  overflow: hidden;
 }
 
 .detailIdentity {
@@ -276,14 +504,23 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 .panelHeader h3 {
   margin: 0.25rem 0 0;
+  font-size: 1.05rem;
+}
+
+.panelDivider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.2);
+  margin: 0.2rem 0;
 }
 
 .optionGrid {
   display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.7rem;
 }
 
@@ -291,13 +528,14 @@
   display: grid;
   gap: 0.25rem;
   width: 100%;
-  padding: 0.95rem 1rem;
+  padding: 0.9rem 1rem;
   border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 18px;
+  border-radius: 16px;
   color: #334155;
   text-align: left;
   background: #ffffff;
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .optionButton small {
@@ -312,17 +550,29 @@
 
 .roleChecklist {
   display: grid;
-  gap: 0.7rem;
+  gap: 0.55rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+  overscroll-behavior: contain;
 }
 
 .roleOption {
   display: flex;
   align-items: flex-start;
   gap: 0.8rem;
-  padding: 0.95rem 1rem;
+  padding: 0.85rem 0.95rem;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 18px;
+  border-radius: 14px;
   background: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.roleOptionActive {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(239, 246, 255, 0.85);
 }
 
 .roleOption input {
@@ -340,6 +590,10 @@
 .roleOption small,
 .helperText {
   color: var(--muted);
+}
+
+.detailFeedback {
+  margin: 0 1.35rem 1.2rem;
 }
 
 .addModal {
@@ -372,11 +626,36 @@
   user-select: none;
 }
 
+.projectCode {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.04);
+  color: #334155;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 1100px) {
   .metricGrid,
   .filterGrid,
   .detailLayout {
     grid-template-columns: 1fr;
+  }
+
+  .detailStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailLayout {
+    overflow: auto;
+  }
+
+  .detailPanelRoles {
+    max-height: 420px;
   }
 }
 
@@ -387,7 +666,24 @@
     align-items: stretch;
   }
 
-  .detailFacts {
+  .detailFacts,
+  .optionGrid {
     grid-template-columns: 1fr;
+  }
+
+  .detailStats {
+    grid-template-columns: 1fr;
+  }
+
+  .readonlyGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailTopBar {
+    padding: 1.1rem 1.1rem 0.85rem;
+  }
+
+  .detailHero {
+    align-items: flex-start;
   }
 }

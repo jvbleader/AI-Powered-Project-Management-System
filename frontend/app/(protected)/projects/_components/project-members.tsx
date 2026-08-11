@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { Surface, StatusPill } from "@/components/ui";
-import { projectApi } from "@/services/api";
+import { UserAvatar } from "@/components/user-avatar";
+import { FilterSelect } from "@/components/filter-select";
+import { projectApi, userApi } from "@/services/api";
 import { projectRoleLabel, getRoleTone, isManagerRole, isLeaderRole } from "@/lib/utils/format";
 import styles from "../../team/styles/team.module.css";
-import type { UserProfile } from "@/types";
+import type { Department, UserProfile } from "@/types";
 import type { Project } from "@/types/project";
 
 type ProjectMemberItem = {
@@ -33,19 +35,24 @@ interface ProjectMembersProps {
 export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers, project }: ProjectMembersProps) {
   const [members, setMembers] = useState<ProjectMemberItem[]>([]);
   const [roles, setRoles] = useState<ProjectRoleItem[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [page, setPage] = useState(1);
   const MEMBERS_PER_PAGE = 10;
-  
+
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
   const [isAdding, setIsAdding] = useState(false);
+  const [newDepartment, setNewDepartment] = useState<string>("");
   const [newUserId, setNewUserId] = useState<string>("");
   const [newUserRoleId, setNewUserRoleId] = useState<number>(0);
+  const [candidateUsers, setCandidateUsers] = useState<UserProfile[]>([]);
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
+  const [candidateError, setCandidateError] = useState<string | null>(null);
 
   const extractErrorMessage = (error: unknown, fallback: string) => {
     return error instanceof Error ? error.message : fallback;
@@ -61,31 +68,31 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
 
   const viewerMember = members.find(m => m.userId.toString() === viewerId.replace("usr-", ""));
   const isProjectPMOrLeader = viewerMember && viewerMember.isActive && (
-    viewerMember.roleName.includes("Manager") || 
-    viewerMember.roleName.includes("PM") || 
-    viewerMember.roleName.includes("Owner") || 
+    viewerMember.roleName.includes("Manager") ||
+    viewerMember.roleName.includes("PM") ||
+    viewerMember.roleName.includes("Owner") ||
     viewerMember.roleName.includes("Leader") ||
     isManagerRole(viewerMember.roleName) ||
     isLeaderRole(viewerMember.roleName)
   );
 
   const canManageMembers = canManage || !!isProjectPMOrLeader;
+  const projectDepartmentName = project?.departmentName?.trim() || "";
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [membersRes, rolesRes] = await Promise.all([
+        const [membersRes, rolesRes, departmentsRes] = await Promise.all([
           projectApi.listMembers(projectId),
-          projectApi.listRoles()
+          projectApi.listRoles(),
+          userApi.getDepartments().catch(() => ({ data: [] as Department[] })),
         ]);
         setMembers(membersRes.data || []);
         const loadedRoles = rolesRes.data || [];
         setRoles(loadedRoles);
-        const defaultRole =
-          loadedRoles.find((role: ProjectRoleItem) => role.name === "PROJECT_MEMBER") ??
-          loadedRoles.find((role: ProjectRoleItem) => role.name !== "PROJECT_MANAGER") ??
-          loadedRoles[0];
-        setNewUserRoleId(defaultRole?.id ?? 0);
+        setDepartments(departmentsRes.data || []);
+        setNewUserRoleId(0);
+        setNewDepartment(projectDepartmentName);
       } catch {
         setError("Không thể tải danh sách thành viên.");
       } finally {
@@ -93,7 +100,59 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
       }
     }
     loadData();
-  }, [projectId]);
+  }, [projectId, projectDepartmentName]);
+
+  useEffect(() => {
+    if (!isAdding || !newDepartment) {
+      setCandidateUsers([]);
+      setCandidateError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadCandidates() {
+      setIsLoadingCandidates(true);
+      setCandidateError(null);
+      try {
+        const selectedRole = roles.find((r) => r.id === newUserRoleId);
+        const roleName =
+          newUserRoleId !== 0 && selectedRole?.name ? selectedRole.name : undefined;
+        const { data } = await projectApi.listMemberCandidates(projectId, {
+          department: newDepartment,
+          role: roleName,
+        });
+        if (!cancelled) {
+          setCandidateUsers(data || []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCandidateUsers([]);
+          setCandidateError(
+            err instanceof Error
+              ? err.message
+              : "Không tải được danh sách người dùng để thêm.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingCandidates(false);
+        }
+      }
+    }
+
+    void loadCandidates();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdding, newDepartment, newUserRoleId, projectId, roles]);
+
+  const handleOpenAddForm = () => {
+    setNewDepartment(projectDepartmentName || departments[0]?.name || "");
+    setNewUserId("");
+    setNewUserRoleId(0);
+    setIsAdding(true);
+  };
 
   const handleAddMember = async () => {
     if (!newUserId) return;
@@ -139,25 +198,17 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
   if (isLoading) return <div>Đang tải thành viên...</div>;
   if (error) return <div style={{ color: "var(--status-critical)" }}>{error}</div>;
 
-  let departmentUsers = accessibleUsers;
-  if (project?.departmentName) {
-    departmentUsers = accessibleUsers.filter(u => u.department === project.departmentName);
-  }
+  const poolUsers = candidateUsers.length > 0 || isAdding ? candidateUsers : accessibleUsers;
+  const availableRoleNames = Array.from(new Set(poolUsers.map((u) => u.role).filter(Boolean)));
+  const filteredRoles =
+    availableRoleNames.length > 0
+      ? roles.filter((r) => availableRoleNames.includes(r.name))
+      : roles;
 
-  // Get unique roles from department users
-  const availableRoleNames = Array.from(new Set(departmentUsers.map(u => u.role).filter(Boolean)));
-  // Filter the system roles to only include roles that actually exist in this department
-  const filteredRoles = roles.filter(r => availableRoleNames.includes(r.name));
+  const availableUsersToAdd = poolUsers.filter(
+    (u) => !members.some((m) => m.isActive && m.userId.toString() === u.id.replace("usr-", "")),
+  );
 
-  const selectedRole = roles.find(r => r.id === newUserRoleId);
-  const selectedRoleName = selectedRole?.name;
-
-  let availableUsersToAdd = departmentUsers.filter(u => !members.some(m => m.isActive && m.userId.toString() === u.id.replace("usr-", "")));
-  
-  if (selectedRoleName && newUserRoleId !== 0) {
-    availableUsersToAdd = availableUsersToAdd.filter(u => u.role === selectedRoleName);
-  }
-  
   const activePMCount = members.filter(m => m.isActive && m.roleName === "PROJECT_MANAGER").length;
 
   const filteredMembers = members.filter(m => {
@@ -179,10 +230,14 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
 
   const totalPages = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE));
   const validPage = Math.min(page, totalPages);
-  
+
   const paginatedMembers = filteredMembers.slice(
     (validPage - 1) * MEMBERS_PER_PAGE,
     validPage * MEMBERS_PER_PAGE,
+  );
+
+  const userLookup = new Map(
+    accessibleUsers.map((user) => [user.id, user]),
   );
 
   return (
@@ -190,51 +245,155 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
       {canManageMembers && (
         <div style={{ marginBottom: "1.5rem" }}>
           {!isAdding ? (
-            <button type="button" className="primary-button" onClick={() => setIsAdding(true)}>
+            <button type="button" className="primary-button" onClick={handleOpenAddForm}>
               + Thêm thành viên
             </button>
           ) : (
-            <div style={{ display: "flex", gap: "1rem", alignItems: "center", background: "var(--surface-sunken)", padding: "1rem", borderRadius: "8px", border: "1px solid var(--border)", flexWrap: "wrap" }}>
-              <select 
-                value={newUserId} 
-                onChange={e => {
-                  const selectedUserId = e.target.value;
-                  setNewUserId(selectedUserId);
-                  if (selectedUserId) {
-                    const user = availableUsersToAdd.find(u => u.id === selectedUserId);
-                    if (user && user.role) {
-                      const matchedRole = roles.find(r => r.name === user.role);
-                      if (matchedRole) {
-                        setNewUserRoleId(matchedRole.id);
+            <div
+              className="project-members-add-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(160px, 0.9fr) minmax(0, 1.35fr) minmax(160px, 0.85fr) auto",
+                gap: "0.85rem",
+                alignItems: "end",
+                background: "rgba(248, 250, 252, 0.95)",
+                padding: "1.15rem 1.25rem",
+                borderRadius: "16px",
+                border: "1px solid rgba(148, 163, 184, 0.2)",
+              }}
+            >
+              <label style={{ display: "flex", flexDirection: "column", gap: "0.45rem", minWidth: 0 }}>
+                <span className="task-detail-field-label" style={{ marginBottom: 0 }}>
+                  Phòng ban
+                </span>
+                <FilterSelect
+                  value={newDepartment}
+                  onChange={(dept) => {
+                    setNewDepartment(dept);
+                    setNewUserId("");
+                  }}
+                  options={[
+                    { value: "", label: "Chọn phòng ban..." },
+                    ...departments.map((dept) => ({
+                      value: dept.name,
+                      label:
+                        projectDepartmentName && dept.name === projectDepartmentName
+                          ? `${dept.name} (phòng dự án)`
+                          : dept.name,
+                    })),
+                  ]}
+                  placeholder="Chọn phòng ban..."
+                  searchable
+                  searchPlaceholder="Tìm phòng ban..."
+                  size="lg"
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: "0.45rem", minWidth: 0 }}>
+                <span className="task-detail-field-label" style={{ marginBottom: 0 }}>
+                  Người dùng
+                </span>
+                <FilterSelect
+                  value={newUserId}
+                  onChange={(selectedUserId) => {
+                    setNewUserId(selectedUserId);
+                    if (selectedUserId) {
+                      const user = availableUsersToAdd.find((u) => u.id === selectedUserId);
+                      if (user?.role) {
+                        const matchedRole = roles.find((r) => r.name === user.role);
+                        if (matchedRole) {
+                          setNewUserRoleId(matchedRole.id);
+                        }
                       }
                     }
-                  }
-                }}
-                style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface)", flex: 1, minWidth: "200px" }}
-              >
-                <option value="">Chọn người dùng...</option>
-                {availableUsersToAdd.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} - {u.email}</option>
-                ))}
-              </select>
-              <select
-                value={newUserRoleId}
-                onChange={e => {
-                  setNewUserRoleId(Number(e.target.value));
-                  setNewUserId("");
-                }}
-                style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--surface)", width: "200px" }}
-              >
-                <option value={0}>Tất cả các Role</option>
-                {filteredRoles.map(r => (
-                  <option key={r.id} value={r.id}>{projectRoleLabel(r.name)}</option>
-                ))}
-              </select>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button type="button" className="primary-button" onClick={handleAddMember} disabled={!newUserId}>
+                  }}
+                  options={[
+                    {
+                      value: "",
+                      label: isLoadingCandidates
+                        ? "Đang tải người dùng..."
+                        : newDepartment
+                          ? "Chọn người dùng..."
+                          : "Chọn phòng ban trước...",
+                    },
+                    ...availableUsersToAdd.map((u) => ({
+                      value: u.id,
+                      label: `${u.name} · ${u.email}`,
+                    })),
+                  ]}
+                  placeholder="Chọn người dùng..."
+                  searchable
+                  searchPlaceholder="Tìm theo tên hoặc email..."
+                  size="lg"
+                  disabled={!newDepartment || isLoadingCandidates}
+                />
+                {candidateError ? (
+                  <span style={{ color: "var(--status-critical)", fontSize: "0.8rem" }}>
+                    {candidateError}
+                  </span>
+                ) : null}
+                {!candidateError &&
+                newDepartment &&
+                !isLoadingCandidates &&
+                availableUsersToAdd.length === 0 ? (
+                  <span style={{ color: "var(--foreground-muted)", fontSize: "0.8rem" }}>
+                    Không còn người dùng khả dụng trong phòng ban này.
+                  </span>
+                ) : null}
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: "0.45rem", minWidth: 0 }}>
+                <span className="task-detail-field-label" style={{ marginBottom: 0 }}>
+                  Vai trò
+                </span>
+                <FilterSelect
+                  value={String(newUserRoleId)}
+                  onChange={(val) => {
+                    setNewUserRoleId(Number(val));
+                    setNewUserId("");
+                  }}
+                  options={[
+                    { value: "0", label: "Tất cả vai trò" },
+                    ...filteredRoles.map((r) => ({
+                      value: String(r.id),
+                      label: projectRoleLabel(r.name),
+                    })),
+                  ]}
+                  placeholder="Chọn vai trò"
+                  size="lg"
+                />
+              </label>
+
+              <div style={{ display: "flex", gap: "0.55rem", flexShrink: 0, paddingBottom: "0.1rem" }}>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleAddMember}
+                  disabled={!newUserId}
+                  style={{
+                    borderRadius: "999px",
+                    padding: "0.8rem 1.25rem",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   Thêm
                 </button>
-                <button type="button" className="secondary-button" onClick={() => setIsAdding(false)}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    setIsAdding(false);
+                    setNewUserId("");
+                    setNewUserRoleId(0);
+                    setNewDepartment(projectDepartmentName);
+                    setCandidateUsers([]);
+                  }}
+                  style={{
+                    borderRadius: "999px",
+                    padding: "0.8rem 1.1rem",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   Hủy
                 </button>
               </div>
@@ -330,63 +489,75 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
           </thead>
           <tbody>
             {paginatedMembers.map(member => (
-              <tr key={member.id}>
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                    <span className={styles.avatarToken} style={{ width: "32px", height: "32px", fontSize: "0.875rem", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "var(--primary-subtle)", color: "var(--primary-base)" }}>
-                      {member.userName.charAt(0).toUpperCase()}
-                    </span>
-                    <strong>{member.userName}</strong>
-                  </div>
-                </td>
-                <td>{member.userEmail}</td>
-                <td style={{ textAlign: "center" }}>
-                  <StatusPill 
-                    label={projectRoleLabel(member.roleName)} 
-                    tone={getRoleTone(member.roleName)}
-                  />
-                </td>
-                <td>{new Date(member.joinedAt).toLocaleDateString("vi-VN")}</td>
-                <td style={{ textAlign: "center" }}>
-                  <StatusPill 
-                    label={member.isActive ? "Hoạt động" : "Tạm dừng"} 
-                    tone={member.isActive ? "on-track" : "critical"} 
-                  />
-                </td>
-                {canManageMembers && (
-                  <td>
-                    {member.userId.toString() !== viewerId.replace("usr-", "") && (
-                      member.isActive ? (
-                        <button 
-                          type="button" 
-                          className="secondary-button" 
-                          style={{ 
-                            color: "var(--status-critical)", 
-                            borderColor: "var(--status-critical)", 
-                            background: "transparent",
-                            opacity: (member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) ? 0.5 : 1,
-                            cursor: (member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) ? "not-allowed" : "pointer"
-                          }}
-                          disabled={(member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) || !canManageMembers}
-                          title={member.roleName === "PROJECT_MANAGER" && activePMCount <= 1 ? "Không thể gỡ Quản lý dự án duy nhất" : ""}
-                          onClick={() => handleRemoveMember(member.id)}
-                        >
-                          Gỡ bỏ
-                        </button>
-                      ) : (
-                        <button 
-                          type="button" 
-                          className="secondary-button" 
-                          style={{ color: "var(--primary-base)", borderColor: "var(--primary-base)", background: "transparent" }}
-                          onClick={() => handleRestoreMember(member)}
-                        >
-                          Thêm lại
-                        </button>
-                      )
+              (() => {
+                const memberUser = userLookup.get(`usr-${member.userId}`);
+
+                return (
+                  <tr key={member.id}>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <UserAvatar
+                          userId={`usr-${member.userId}`}
+                          email={member.userEmail}
+                          name={member.userName}
+                          avatarUrl={memberUser?.avatarUrl}
+                          size={32}
+                          className={styles.avatarToken}
+                          style={{ fontSize: "0.875rem" }}
+                        />
+                        <strong>{member.userName}</strong>
+                      </div>
+                    </td>
+                    <td>{member.userEmail}</td>
+                    <td style={{ textAlign: "center" }}>
+                      <StatusPill
+                        label={projectRoleLabel(member.roleName)}
+                        tone={getRoleTone(member.roleName)}
+                      />
+                    </td>
+                    <td>{new Date(member.joinedAt).toLocaleDateString("vi-VN")}</td>
+                    <td style={{ textAlign: "center" }}>
+                      <StatusPill
+                        label={member.isActive ? "Hoạt động" : "Tạm dừng"}
+                        tone={member.isActive ? "on-track" : "critical"}
+                      />
+                    </td>
+                    {canManageMembers && (
+                      <td>
+                        {member.userId.toString() !== viewerId.replace("usr-", "") && (
+                          member.isActive ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              style={{
+                                color: "var(--status-critical)",
+                                borderColor: "var(--status-critical)",
+                                background: "transparent",
+                                opacity: (member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) ? 0.5 : 1,
+                                cursor: (member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) ? "not-allowed" : "pointer"
+                              }}
+                              disabled={(member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) || !canManageMembers}
+                              title={member.roleName === "PROJECT_MANAGER" && activePMCount <= 1 ? "Không thể gỡ Quản lý dự án duy nhất" : ""}
+                              onClick={() => handleRemoveMember(member.id)}
+                            >
+                              Gỡ bỏ
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              style={{ color: "var(--primary-base)", borderColor: "var(--primary-base)", background: "transparent" }}
+                              onClick={() => handleRestoreMember(member)}
+                            >
+                              Thêm lại
+                            </button>
+                          )
+                        )}
+                      </td>
                     )}
-                  </td>
-                )}
-              </tr>
+                  </tr>
+                );
+              })()
             ))}
             {filteredMembers.length === 0 && (
               <tr>

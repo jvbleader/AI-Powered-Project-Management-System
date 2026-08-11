@@ -1,63 +1,128 @@
+name: flowpilot-prod
+
 services:
   mysql:
     image: mysql:8.4
-    restart: unless-stopped
+    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: flowpilot
-      MYSQL_USER: flowpilot
-      MYSQL_PASSWORD: flowpilot123
-      TZ: Asia/Ho_Chi_Minh
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ}
     ports:
-      - "3307:3306"
+      - "${MYSQL_HOST_PORT}:${MYSQL_PORT}"
     volumes:
-      - mysql_data_seeded:/var/lib/mysql
+      - mysql_data_prod:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123"]
-      interval: 10s
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent",
+        ]
+      interval: 5s
       timeout: 5s
-      retries: 15
+      retries: 30
+      start_period: 30s
 
   redis:
-    image: redis/redis-stack-server:latest
-    restart: unless-stopped
+    image: redis/redis-stack-server:7.4.0-v1
+    restart: always
     ports:
-      - "6380:6379"
+      - "${REDIS_HOST_PORT}:6379"
     volumes:
-      - redis_data:/data
+      - redis_data_prod:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 3s
       retries: 10
 
-  backend:
-    image: ghcr.io/jvbleader/flowpilot-backend:latest
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    env_file:
-      - ./backend/.env
-    environment:
-      - DATABASE_URL=mysql+pymysql://flowpilot:flowpilot123@mysql:3306/flowpilot
+  db-migrate:
+    image: flowpilot-backend:prod
+    restart: "no"
     depends_on:
       mysql:
         condition: service_healthy
+    env_file:
+      - .env
+      - ./backend/.env
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      PYTHONPATH: /app
+    entrypoint: ["python", "scripts/migrate_db.py"]
+
+  db-seed:
+    image: mysql:8.4
+    restart: "no"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      SEED_SQL_PATH: /seed/backup.sql
+    volumes:
+      - ./database/seed:/seed:ro
+    entrypoint: ["/bin/bash", "/seed/seed.sh"]
+
+  backend:
+    image: flowpilot-backend:prod
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: always
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+      - ./backend/.env
+    environment:
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      BACKEND_WORKERS: ${BACKEND_WORKERS}
+      PYTHONPATH: /app
+    ports:
+      - "${BACKEND_HOST_PORT}:${BACKEND_PORT}"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:${BACKEND_PORT}/health', timeout=3).read()\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   frontend:
-    image: ghcr.io/jvbleader/flowpilot-frontend:latest
-    restart: unless-stopped
-    ports:
-      - "80:3000"
-    environment:
-      - API_BASE_URL_INTERNAL=http://backend:8000
+    image: flowpilot-frontend:prod
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${BACKEND_HOST_PORT}}
+        NEXT_PUBLIC_API_PORT: ${NEXT_PUBLIC_API_PORT:-${BACKEND_HOST_PORT}}
+    restart: always
     depends_on:
-      - backend
-    command: npm start
+      backend:
+        condition: service_healthy
+    env_file:
+      - ./frontend/.env
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_HOST_PORT}
+      NEXT_PUBLIC_API_PORT: ${BACKEND_HOST_PORT}
+      API_BASE_URL_INTERNAL: http://backend:${BACKEND_PORT}
+    ports:
+      - "${FRONTEND_HOST_PORT}:${FRONTEND_PORT}"
 
 volumes:
-  mysql_data_seeded:
-  redis_data:
+  mysql_data_prod:
+  redis_data_prod:

@@ -424,56 +424,72 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               }}
               onClick={() => handleRowClick(node.task.id)}
             >
-              {hasChildren ? (
-                isRoot ? (
-                  /* Summary Task (Parent/Epic) */
-                  <div
-                    style={{
-                      gridColumnStart: startCol,
-                      gridColumnEnd: endCol,
-                      position: "relative",
-                      marginTop: "8px",
-                      height: "10px",
-                      backgroundColor: "#1a365d", /* Màu xanh đen đậm */
-                      zIndex: 2,
-                      borderTopLeftRadius: "2px",
-                      borderTopRightRadius: "2px"
-                    }}
-                    title={`[Hạng mục] ${node.task.title}`}
-                  >
-                    {/* Left Hook */}
-                    <div style={{ position: "absolute", left: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderRight: "6px solid transparent" }} />
-                    {/* Right Hook */}
-                    <div style={{ position: "absolute", right: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderLeft: "6px solid transparent" }} />
-                  </div>
-                ) : null /* Do not render bars for intermediate parent tasks */
-              ) : (
-                /* Leaf Task (Child) */
-                <div
-                  className={`${styles.ganttBar} ${priorityPresentation.barClass}`}
-                  style={{
-                    gridColumnStart: startCol,
-                    gridColumnEnd: endCol,
-                    position: "relative",
-                    overflow: "hidden"
-                  }}
-                  title={`Mức độ cấp thiết: ${priorityPresentation.label}\nTiến độ: ${node.task.spentHours || 0}h / ${node.task.estimateHours || 0}h`}
-                >
-                  {(node.task.estimateHours || 0) > 0 && (
+              {(() => {
+                const isLeaf = !hasChildren;
+                const isEpic = hasChildren && isRoot;
+                const isIntermediateParent = hasChildren && !isRoot;
+                const safeStartCol = Number.isFinite(startCol) ? Math.max(1, startCol) : 1;
+                const safeEndCol = Number.isFinite(endCol)
+                  ? Math.max(safeStartCol + 1, endCol)
+                  : safeStartCol + 1;
+
+                if (isEpic) {
+                  return (
                     <div
                       style={{
-                        position: "absolute",
-                        top: "25%",
-                        left: 0,
-                        height: "50%",
-                        width: `${Math.min(100, Math.round(((node.task.spentHours || 0) / node.task.estimateHours) * 100))}%`,
-                        background: "#1c4a7e",
-                        borderRight: "1px solid #102a47"
+                        gridColumnStart: safeStartCol,
+                        gridColumnEnd: safeEndCol,
+                        position: "relative",
+                        marginTop: "8px",
+                        height: "10px",
+                        backgroundColor: "#1a365d",
+                        zIndex: 2,
+                        borderTopLeftRadius: "2px",
+                        borderTopRightRadius: "2px",
                       }}
-                    />
-                  )}
-                </div>
-              )}
+                      title={`[Epic] ${node.task.title}`}
+                    >
+                      <div style={{ position: "absolute", left: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderRight: "6px solid transparent" }} />
+                      <div style={{ position: "absolute", right: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderLeft: "6px solid transparent" }} />
+                    </div>
+                  );
+                }
+
+                if (isIntermediateParent) {
+                  return null;
+                }
+
+                if (isLeaf) {
+                  return (
+                    <div
+                      className={`${styles.ganttBar} ${priorityPresentation.barClass}`}
+                      style={{
+                        gridColumnStart: safeStartCol,
+                        gridColumnEnd: safeEndCol,
+                        position: "relative",
+                        overflow: "hidden",
+                      }}
+                      title={`Mức độ cấp thiết: ${priorityPresentation.label}\nTiến độ: ${node.task.spentHours || 0}h / ${node.task.estimateHours || 0}h`}
+                    >
+                      {(node.task.estimateHours || 0) > 0 && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "25%",
+                            left: 0,
+                            height: "50%",
+                            width: `${Math.min(100, Math.round(((node.task.spentHours || 0) / node.task.estimateHours) * 100))}%`,
+                            background: "#1c4a7e",
+                            borderRight: "1px solid #102a47",
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                }
+
+                return null;
+              })()}
             </div>
           </div>
           {isExpanded && hasChildren && renderTree(node.children)}

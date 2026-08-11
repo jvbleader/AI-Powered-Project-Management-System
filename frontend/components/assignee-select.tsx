@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { UserAvatar } from "@/components/user-avatar";
 import type { UserProfile } from "@/types";
 
 interface AssigneeSelectProps {
@@ -37,7 +38,6 @@ export function AssigneeSelect({
   }, []);
 
   const selectedOption = options.find((o) => o.id === value);
-
   const filteredOptions = options.filter(
     (user) =>
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -65,28 +65,14 @@ export function AssigneeSelect({
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
           {selectedOption ? (
             <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden", width: "100%" }}>
-              <span
-                className="avatar-token"
-                style={{
-                  width: 24,
-                  height: 24,
-                  fontSize: 10,
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  overflow: "hidden",
-                  borderRadius: "50%",
-                  background: selectedOption.avatarUrl ? "transparent" : "var(--accent)",
-                  color: "#ffffff",
-                }}
-              >
-                {selectedOption.avatarUrl ? (
-                  <img src={selectedOption.avatarUrl} alt={selectedOption.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  selectedOption.initials
-                )}
-              </span>
+              <UserAvatar
+                userId={selectedOption.id}
+                email={selectedOption.email}
+                name={selectedOption.name}
+                avatarUrl={selectedOption.avatarUrl}
+                size={24}
+                style={{ flexShrink: 0 }}
+              />
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {selectedOption.name} - {selectedOption.employeeCode || (selectedOption.id.startsWith("usr-") ? selectedOption.id : `usr-${selectedOption.id}`)}
               </span>
@@ -188,28 +174,14 @@ export function AssigneeSelect({
                   (e.currentTarget.style.background = value === user.id ? "var(--surface-sunken)" : "transparent")
                 }
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "28px",
-                    height: "28px",
-                    borderRadius: "50%",
-                    background: user.avatarUrl ? "transparent" : "var(--accent)",
-                    color: "#ffffff",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    flexShrink: 0,
-                    overflow: "hidden",
-                  }}
-                >
-                  {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt={user.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : (
-                    user.initials
-                  )}
-                </div>
+                <UserAvatar
+                  userId={user.id}
+                  email={user.email}
+                  name={user.name}
+                  avatarUrl={user.avatarUrl}
+                  size={28}
+                  style={{ flexShrink: 0 }}
+                />
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--ink)", lineHeight: 1.2 }}>
                     {user.name}

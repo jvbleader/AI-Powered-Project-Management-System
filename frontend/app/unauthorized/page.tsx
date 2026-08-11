@@ -30,9 +30,6 @@ export default function UnauthorizedPage() {
           <Link href="/login" className={styles.primaryButton}>
             Đi tới Đăng nhập
           </Link>
-          <Link href="/" className={styles.secondaryButton}>
-            Về Trang chủ
-          </Link>
         </div>
       </section>
     </main>

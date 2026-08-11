@@ -20,10 +20,11 @@ export default function LoginForm() {
   } = useLoginForm();
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit}>
+    <form className={styles.form} onSubmit={handleSubmit} data-testid="login-form">
       <label className={styles.field}>
         <span>Email</span>
         <input
+          data-testid="login-email"
           value={email}
           onChange={(event) => setEmailInput(event.target.value)}
           required
@@ -35,6 +36,7 @@ export default function LoginForm() {
       <label className={styles.field}>
         <span>Password</span>
         <PasswordField
+          testId="login-password"
           value={password}
           onChange={(event) => setPasswordInput(event.target.value)}
           required
@@ -56,7 +58,12 @@ export default function LoginForm() {
         </label>
       </div>
 
-      <button className="primary-button" type="submit" disabled={isPending}>
+      <button
+        className="primary-button"
+        type="submit"
+        disabled={isPending}
+        data-testid="login-submit"
+      >
         {isPending ? "Đang khởi tạo không gian làm việc..." : "Đăng nhập"}
       </button>
 

@@ -1,15 +1,11 @@
-import Image from "next/image";
+import { UserAvatar } from "@/components/user-avatar";
 import { EmptyState, Surface, StatusPill } from "@/components/ui";
 import {
-  hasCompanywideProjectAccess,
-  isAdminRole,
-  isLeaderRole,
-  isManagerRole,
   roleLabel,
   userStatusLabel,
   getRoleTone,
 } from "@/lib/utils/format";
-import type { PaginatedUsers, UserRole, UserStatus, UserProfile } from "@/types";
+import type { PaginatedUsers, UserStatus, UserProfile } from "@/types";
 import styles from "../styles/team.module.css";
 
 interface UserTableProps {
@@ -73,12 +69,6 @@ export function UserTable({
               </thead>
               <tbody>
                 {directory.items.map((user) => {
-                  const summaryByUser = taskSummaryByUserId[user.id] ?? {
-                    total: 0,
-                    open: 0,
-                    inProgress: 0,
-                  };
-
                   return (
                     <tr key={user.id}>
                       <td>
@@ -87,20 +77,14 @@ export function UserTable({
                           className={styles.userCellButton}
                           onClick={() => onUserSelect(user)}
                         >
-                          <span className={styles.avatarToken}>
-                            {user.avatarUrl ? (
-                              <Image
-                                src={user.avatarUrl}
-                                alt={user.name}
-                                width={40}
-                                height={40}
-                                className="avatar-image"
-                                unoptimized
-                              />
-                            ) : (
-                              user.initials
-                            )}
-                          </span>
+                          <UserAvatar
+                            userId={user.id}
+                            email={user.email}
+                            name={user.name}
+                            avatarUrl={user.avatarUrl}
+                            size={24}
+                            className={styles.avatarToken}
+                          />
                           <span className={styles.userCellCopy}>
                             <strong>{user.name}</strong>
                             <small>{user.jobTitle ?? user.title}</small>
@@ -139,7 +123,7 @@ export function UserTable({
                       <td>
                         <button
                           type="button"
-                          className="secondary-button"
+                          className={`secondary-button ${styles.detailButton}`}
                           onClick={() => onUserSelect(user)}
                         >
                           Chi tiết

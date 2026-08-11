@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusPill } from "@/components/ui";
+import { UserAvatar } from "@/components/user-avatar";
 import { taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
 import type { EnrichedTask } from "@/types";
 import styles from "../../team/styles/team.module.css";
-import Image from "next/image";
 
 interface WbsTableProps {
   tasks: EnrichedTask[];
@@ -163,23 +163,14 @@ export function WbsTable({ tasks }: WbsTableProps) {
             <td>{node.task.dueDate}</td>
             <td>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span
+                <UserAvatar
+                  userId={node.task.assignee.id}
+                  email={node.task.assignee.email}
+                  name={node.task.assignee.name}
+                  avatarUrl={node.task.assignee.avatarUrl}
+                  size={24}
                   className={styles.avatarToken}
-                  style={{ width: 24, height: 24, fontSize: 10 }}
-                >
-                  {node.task.assignee.avatarUrl ? (
-                    <Image
-                      src={node.task.assignee.avatarUrl}
-                      alt={node.task.assignee.name}
-                      width={24}
-                      height={24}
-                      className="avatar-image"
-                      unoptimized
-                    />
-                  ) : (
-                    node.task.assignee.initials
-                  )}
-                </span>
+                />
                 <span className={styles.userCellCopy}>
                   <small style={{ margin: 0 }}>{node.task.assignee.name}</small>
                 </span>

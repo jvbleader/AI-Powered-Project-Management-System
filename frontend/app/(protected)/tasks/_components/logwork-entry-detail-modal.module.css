@@ -1,0 +1,153 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.surface {
+  width: min(560px, 100%);
+  max-height: min(88vh, 720px);
+}
+
+.header {
+  padding: 0.85rem 1rem 0.75rem;
+}
+
+.kicker {
+  margin: 0 0 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.closeButton {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.body {
+  padding: 0.85rem 1rem 1rem;
+  overflow-y: auto;
+  gap: 0.75rem;
+}
+
+.metaPanel,
+.sectionPanel {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.metaPanel {
+  padding: 0.75rem 0.85rem;
+}
+
+.sectionPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 0.85rem;
+  margin: 0;
+}
+
+.metaItem {
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.metaGrid dt {
+  margin: 0 0 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.metaGrid dd {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status_PENDING {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--warning-fg, #b45309);
+}
+
+.status_APPROVED {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success-fg, #15803d);
+}
+
+.status_REJECTED {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--critical-fg, #b91c1c);
+}
+
+.sectionLabel {
+  display: block;
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.contentBox {
+  padding: 0.75rem 0.85rem;
+  background: rgba(255, 255, 255, 0.45);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.footer {
+  padding: 0.7rem 1rem 0.85rem;
+  gap: 0.55rem;
+}

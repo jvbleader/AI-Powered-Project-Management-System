@@ -1,26 +1,25 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { signOut, signOutAll } from "@/services/auth/session";
-import { projectApi } from "@/services/api/projects";
+import { markIntentionalLogout, signOut } from "@/services/auth/session";
 import { primeTasksPageData } from "@/services/page-cache/tasks-page";
 import { AssistantBubble } from "@/components/assistant-bubble";
-import { SoftwareLogo } from "@/components/software-logo";
+import { UserAvatar } from "@/components/user-avatar";
 import { useAuthSession } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
 import { ChangePasswordModal } from "@/components/change-password-modal";
-import { SignOutModal } from "@/components/sign-out-modal";
 import { useNotifications } from "@/contexts/notification-context";
 import {
+  canAccessLogworkApprovalsRole,
   canAccessTeamDirectoryRole,
   isAdminRole,
   roleLabel,
 } from "@/lib/utils/format";
-import type { UserRole, WorkspaceShellData } from "@/types";
+import { resolveNotificationLink } from "@/lib/utils/notification-link";
+import type { WorkspaceShellData } from "@/types";
 
 const navigation = [
   { href: "/dashboard", label: "Tổng quan", icon: "grid" },
@@ -42,6 +41,7 @@ export function WorkspaceShell({
   highlightValue = "",
   headerAction,
   assistantProjectId,
+  noBottomPadding,
   children,
 }: {
   shellData: WorkspaceShellData;
@@ -51,6 +51,7 @@ export function WorkspaceShell({
   highlightValue: string;
   headerAction?: ReactNode;
   assistantProjectId?: string | null;
+  noBottomPadding?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -60,21 +61,6 @@ export function WorkspaceShell({
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
-  const [canViewTeamNavigation, setCanViewTeamNavigation] = useState(() => {
-    const isGlobal = canAccessTeamDirectoryRole(shellData.currentUser.role, shellData.currentUser.department);
-    if (typeof window !== "undefined") {
-      const cached = sessionStorage.getItem("canViewTeamNavigation");
-      if (cached !== null) return cached === "true";
-    }
-    return isGlobal;
-  });
-  const [canViewLogworkApprovals, setCanViewLogworkApprovals] = useState(() => {
-    if (typeof window !== "undefined") {
-      return sessionStorage.getItem("canViewLogworkApprovals") === "true";
-    }
-    return false;
-  });
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -97,6 +83,11 @@ export function WorkspaceShell({
   const currentUser = activeShellData.currentUser;
   const currentUserId = activeShellData.currentUser.id;
   const isAdminViewer = isAdminRole(currentUser.role);
+  const canViewTeamNavigation = canAccessTeamDirectoryRole(
+    currentUser.role,
+    currentUser.department,
+  );
+  const canViewLogworkApprovals = canAccessLogworkApprovalsRole(currentUser.role);
   const sidebarUserTitle = currentUser.department
     ? `${roleLabel(currentUser.role)} - ${currentUser.department}`
     : roleLabel(currentUser.role) || currentUser.title;
@@ -111,43 +102,12 @@ export function WorkspaceShell({
       return canViewLogworkApprovals;
     }
 
-    return item.href !== "/team" || canViewTeamNavigation;
-  });
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function resolveTeamNavigationAccess() {
-      const isGlobalTeamViewer = canAccessTeamDirectoryRole(currentUser.role, currentUser.department);
-
-      try {
-        const { data: projects } = await projectApi.list(undefined, currentUser);
-        if (!isCancelled) {
-          const isManagerOfAny = projects.some((project) => project.managerId === currentUser.id);
-          const isLeaderOfAny = projects.some(
-            (project) => (project as any).members?.some((m: any) => m.userId === currentUser.id && m.role === "LEADER")
-          );
-          setCanViewTeamNavigation(isGlobalTeamViewer || isManagerOfAny);
-          setCanViewLogworkApprovals(isManagerOfAny || isLeaderOfAny);
-          sessionStorage.setItem("canViewTeamNavigation", String(isGlobalTeamViewer || isManagerOfAny));
-          sessionStorage.setItem("canViewLogworkApprovals", String(isManagerOfAny || isLeaderOfAny));
-        }
-      } catch {
-        if (!isCancelled) {
-          setCanViewTeamNavigation(isGlobalTeamViewer);
-          setCanViewLogworkApprovals(false);
-          sessionStorage.setItem("canViewTeamNavigation", String(isGlobalTeamViewer));
-          sessionStorage.setItem("canViewLogworkApprovals", "false");
-        }
-      }
+    if (item.href === "/team") {
+      return canViewTeamNavigation;
     }
 
-    void resolveTeamNavigationAccess();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [currentUser]);
+    return true;
+  });
 
   useEffect(() => {
     if (
@@ -159,6 +119,26 @@ export function WorkspaceShell({
       router.replace("/team");
     }
   }, [isAdminViewer, pathname, router]);
+
+  useEffect(() => {
+    if (
+      !isAdminViewer &&
+      pathname?.startsWith("/logwork-approvals") &&
+      !canViewLogworkApprovals
+    ) {
+      router.replace("/dashboard");
+    }
+  }, [canViewLogworkApprovals, isAdminViewer, pathname, router]);
+
+  useEffect(() => {
+    if (
+      !isAdminViewer &&
+      pathname?.startsWith("/team") &&
+      !canViewTeamNavigation
+    ) {
+      router.replace("/dashboard");
+    }
+  }, [canViewTeamNavigation, isAdminViewer, pathname, router]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -203,9 +183,11 @@ export function WorkspaceShell({
     void primeTasksPageData(currentUser);
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setIsProfileMenuOpen(false);
-    setIsSignOutModalOpen(true);
+    markIntentionalLogout();
+    await signOut();
+    window.location.assign("/login");
   };
 
   const handleOpenPasswordModal = () => {
@@ -256,6 +238,7 @@ export function WorkspaceShell({
             <Link
               key={item.href}
               href={item.href}
+              data-testid={`nav-${item.href.slice(1)}`}
               className={classNames("nav-link", pathname === item.href && "nav-link-active")}
               onPointerEnter={item.href === "/tasks" ? warmTasksPage : undefined}
               onFocus={item.href === "/tasks" ? warmTasksPage : undefined}
@@ -268,7 +251,7 @@ export function WorkspaceShell({
         </nav>
       </aside>
 
-      <main className="workspace-main">
+      <main className="workspace-main" style={noBottomPadding ? { paddingBottom: 0 } : undefined}>
         <header className="topbar">
           <div>
             <h1>{heading}</h1>
@@ -280,6 +263,7 @@ export function WorkspaceShell({
               <div ref={notifRef} style={{ position: "relative" }}>
                 <button
                   type="button"
+                  data-testid="notifications-toggle"
                   title="Thông báo"
                   onClick={() => setIsNotifOpen(!isNotifOpen)}
                   style={{
@@ -353,7 +337,7 @@ export function WorkspaceShell({
                             key={notif.id}
                             onClick={() => {
                               markAsRead(notif.id);
-                              router.push(notif.link);
+                              router.push(resolveNotificationLink(notif.link));
                               setIsNotifOpen(false);
                             }}
                             style={{
@@ -384,6 +368,7 @@ export function WorkspaceShell({
               <div className="profile-dropdown" ref={profileMenuRef}>
                 <button
                   type="button"
+                  data-testid="profile-menu-toggle"
                   className="user-chip sidebar-profile-trigger"
                   aria-haspopup="menu"
                   aria-expanded={isProfileMenuOpen}
@@ -392,20 +377,13 @@ export function WorkspaceShell({
                   onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)" }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = "none" }}
                 >
-                  <span className="avatar-token" style={{ width: "42px", height: "42px" }}>
-                    {activeShellData.currentUser.avatarUrl ? (
-                      <Image
-                        src={activeShellData.currentUser.avatarUrl}
-                        alt={activeShellData.currentUser.name}
-                        className="avatar-image"
-                        width={42}
-                        height={42}
-                        unoptimized
-                      />
-                    ) : (
-                      activeShellData.currentUser.initials
-                    )}
-                  </span>
+                  <UserAvatar
+                    userId={activeShellData.currentUser.id}
+                    email={activeShellData.currentUser.email}
+                    name={activeShellData.currentUser.name}
+                    avatarUrl={activeShellData.currentUser.avatarUrl}
+                    size={42}
+                  />
                 </button>
 
                 {isProfileMenuOpen ? (
@@ -451,6 +429,7 @@ export function WorkspaceShell({
 
                     <button
                       type="button"
+                      data-testid="logout-button"
                       className="profile-menu-item profile-menu-button"
                       role="menuitem"
                       onClick={handleSignOut}
@@ -479,10 +458,6 @@ export function WorkspaceShell({
 
       {isPasswordModalOpen ? (
         <ChangePasswordModal session={session} onClose={() => setIsPasswordModalOpen(false)} />
-      ) : null}
-
-      {isSignOutModalOpen ? (
-        <SignOutModal onClose={() => setIsSignOutModalOpen(false)} />
       ) : null}
     </div>
   );

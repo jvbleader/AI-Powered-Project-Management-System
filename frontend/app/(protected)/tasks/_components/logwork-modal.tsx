@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { toVietnamDateInputValue } from "@/lib/utils/format";
 import { taskApi } from "@/services/api";
-import styles from "../../projects/_components/create-project-modal.module.css";
+import modalStyles from "../../projects/_components/create-project-modal.module.css";
+import styles from "./logwork-modal.module.css";
 
 interface LogworkModalProps {
   isOpen: boolean;
@@ -21,12 +22,14 @@ export function LogworkModal({
   void userId;
   const [hours, setHours] = useState("0");
   const [description, setDescription] = useState("");
+  const [comment, setComment] = useState("");
   const [date, setDate] = useState(toVietnamDateInputValue());
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleClose = () => {
     setFormError(null);
+    setComment("");
     onClose();
   };
 
@@ -58,6 +61,7 @@ export function LogworkModal({
         workDate: date,
         hoursSpent: hoursVal,
         workContent: description.trim(),
+        comment: comment.trim() || null,
         progressPercent: 0,
       });
 
@@ -67,6 +71,7 @@ export function LogworkModal({
 
       setHours("0");
       setDescription("");
+      setComment("");
       handleClose();
     } catch (error: unknown) {
       setFormError(error instanceof Error ? error.message : "Không thể lưu logwork.");
@@ -76,33 +81,24 @@ export function LogworkModal({
   }
 
   return (
-    <div className={styles.modalBackdrop} role="presentation" onMouseDown={handleClose}>
+    <div className={modalStyles.modalBackdrop} role="presentation" onMouseDown={handleClose}>
       <section
-        className={styles.modalSurface}
+        className={`${modalStyles.modalSurface} ${styles.modalSurface}`}
         role="dialog"
+        data-testid="logwork-modal"
         aria-modal="true"
         aria-labelledby="logwork-title"
         onMouseDown={(event) => event.stopPropagation()}
-        style={{ width: "100%", maxWidth: "600px", display: "flex", flexDirection: "column" }}
       >
-        <div className={styles.modalHeader}>
+        <div className={`${modalStyles.modalHeader} ${styles.compactHeader}`}>
           <div style={{ flex: 1 }}>
-            <h2 id="logwork-title" style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>Logwork</h2>
+            <h2 id="logwork-title" className={styles.modalTitle}>Logwork</h2>
           </div>
           <button
             type="button"
             onClick={handleClose}
             aria-label="Đóng popup"
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: "4px",
-              color: "var(--text-secondary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}
+            className={styles.closeButton}
           >
             <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 6L6 18M6 6l12 12"></path>
@@ -110,13 +106,18 @@ export function LogworkModal({
           </button>
         </div>
 
-        <form onSubmit={handleLogwork} style={{ display: "flex", flexDirection: "column" }}>
-          <div className={styles.modalBody}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", marginBottom: "0.5rem" }}>
-              <div className={styles.inputGroup}>
-                <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>Số giờ</label>
+        <form
+          onSubmit={handleLogwork}
+          data-testid="logwork-form"
+          className={styles.form}
+        >
+          <div className={`${modalStyles.modalBody} ${styles.compactBody} ${styles.scrollBody}`}>
+            <div className={styles.formGrid}>
+              <div className={`${modalStyles.inputGroup} ${styles.inputGroup}`}>
+                <label className={styles.fieldLabel}>Số giờ</label>
                 <input
-                  className={styles.inputControl}
+                  data-testid="logwork-hours"
+                  className={`${modalStyles.inputControl} ${styles.compactInput}`}
                   type="number"
                   min="0"
                   step="0.5"
@@ -127,10 +128,11 @@ export function LogworkModal({
                   required
                 />
               </div>
-              <div className={styles.inputGroup}>
-                <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>Ngày thực hiện</label>
+              <div className={`${modalStyles.inputGroup} ${styles.inputGroup}`}>
+                <label className={styles.fieldLabel}>Ngày thực hiện</label>
                 <input
-                  className={styles.inputControl}
+                  data-testid="logwork-date"
+                  className={`${modalStyles.inputControl} ${styles.compactInput}`}
                   type="date"
                   value={date}
                   onChange={(event) => setDate(event.target.value)}
@@ -138,29 +140,49 @@ export function LogworkModal({
                   required
                 />
               </div>
-              <div className={styles.inputGroup} style={{ gridColumn: "1 / -1" }}>
-                <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>Mô tả công việc đã làm</label>
+              <div className={`${modalStyles.inputGroup} ${styles.inputGroup} ${styles.fullWidth}`}>
+                <label className={styles.fieldLabel}>Nội dung công việc</label>
                 <textarea
-                  className={styles.inputControl}
+                  data-testid="logwork-description"
+                  className={`${modalStyles.inputControl} ${styles.workContentInput}`}
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   disabled={isSubmitting}
                   required
-                  rows={4}
-                  style={{ minHeight: "120px", resize: "vertical" }}
-                  placeholder="Nêu ngắn gọn phần việc đã hoàn thành, kết quả và ghi chú cần bàn giao..."
+                  placeholder="Mô tả phần việc đã làm và kết quả đạt được..."
+                />
+              </div>
+              <div className={`${modalStyles.inputGroup} ${styles.inputGroup} ${styles.fullWidth}`}>
+                <label className={styles.fieldLabel}>Ghi chú (tuỳ chọn)</label>
+                <textarea
+                  data-testid="logwork-comment"
+                  className={`${modalStyles.inputControl} ${styles.commentInput}`}
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  disabled={isSubmitting}
+                  placeholder="Ghi chú bàn giao, rủi ro, hoặc thông tin cần người duyệt lưu ý..."
                 />
               </div>
             </div>
 
-            {formError && <p style={{ color: "var(--critical)", fontSize: "0.875rem", marginTop: "1rem" }}>{formError}</p>}
+            {formError ? <p className={styles.formError}>{formError}</p> : null}
           </div>
 
-          <div className={styles.modalFooter}>
-            <button type="button" className={styles.btnSecondary} onClick={handleClose} disabled={isSubmitting}>
+          <div className={`${modalStyles.modalFooter} ${styles.compactFooter} ${styles.stickyFooter}`}>
+            <button
+              type="button"
+              className={`${modalStyles.btnSecondary} ${styles.compactButton}`}
+              onClick={handleClose}
+              disabled={isSubmitting}
+            >
               Hủy
             </button>
-            <button type="submit" className={styles.btnPrimary} disabled={isSubmitting}>
+            <button
+              type="submit"
+              className={`${modalStyles.btnPrimary} ${styles.compactButton}`}
+              disabled={isSubmitting}
+              data-testid="logwork-submit"
+            >
               Lưu Logwork
             </button>
           </div>

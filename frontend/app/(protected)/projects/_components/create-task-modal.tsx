@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { taskApi } from "@/services/api";
 import { AssigneeSelect } from "@/components/assignee-select";
@@ -19,6 +19,12 @@ interface CreateTaskModalProps {
 }
 
 const today = new Date().toISOString().split("T")[0];
+
+function resolveTaskDates(task: EnrichedTask | undefined) {
+  const startDate = task?.startDate || today;
+  const dueDate = task?.dueDate || task?.startDate || today;
+  return { startDate, dueDate };
+}
 
 export function CreateTaskModal({
   projectId,
@@ -48,6 +54,18 @@ export function CreateTaskModal({
     () => tasks.filter((task) => task.projectId === projectId),
     [projectId, tasks],
   );
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    setParentTaskId(defaultParentTaskId);
+    const parent = tasks.find((task) => String(task.id) === String(defaultParentTaskId));
+    const dates = resolveTaskDates(parent);
+    setStartDate(dates.startDate);
+    setDueDate(dates.dueDate);
+  }, [isOpen, defaultParentTaskId, tasks]);
 
   if (!isOpen) return null;
 
@@ -101,6 +119,7 @@ export function CreateTaskModal({
       <section
         className="task-detail-modal"
         role="dialog"
+        data-testid="create-task-modal"
         aria-modal="true"
         aria-labelledby="create-task-title"
         onMouseDown={(event) => event.stopPropagation()}
@@ -120,11 +139,19 @@ export function CreateTaskModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="task-detail-layout" style={{ padding: "0 1.5rem 1.5rem 1.5rem", overflow: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
+        <form
+          onSubmit={handleSubmit}
+          className="task-detail-layout"
+          data-testid="create-task-form"
+          style={{ padding: "0 1.5rem 1.5rem 1.5rem", overflow: "auto", flex: 1, display: "flex", flexDirection: "column" }}
+        >
           <div style={{ flexShrink: 0, marginBottom: "0.5rem", paddingTop: "1.5rem" }}>
             <div style={{ marginBottom: "0.75rem" }}>
-              <span className="task-detail-field-label" style={{ marginBottom: "0.5rem", display: "block" }}>Tiêu đề công việc *</span>
+              <span className="task-detail-field-label" style={{ marginBottom: "0.5rem", display: "block" }}>
+                Tiêu đề công việc<span className="required-asterisk" aria-hidden="true">*</span>
+              </span>
               <input
+                data-testid="task-title"
                 type="text"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
@@ -159,6 +186,7 @@ export function CreateTaskModal({
             <div style={{ marginBottom: "0.75rem", marginTop: "1.25rem" }}>
               <span className="task-detail-field-label" style={{ marginBottom: "0.5rem", display: "block" }}>Mô tả công việc</span>
               <textarea
+                data-testid="task-description"
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 rows={6}
@@ -194,6 +222,7 @@ export function CreateTaskModal({
               <label className="task-detail-field">
                 <span className="task-detail-field-label">Trạng thái</span>
                 <CustomSelect
+                  testId="task-status"
                   className="task-detail-control"
                   value={status}
                   onChange={(val) => setStatus(val as any)}
@@ -212,6 +241,7 @@ export function CreateTaskModal({
               <label className="task-detail-field">
                 <span className="task-detail-field-label">Ưu tiên</span>
                 <CustomSelect
+                  testId="task-priority"
                   className="task-detail-control"
                   value={priority}
                   onChange={(val) => setPriority(val as any)}
@@ -242,59 +272,101 @@ export function CreateTaskModal({
               {projectType !== "agile" && (
                 <label className="task-detail-field">
                   <span className="task-detail-field-label">Parent task</span>
-                  <select
-                    value={parentTaskId}
-                    onChange={(event) => setParentTaskId(event.target.value)}
+                  <CustomSelect
+                    testId="task-parent"
                     className="task-detail-control"
-                    style={{ fontFamily: "inherit" }}
-                  >
-                    <option value="">-- Không có --</option>
-                    {parentTaskOptions.map((task) => (
-                      <option key={task.id} value={task.id}>
-                        {task.key} - {task.title}
-                      </option>
-                    ))}
-                  </select>
+                    value={parentTaskId}
+                    onChange={(nextParentId) => {
+                      setParentTaskId(nextParentId);
+                      const parent = tasks.find((task) => String(task.id) === String(nextParentId));
+                      if (parent) {
+                        const dates = resolveTaskDates(parent);
+                        setStartDate(dates.startDate);
+                        setDueDate(dates.dueDate);
+                      }
+                    }}
+                    placeholder="-- Không có --"
+                    style={{
+                      color: parentTaskId ? "#1e3a5f" : "#64748b",
+                      backgroundColor: parentTaskId
+                        ? "rgba(59, 130, 246, 0.12)"
+                        : "rgba(148, 163, 184, 0.12)",
+                    }}
+                    options={[
+                      { value: "", label: "-- Không có --" },
+                      ...parentTaskOptions.map((task) => ({
+                        value: task.id,
+                        label: task.key ? `${task.key} - ${task.title}` : task.title,
+                      })),
+                    ]}
+                  />
                 </label>
               )}
 
               <label className="task-detail-field">
-                <span className="task-detail-field-label">Ngày bắt đầu *</span>
-                <input
-                  className="task-detail-control"
-                  type="date"
-                  value={startDate}
-                  onChange={(event) => {
-                    const newStartDate = event.target.value;
-                    setStartDate(newStartDate);
-                    const parsedHours = parseFloat(estimatedHours) || 0;
-                    if (parsedHours > 0 && newStartDate) {
-                      const daysRequired = Math.ceil(parsedHours / 8);
-                      const startDateObj = new Date(newStartDate);
-                      startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
-                      setDueDate(startDateObj.toISOString().split("T")[0]);
-                    }
-                  }}
-                  required
-                  style={{ fontFamily: "inherit" }}
-                />
+                <span className="task-detail-field-label">
+                  Ngày bắt đầu<span className="required-asterisk" aria-hidden="true">*</span>
+                </span>
+                <span className="task-detail-date">
+                  <input
+                    data-testid="task-start-date"
+                    className="task-detail-control"
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => {
+                      const newStartDate = event.target.value;
+                      setStartDate(newStartDate);
+                      const parsedHours = parseFloat(estimatedHours) || 0;
+                      if (parsedHours > 0 && newStartDate) {
+                        const daysRequired = Math.ceil(parsedHours / 8);
+                        const startDateObj = new Date(newStartDate);
+                        startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
+                        setDueDate(startDateObj.toISOString().split("T")[0]);
+                      }
+                    }}
+                    required
+                    style={{ fontFamily: "inherit" }}
+                  />
+                  <span className="task-detail-date-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8" y1="2" x2="8" y2="6" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                  </span>
+                </span>
               </label>
 
               <label className="task-detail-field">
-                <span className="task-detail-field-label">Hạn chót *</span>
-                <input
-                  className="task-detail-control"
-                  type="date"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                  required
-                  style={{ fontFamily: "inherit" }}
-                />
+                <span className="task-detail-field-label">
+                  Hạn chót<span className="required-asterisk" aria-hidden="true">*</span>
+                </span>
+                <span className="task-detail-date">
+                  <input
+                    data-testid="task-due-date"
+                    className="task-detail-control"
+                    type="date"
+                    value={dueDate}
+                    onChange={(event) => setDueDate(event.target.value)}
+                    required
+                    style={{ fontFamily: "inherit" }}
+                  />
+                  <span className="task-detail-date-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8" y1="2" x2="8" y2="6" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                  </span>
+                </span>
               </label>
 
               <label className="task-detail-field">
                 <span className="task-detail-field-label">Thời gian ước tính (giờ)</span>
                 <input
+                  data-testid="task-estimated-hours"
                   className="task-detail-control"
                   type="number"
                   min="0"
@@ -345,6 +417,7 @@ export function CreateTaskModal({
             </button>
             <button
               type="submit"
+              data-testid="create-task-submit"
               className="primary-button"
               disabled={isLoading || !title.trim() || !startDate || !dueDate}
             >

@@ -1,11 +1,11 @@
 import { UserProfile, WorkspaceShellData } from "@/types";
-import { getCurrentUser, isTaskOpen, missingLogworkCount, respond } from "./core";
+import { isTaskOpen, respond } from "./core";
 import { projectApi } from "./projects";
 import { taskApi } from "./tasks";
 
 export const workspaceApi = {
   async getShellData(viewer?: UserProfile | null) {
-    const currentUser = getCurrentUser(viewer);
+    const currentUser = viewer as UserProfile;
     
     const [projectsRes, tasksRes] = await Promise.all([
       projectApi.list(undefined, viewer),
@@ -24,9 +24,11 @@ export const workspaceApi = {
 
     const data: WorkspaceShellData = {
       currentUser,
-      activeProjects: visibleProjects.filter((project) => project.status === "ACTIVE").length,
+      activeProjects: visibleProjects.filter(
+        (project) => project.status !== "ON_HOLD" && project.status !== "COMPLETED",
+      ).length,
       openTasks,
-      missingLogwork: missingLogworkCount(currentUser),
+      missingLogwork: 0,
       alertCount,
     };
 

@@ -1,23 +1,24 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useAuthSession } from "@/hooks/use-session";
 import { LogworkApprovalsClient } from "./logwork-approvals-client";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { canManageProjectsByRole } from "@/lib/utils/format";
+import { canAccessLogworkApprovalsRole } from "@/lib/utils/format";
+import styles from "./logwork-approvals.module.css";
 
 export default function LogworkApprovalsPage() {
   const session = useAuthSession();
   const router = useRouter();
 
   useEffect(() => {
-    if (session?.currentUser && !canManageProjectsByRole(session.currentUser.role, session.currentUser.department)) {
+    if (session?.currentUser && !canAccessLogworkApprovalsRole(session.currentUser.role)) {
       router.replace("/dashboard");
     }
   }, [session, router]);
 
-  if (!session?.currentUser || !canManageProjectsByRole(session.currentUser.role, session.currentUser.department)) {
+  if (!session?.currentUser || !canAccessLogworkApprovalsRole(session.currentUser.role)) {
     return null;
   }
 
@@ -34,9 +35,12 @@ export default function LogworkApprovalsPage() {
       subheading="Quản lý và xét duyệt báo cáo thời gian làm việc"
       highlightLabel=""
       highlightValue=""
+      noBottomPadding
     >
-      <div style={{ padding: "1.5rem" }}>
-        <LogworkApprovalsClient />
+      <div className={styles.pageWrap}>
+        <Suspense fallback={<div className={styles.loading}>Đang tải dữ liệu...</div>}>
+          <LogworkApprovalsClient />
+        </Suspense>
       </div>
     </WorkspaceShell>
   );
