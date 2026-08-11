@@ -169,6 +169,57 @@ def build_task_estimate_rollup(tasks: Sequence[Task]) -> dict[int, float]:
     return resolved
 
 
+def build_task_spent_rollup(
+    tasks: Sequence[Task], logworks: Iterable[LogWork]
+) -> dict[int, float]:
+    """Roll approved leaf-task logwork up through every ancestor task.
+
+    A parent is a summary node, so once it has children its own direct logwork is
+    ignored. This mirrors ``build_task_estimate_rollup`` and prevents effort from
+    being counted twice when a large task is decomposed after work has started.
+    """
+    task_by_id = {task.id: task for task in tasks}
+    children_by_parent_id: dict[int, list[Task]] = defaultdict(list)
+    direct_spent_by_task_id: dict[int, float] = defaultdict(float)
+
+    for task in tasks:
+        if task.parent_task_id is not None and task.parent_task_id in task_by_id:
+            children_by_parent_id[task.parent_task_id].append(task)
+
+    for entry in logworks:
+        if (getattr(entry, "status", "") or "").strip().upper() != "APPROVED":
+            continue
+        if entry.task_id in task_by_id:
+            direct_spent_by_task_id[entry.task_id] += decimal_to_float(entry.hours_spent)
+
+    resolved: dict[int, float] = {}
+    active_stack: set[int] = set()
+
+    def resolve(task_id: int) -> float:
+        if task_id in resolved:
+            return resolved[task_id]
+
+        if task_id in active_stack:
+            return 0.0
+
+        active_stack.add(task_id)
+        children = children_by_parent_id.get(task_id, [])
+
+        if children:
+            total = sum(resolve(child.id) for child in children)
+        else:
+            total = direct_spent_by_task_id.get(task_id, 0.0)
+
+        active_stack.remove(task_id)
+        resolved[task_id] = round(total, 1)
+        return resolved[task_id]
+
+    for task_id in task_by_id:
+        resolve(task_id)
+
+    return resolved
+
+
 def sum_logged_hours(logworks: Iterable[LogWork]) -> float:
     return round(sum(decimal_to_float(entry.hours_spent) for entry in logworks), 1)
 

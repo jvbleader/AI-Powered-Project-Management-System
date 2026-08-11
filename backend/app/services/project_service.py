@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project_model import Project, ProjectMember
 from app.models.user_model import User
-from app.repositories import project_repository
+from app.repositories import project_repository, user_repository
 from app.schemas.project_schema import (
     ProjectCreate,
     ProjectMemberCreate,
@@ -14,8 +14,11 @@ from app.schemas.project_schema import (
     ProjectUpdate,
 )
 from app.utils.project_helpers import (
-    has_companywide_project_access,
+    ROLE_ADMIN,
+    ROLE_PM,
+    get_user_role_name,
     is_admin_user,
+    is_head_of_dev_user,
     list_accessible_project_ids,
     list_managed_project_ids,
     to_db_status,
@@ -43,11 +46,12 @@ def _count_active_project_managers(db: Session, project_id: int) -> int:
 
 
 def _can_create_projects(current_user: User) -> bool:
+    """Chỉ PM/PO/GM hoặc mọi thành viên phòng Head of Dev được tạo dự án."""
     if is_admin_user(current_user):
         return False
-    if has_companywide_project_access(current_user):
+    if is_head_of_dev_user(current_user):
         return True
-    return user_role_requires_manager_scope(current_user)
+    return get_user_role_name(current_user) == ROLE_PM
 
 
 def require_project_access(
@@ -120,27 +124,42 @@ def create_project(db: Session, current_user: User, data: ProjectCreate) -> Proj
     if not _can_create_projects(current_user):
         raise HTTPException(status_code=403, detail="Bạn không có quyền tạo dự án.")
 
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Tài khoản đã bị vô hiệu hóa.")
+
     existing_project = project_repository.get_project_by_name(db, data.name)
     if existing_project:
         raise HTTPException(status_code=400, detail="Tên dự án đã tồn tại. Vui lòng chọn tên khác.")
 
-    manager = project_repository.get_user_by_id(db, data.manager_id)
-    if not manager:
-        raise HTTPException(status_code=400, detail="Người quản lý không tồn tại.")
-    if not manager.is_active:
-        raise HTTPException(status_code=400, detail="Người quản lý đã bị vô hiệu hóa.")
-    if manager.department_id != data.department_id:
-        raise HTTPException(status_code=400, detail="Người quản lý không thuộc phòng ban đã chọn.")
+    # Người tạo luôn là manager của dự án.
+    manager_id = current_user.id
+    department_id = data.department_id
+
+    from app.models.department_model import Department
+
+    dept = db.query(Department).filter(Department.id == department_id).first()
+    if not dept:
+        raise HTTPException(status_code=400, detail="Phòng ban không tồn tại.")
+
+    if not is_head_of_dev_user(current_user):
+        if not current_user.department_id:
+            raise HTTPException(status_code=400, detail="Tài khoản chưa gắn phòng ban.")
+        if department_id != current_user.department_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Bạn chỉ được tạo dự án thuộc phòng ban của mình.",
+            )
+        department_id = current_user.department_id
 
     project = Project(
-        department_id=data.department_id,
+        department_id=department_id,
         name=data.name,
         project_type=data.project_type,
         description=data.description,
         status="inactive",
         start_date=data.start_date,
         end_date=data.end_date,
-        manager_id=data.manager_id,
+        manager_id=manager_id,
         created_by=current_user.id,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
@@ -149,24 +168,11 @@ def create_project(db: Session, current_user: User, data: ProjectCreate) -> Proj
 
     manager_member = ProjectMember(
         project_id=project.id,
-        user_id=data.manager_id,
+        user_id=manager_id,
         joined_at=datetime.now(timezone.utc),
         is_active=True,
     )
     project_repository.add_project_member(db, manager_member)
-
-    if current_user.id != data.manager_id:
-        creator_membership = project_repository.get_project_member(db, project.id, current_user.id)
-        if not creator_membership:
-            project_repository.add_project_member(
-                db,
-                ProjectMember(
-                    project_id=project.id,
-                    user_id=current_user.id,
-                    joined_at=datetime.now(timezone.utc),
-                    is_active=True,
-                ),
-            )
 
     db.commit()
     db.refresh(project)
@@ -220,6 +226,41 @@ def list_project_members(
     numeric_id = parse_project_id(project_id)
     require_project_access(db, numeric_id, current_user)
     return project_repository.list_project_members(db, numeric_id, search, include_inactive=True)
+
+
+def list_member_candidates(
+    db: Session,
+    current_user: User,
+    project_id: str,
+    *,
+    department: str | None = None,
+    role: str | None = None,
+    search: str | None = None,
+) -> list[User]:
+    """Danh sách user theo phòng ban để thêm vào dự án (cho phép mượn cross-department)."""
+    numeric_id = parse_project_id(project_id)
+    project = require_project_access(db, numeric_id, current_user, require_manager=True)
+
+    department_name = (department or "").strip()
+    if not department_name:
+        dept = getattr(project, "department", None)
+        department_name = getattr(dept, "name", None) or ""
+    if not department_name and project.department_id:
+        from app.models.department_model import Department
+
+        dept_row = db.query(Department).filter(Department.id == project.department_id).first()
+        department_name = dept_row.name if dept_row else ""
+
+    if not department_name:
+        raise HTTPException(status_code=400, detail="Vui lòng chọn phòng ban.")
+
+    return user_repository.list_active_by_department_name(
+        db,
+        department_name,
+        role=role,
+        search=search,
+        exclude_role_names=[ROLE_ADMIN],
+    )
 
 
 def add_project_member(db: Session, current_user: User, project_id: str, data: ProjectMemberCreate):

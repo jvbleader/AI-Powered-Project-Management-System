@@ -1,4 +1,5 @@
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
 from fastapi import HTTPException, status
@@ -8,7 +9,7 @@ from app.models.project_model import ProjectMember
 from app.models.task_model import Task
 from app.repositories import project_repository, task_repository
 from app.schemas.task_schema import LogWorkCreate, TaskAttachmentCreate, TaskCreate, TaskUpdate
-from app.services.task_log_service import create_task_log, create_task_notifications
+from app.services.task_log_service import create_task_log
 from app.utils.dashboard_helpers import normalize_task_status
 from app.utils.project_helpers import (
     has_companywide_project_access,
@@ -17,6 +18,16 @@ from app.utils.project_helpers import (
     user_can_access_project,
     user_can_manage_project,
 )
+
+
+@dataclass(frozen=True)
+class TaskAssigneeChange:
+    previous_user_ids: tuple[int, ...]
+    current_user_ids: tuple[int, ...]
+
+    @property
+    def changed(self) -> bool:
+        return set(self.previous_user_ids) != set(self.current_user_ids)
 
 
 def _get_current_user(db: Session, user_id: int):
@@ -118,10 +129,13 @@ def _get_or_create_actor_member(db: Session, project_id: int, user_id: int) -> P
             db.flush()
         return member
 
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Bạn phải là thành viên của dự án để thực hiện thao tác này.",
+    member = ProjectMember(
+        project_id=project_id,
+        user_id=user_id,
+        joined_at=datetime.now(timezone.utc),
+        is_active=True,
     )
+    return project_repository.add_project_member(db, member)
 
 
 def _ensure_task_update_access(db: Session, task: Task, user_id: int, update_data: dict):
@@ -191,7 +205,12 @@ def list_accessible_tasks(
 
 
 def create_task(db: Session, project_id: int, current_user_id: int, task_in: TaskCreate):
-    actor_user = _require_project_access(db, project_id, current_user_id)
+    # Mọi user đăng nhập đều được tạo task ở bất kỳ dự án nào; tự join membership nếu chưa có.
+    project = project_repository.get_project_by_id(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    actor_user = _get_current_user(db, current_user_id)
     actor_member = _get_or_create_actor_member(db, project_id, actor_user.id)
     _validate_parent_task(db, project_id, task_in.parent_task_id)
 
@@ -287,7 +306,7 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 
     if "status" in update_data and update_data["status"] == "done" and task.parent_task_id:
         _auto_complete_parent_recursive(db, task.parent_task_id)
-        
+
     for key, old_val_str, new_val_str in changes_to_log:
         create_task_log(
             db=db,
@@ -304,12 +323,23 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
     return _normalize_task(task), changes_to_log
 
 
-def add_assignee(db: Session, task_id: int, user_id_to_assign: str, current_user_id: int):
+def add_assignee(
+    db: Session,
+    task_id: int,
+    user_id_to_assign: str,
+    current_user_id: int,
+) -> TaskAssigneeChange:
     task = get_task(db, task_id, current_user_id)
     actor_user = _require_project_access(db, task.project_id, current_user_id)
 
+    previous_user_ids = tuple(
+        int(row[1]) for row in task_repository.list_task_assignee_users(db, [task.id])
+    )
+
     is_manager = _can_manage_project_tasks(db, task.project_id, current_user_id)
     target_user_id = str(user_id_to_assign).replace("usr-", "") if user_id_to_assign else ""
+    next_user_id = int(target_user_id) if target_user_id else None
+    current_user_ids = (next_user_id,) if next_user_id is not None else ()
 
     if not is_manager:
         if target_user_id and target_user_id != str(current_user_id):
@@ -318,17 +348,22 @@ def add_assignee(db: Session, task_id: int, user_id_to_assign: str, current_user
                 detail="Bạn chỉ có thể tự nhận task cho chính mình. Chỉ Quản lý/Leader mới được giao việc cho người khác.",
             )
 
-    actor_member = _get_or_create_actor_member(db, task.project_id, actor_user.id)
+    change = TaskAssigneeChange(
+        previous_user_ids=previous_user_ids,
+        current_user_ids=current_user_ids,
+    )
+    if not change.changed:
+        return change
 
     if not user_id_to_assign:
         task_repository.clear_task_assignees(db, task.id)
         db.commit()
-        return None
+        return change
 
     assignee_member = project_repository.get_project_member(
         db,
         task.project_id,
-        int(user_id_to_assign.replace("usr-", "")),
+        next_user_id,
     )
     if not assignee_member:
         raise HTTPException(
@@ -336,10 +371,11 @@ def add_assignee(db: Session, task_id: int, user_id_to_assign: str, current_user
             detail="User is not a member of this project",
         )
 
+    actor_member = _get_or_create_actor_member(db, task.project_id, actor_user.id)
     task_repository.clear_task_assignees(db, task.id)
-    assignee = task_repository.add_task_assignee(db, task.id, assignee_member.id, actor_member.id)
+    task_repository.add_task_assignee(db, task.id, assignee_member.id, actor_member.id)
     db.commit()
-    return assignee
+    return change
 
 
 def get_attachments(db: Session, task_id: int, current_user_id: int):

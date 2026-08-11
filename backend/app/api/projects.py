@@ -18,6 +18,7 @@ from app.schemas.project_schema import (
     ProjectUpdate,
     RoleResponse,
 )
+from app.schemas.user_schema import UserProfile
 from app.services import project_service
 from app.services.websocket_manager import manager
 from app.utils.project_helpers import build_member_response, build_project_response
@@ -108,6 +109,26 @@ def list_project_members(
 ):
     rows = project_service.list_project_members(db, current_user, project_id, search)
     return [build_member_response(member, user, role) for member, user, role in rows]
+
+
+@router.get("/api/projects/{project_id}/member-candidates", response_model=list[UserProfile])
+def list_member_candidates(
+    project_id: str,
+    department: str | None = Query(None),
+    role: str | None = Query(None),
+    search: str | None = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    users = project_service.list_member_candidates(
+        db,
+        current_user,
+        project_id,
+        department=department,
+        role=role,
+        search=search,
+    )
+    return users
 
 
 @router.post(

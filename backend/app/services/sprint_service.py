@@ -16,6 +16,20 @@ from app.utils.project_helpers import (
 )
 
 
+def _normalize_sprint_status(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+
+    if normalized == "planning":
+        return "planned"
+
+    return normalized
+
+
 def list_sprints(db: Session, project_id: int, current_user_id: int):
     _require_project_access(db, project_id, current_user_id)
     return sprint_repository.list_sprints(db, project_id=project_id)
@@ -58,8 +72,9 @@ def create_sprint(db: Session, project_id: int, current_user_id: int, sprint_in:
     actor_member = _get_or_create_actor_member(db, project_id, current_user_id)
 
     sprint_data = sprint_in.model_dump()
-    
-    if sprint_data.get("status") and sprint_data.get("status").upper() == "ACTIVE":
+    sprint_data["status"] = _normalize_sprint_status(sprint_data.get("status")) or "planned"
+
+    if sprint_data.get("status") == "active":
         active_sprint = sprint_repository.get_active_sprint_by_project(db, project_id)
         if active_sprint:
             raise HTTPException(
@@ -89,22 +104,29 @@ def update_sprint(db: Session, sprint_id: int, current_user_id: int, sprint_in: 
         )
 
     update_data = sprint_in.model_dump(exclude_unset=True)
-    
-    if update_data.get("status") and update_data.get("status").upper() == "ACTIVE":
+    if "status" in update_data:
+        normalized_status = _normalize_sprint_status(update_data.get("status"))
+        if normalized_status is None:
+            update_data.pop("status", None)
+        else:
+            update_data["status"] = normalized_status
+
+    if update_data.get("status") == "active":
         active_sprint = sprint_repository.get_active_sprint_by_project(db, sprint.project_id)
         if active_sprint and active_sprint.id != sprint_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Sprint '{active_sprint.name}' đang hoạt động. Không thể bắt đầu sprint khác.",
             )
-    
-    if update_data.get("status") and update_data.get("status").lower() == "closed":
+
+    if update_data.get("status") == "closed":
         from app.models.task_model import Task
         from sqlalchemy import func
+
         # Move all unfinished tasks in this sprint back to the backlog
         db.query(Task).filter(
             Task.sprint_id == sprint_id,
-            func.lower(Task.status) != "done"
+            func.lower(Task.status) != "done",
         ).update({"sprint_id": None}, synchronize_session=False)
 
     sprint = sprint_repository.update_sprint(db, sprint, update_data)

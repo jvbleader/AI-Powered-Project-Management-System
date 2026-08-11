@@ -3,7 +3,7 @@ from typing import Literal
 from langgraph.checkpoint.redis import AsyncRedisSaver
 from langgraph.graph import END, START, StateGraph
 
-from app.config.settings import get_settings
+from app.core.config import get_settings
 from app.services.ai_services.nodes import (
     out_of_scope_node,
     qna_node,

@@ -1,137 +1,177 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.core.connection import SessionLocal
-from app.models.project_model import ProjectMember
-from app.models.task_model import Task, TaskAssignees
-from app.models.user_model import User
-from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from sqlalchemy import and_, func, or_, select
-from sqlalchemy.orm import Session
+
+from app.models.project_model import Project, ProjectMember
+from app.models.task_model import Task, TaskAssignees
+from app.models.user_model import User
+from app.services.ai_services.tools.access import (
+    ToolConfig,
+    accessible_project_ids,
+    deny_if_project_inaccessible,
+    load_current_user,
+    managed_project_ids,
+    tool_db_session,
+)
+
 
 @tool
 def query_tasks(
-    project_id: int,
+    project_id: Optional[int] = None,
     task_id: Optional[int] = None,
     status: Optional[str] = None,
     priority: Optional[str] = None,
     assignee_id: Optional[int] = None,
     sprint_id: Optional[int] = None,
     is_overdue: Optional[bool] = None,
+    managed_only: Optional[bool] = None,
     limit: int = 50,
-    config: RunnableConfig = None,
+    config: ToolConfig = None,
 ) -> List[Dict[str, Any]]:
     """
-    Tra cứu danh sách công việc (tasks) HOẶC chi tiết của MỘT task cụ thể trong dự án. 
-    Rất hữu ích khi cần kiểm tra các task trễ hạn, ưu tiên cao, task của một người cụ thể, hoặc thông tin chi tiết 1 task.
+    Tra cứu danh sách công việc (tasks) HOẶC chi tiết của MỘT task cụ thể.
+    - Có `project_id`: chỉ trong 1 dự án.
+    - `managed_only=True`: chỉ các dự án thuộc phạm vi quản lý.
+      Với PM/PO/GM (và Leader) = mọi dự án đang join, không lọc theo projects.manager_id.
+    - Không có project_id và managed_only=False/None: quét mọi dự án accessible.
+
+    Cách hiểu câu hỏi thường gặp:
+    - "task quá hạn của tôi" (cá nhân): is_overdue=True + assignee_id = Current User ID.
+    - "task quá hạn trong dự án tôi quản lý" / "task quá hạn / dự án tôi quản lý":
+      is_overdue=True + managed_only=True (không gắn assignee trừ khi user nói "được giao cho tôi").
+    - "task quá hạn" chung, không nói "tôi quản lý": is_overdue=True, bỏ trống project_id.
 
     Args:
-        project_id: ID của dự án cần tra cứu. (BẮT BUỘC - Nếu thiếu, PHẢI HỎI LẠI người dùng).
-        task_id: (Tùy chọn) Truyền ID của task nếu muốn xem chi tiết chuyên sâu của riêng task đó. Nếu có task_id, các filter khác bị bỏ qua.
-        status: Trạng thái (todo, in_progress, done, cancel).
+        project_id: (Tùy chọn) ID dự án. Bỏ trống để quét nhiều dự án.
+        task_id: (Tùy chọn) ID task cụ thể. Nếu có task_id thì BẮT BUỘC có project_id.
+        status: Trạng thái (todo, in_progress, done).
         priority: Mức ưu tiên (low, medium, high, urgent).
-        assignee_id: ID của User (user_id) được giao task. Dùng get_project_members để tìm ID người này trước.
-        sprint_id: ID của đợt chạy nước rút (sprint).
-        is_overdue: Truyền True nếu lấy task quá hạn chưa hoàn thành. Truyền False cho các task chưa quá hạn.
-        limit: Số lượng kết quả trả về tối đa (mặc định 50).
+        assignee_id: ID User được giao task. Dùng Current User ID khi hỏi task "của tôi" theo nghĩa được assign.
+        sprint_id: ID sprint.
+        is_overdue: True = task quá hạn chưa hoàn thành.
+        managed_only: True = chỉ dự án user quản lý (manager).
+        limit: Số kết quả tối đa (mặc định 50).
     """
-    db: Session = config.get("configurable", {}).get("db") if config else None
-    if not db:
-        db = SessionLocal()
-    if not db:
-        return [{"error": "Database session not available."}]
+    with tool_db_session() as db:
+        user = load_current_user(db, config)
+        allowed_ids = accessible_project_ids(db, user)
+        if not allowed_ids:
+            return [{"error": "Bạn không có dự án nào được phép truy cập."}]
 
-    try:
-        # Nếu có task_id, trả về thông tin chi tiết của task đó luôn
-        if task_id:
-            t = db.execute(select(Task).where(Task.id == task_id, Task.project_id == project_id)).scalar_one_or_none()
-            if not t:
-                return [{"error": f"Task {task_id} not found in this project"}]
+        if project_id is not None:
+            denied = deny_if_project_inaccessible(db, user, project_id)
+            if denied:
+                return [denied]
+            scope_ids = [project_id]
+        elif managed_only:
+            managed_ids = managed_project_ids(db, user)
+            scope_ids = [pid for pid in managed_ids if pid in allowed_ids]
+            if not scope_ids:
+                return [{"info": "Bạn không quản lý dự án nào (hoặc không có dự án trong phạm vi)."}]
+        else:
+            scope_ids = allowed_ids
 
-            ta_records = db.execute(
-                select(ProjectMember, User)
-                .join(User, ProjectMember.user_id == User.id)
-                .join(TaskAssignees, TaskAssignees.project_member_id == ProjectMember.id)
-                .where(TaskAssignees.task_id == task_id)
-            ).all()
+        if task_id is not None and project_id is None:
+            return [{"error": "Khi xem chi tiết 1 task (task_id), cần truyền project_id."}]
 
-            assignees = [{"user_id": user.id, "name": user.full_name or user.email} for pm, user in ta_records]
+        try:
+            if task_id:
+                t = db.execute(
+                    select(Task).where(Task.id == task_id, Task.project_id == project_id)
+                ).scalar_one_or_none()
+                if not t:
+                    return [{"error": f"Task {task_id} not found in this project"}]
 
-            return [{
-                "task_id": t.id,
-                "project_id": t.project_id,
-                "sprint_id": t.sprint_id,
-                "title": t.title,
-                "description": t.description,
-                "status": t.status,
-                "priority": t.priority,
-                "start_date": t.start_date.isoformat() if t.start_date else None,
-                "deadline": t.deadline.isoformat() if t.deadline else None,
-                "estimated_hours": float(t.estimated_hours) if t.estimated_hours else 0,
-                "spent_hours": t.spent_hours,
-                "assignees": assignees,
-            }]
-
-        # Nếu không có task_id, tiến hành query danh sách
-        query = select(Task).where(Task.project_id == project_id)
-        if status:
-            query = query.where(Task.status == status)
-        if priority:
-            query = query.where(Task.priority == priority)
-        if sprint_id:
-            query = query.where(Task.sprint_id == sprint_id)
-        if is_overdue is True:
-            effective_deadline = func.coalesce(Task.deadline, Task.start_date)
-            query = query.where(
-                and_(
-                    Task.status != "done",
-                    effective_deadline != None,
-                    effective_deadline < datetime.now(timezone.utc).date(),
-                )
-            )
-        elif is_overdue is False:
-            effective_deadline = func.coalesce(Task.deadline, Task.start_date)
-            query = query.where(
-                or_(
-                    effective_deadline == None,
-                    effective_deadline >= datetime.now(timezone.utc).date(),
-                )
-            )
-
-        if assignee_id:
-            query = (
-                query.join(TaskAssignees, Task.id == TaskAssignees.task_id)
-                .join(ProjectMember, TaskAssignees.project_member_id == ProjectMember.id)
-                .where(ProjectMember.user_id == assignee_id)
-            )
-
-        tasks = db.execute(query.limit(limit)).scalars().all()
-        result = []
-        for t in tasks:
-            # Lấy thông tin người được giao nhanh
-            assignees = []
-            ta_records = (
-                db.execute(
-                    select(User.full_name)
-                    .join(ProjectMember, User.id == ProjectMember.user_id)
+                ta_records = db.execute(
+                    select(ProjectMember, User)
+                    .join(User, ProjectMember.user_id == User.id)
                     .join(TaskAssignees, TaskAssignees.project_member_id == ProjectMember.id)
-                    .where(TaskAssignees.task_id == t.id)
-                )
-                .scalars()
-                .all()
-            )
+                    .where(TaskAssignees.task_id == task_id)
+                ).all()
 
-            result.append(
-                {
-                    "task_id": t.id,
-                    "title": t.title,
-                    "status": t.status,
-                    "priority": t.priority,
-                    "deadline": t.deadline.isoformat() if t.deadline else None,
-                    "assignees": ta_records,
-                }
+                assignees = [
+                    {"user_id": user_row.id, "name": user_row.full_name or user_row.email}
+                    for pm, user_row in ta_records
+                ]
+
+                return [
+                    {
+                        "task_id": t.id,
+                        "project_id": t.project_id,
+                        "sprint_id": t.sprint_id,
+                        "title": t.title,
+                        "description": t.description,
+                        "status": t.status,
+                        "priority": t.priority,
+                        "start_date": t.start_date.isoformat() if t.start_date else None,
+                        "deadline": t.deadline.isoformat() if t.deadline else None,
+                        "estimated_hours": float(t.estimated_hours) if t.estimated_hours else 0,
+                        "spent_hours": t.spent_hours,
+                        "assignees": assignees,
+                    }
+                ]
+
+            query = select(Task, Project.name).join(Project, Project.id == Task.project_id).where(
+                Task.project_id.in_(scope_ids)
             )
-        return result
-    except Exception as e:
-        return [{"error": str(e)}]
+            if status:
+                query = query.where(Task.status == status)
+            if priority:
+                query = query.where(Task.priority == priority)
+            if sprint_id:
+                query = query.where(Task.sprint_id == sprint_id)
+            if is_overdue is True:
+                effective_deadline = func.coalesce(Task.deadline, Task.start_date)
+                query = query.where(
+                    and_(
+                        Task.status != "done",
+                        effective_deadline != None,
+                        effective_deadline < datetime.now(timezone.utc).date(),
+                    )
+                )
+            elif is_overdue is False:
+                effective_deadline = func.coalesce(Task.deadline, Task.start_date)
+                query = query.where(
+                    or_(
+                        effective_deadline == None,
+                        effective_deadline >= datetime.now(timezone.utc).date(),
+                    )
+                )
+
+            if assignee_id:
+                query = (
+                    query.join(TaskAssignees, Task.id == TaskAssignees.task_id)
+                    .join(ProjectMember, TaskAssignees.project_member_id == ProjectMember.id)
+                    .where(ProjectMember.user_id == assignee_id)
+                )
+
+            rows = db.execute(query.limit(limit)).all()
+            result = []
+            for t, project_name in rows:
+                assignees = (
+                    db.execute(
+                        select(User.full_name)
+                        .join(ProjectMember, User.id == ProjectMember.user_id)
+                        .join(TaskAssignees, TaskAssignees.project_member_id == ProjectMember.id)
+                        .where(TaskAssignees.task_id == t.id)
+                    )
+                    .scalars()
+                    .all()
+                )
+                result.append(
+                    {
+                        "task_id": t.id,
+                        "project_id": t.project_id,
+                        "project_name": project_name,
+                        "title": t.title,
+                        "status": t.status,
+                        "priority": t.priority,
+                        "deadline": t.deadline.isoformat() if t.deadline else None,
+                        "assignees": assignees,
+                    }
+                )
+            return result
+        except Exception as e:
+            return [{"error": str(e)}]

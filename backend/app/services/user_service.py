@@ -14,6 +14,7 @@ from app.schemas.user_schema import (
     AdminResetPassword,
     UpdateAvatar,
     UpdatePhone,
+    UpdateProfile,
     UserCreate,
     UserRoleUpdate,
     UserStatusUpdate,
@@ -22,8 +23,7 @@ from app.services.azure_blob_service import azure_blob_service
 from app.utils.password_hash import hash_password
 from app.utils.project_helpers import (
     is_admin_user,
-    list_accessible_project_ids,
-    user_can_access_team_directory,
+    list_team_directory_visible_user_ids,
 )
 
 
@@ -73,6 +73,24 @@ def update_phone(db: Session, current_user: User, data: UpdatePhone) -> User:
     return user_repository.commit_and_refresh(db, current_user)
 
 
+def update_profile(db: Session, current_user: User, data: UpdateProfile) -> User:
+    if data.name is not None:
+        current_user.full_name = data.name
+    if data.department is not None:
+        if data.department.strip() == "":
+            current_user.department_id = None
+        else:
+            dept_id = _resolve_department_id(db, data.department)
+            current_user.department_id = dept_id
+    if data.job_title is not None:
+        current_user.job_title = data.job_title
+    if data.address is not None:
+        current_user.address = data.address
+
+    current_user.updated_at = datetime.now(timezone.utc)
+    return user_repository.commit_and_refresh(db, current_user)
+
+
 def update_avatar(db: Session, current_user: User, data: UpdateAvatar) -> User:
     avatar_url = azure_blob_service.upload_base64_avatar(data.avatar_url, current_user.id)
 
@@ -117,15 +135,7 @@ def get_users(
     page: int = 1,
     page_size: int = 10,
 ):
-    visible_user_ids: list[int] | None = None
-
-    if not is_admin_user(current_user):
-        if user_can_access_team_directory(db, current_user):
-            accessible_project_ids = list_accessible_project_ids(db, current_user)
-            visible_user_ids = project_repository.list_project_user_ids(db, accessible_project_ids)
-            visible_user_ids = sorted({*visible_user_ids, current_user.id})
-        else:
-            visible_user_ids = [current_user.id]
+    visible_user_ids = list_team_directory_visible_user_ids(db, current_user)
 
     return user_repository.get_users(
         db=db,

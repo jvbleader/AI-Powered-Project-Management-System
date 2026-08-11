@@ -4,7 +4,7 @@ import uuid
 
 from azure.storage.blob import BlobServiceClient
 
-from app.config.settings import get_settings
+from app.core.config import get_settings
 
 settings = get_settings()
 

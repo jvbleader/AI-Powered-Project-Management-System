@@ -185,6 +185,19 @@ def list_project_logworks(db: Session, project_id: int) -> List[LogWork]:
     )
 
 
+def list_logworks_by_project_ids(db: Session, project_ids: List[int]) -> List[LogWork]:
+    if not project_ids:
+        return []
+
+    return (
+        db.query(LogWork)
+        .join(Task, Task.id == LogWork.task_id)
+        .filter(Task.project_id.in_(project_ids))
+        .order_by(desc(LogWork.work_date), desc(LogWork.updated_at), desc(LogWork.id))
+        .all()
+    )
+
+
 def list_project_logworks_with_context(
     db: Session, project_id: Optional[int] = None, project_ids: Optional[List[int]] = None
 ):

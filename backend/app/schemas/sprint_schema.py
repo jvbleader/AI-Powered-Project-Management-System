@@ -9,7 +9,7 @@ class SprintBase(BaseModel):
     goal: Optional[str] = None
     start_date: date
     end_date: date
-    status: Optional[str] = "planning"
+    status: Optional[str] = "planned"
     review_note: Optional[str] = None
 
 

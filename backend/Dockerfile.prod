@@ -1,0 +1,43 @@
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY scripts ./scripts
+
+RUN pip install --no-cache-dir --prefix=/install . \
+    && pip install --no-cache-dir --prefix=/install "bcrypt<5"
+
+
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PATH="/home/appuser/.local/bin:$PATH"
+
+RUN groupadd --system --gid 1000 appuser \
+    && useradd --system --uid 1000 --gid appuser --create-home appuser
+
+COPY --from=builder /install /usr/local
+COPY --chown=appuser:appuser app ./app
+COPY --chown=appuser:appuser alembic ./alembic
+COPY --chown=appuser:appuser scripts ./scripts
+COPY --chown=appuser:appuser alembic.ini pyproject.toml README.md ./
+COPY --chown=appuser:appuser scripts/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh /app/scripts/migrate_db.py
+
+USER appuser
+
+EXPOSE 8000
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-2}"]
