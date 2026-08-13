@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import ai, auth, dashboard, logworks, notifications, projects, sprints, tasks, users
+from app.api import ai, auth, dashboard, logworks, notifications, projects, roles, sprints, tasks, users
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -28,6 +28,7 @@ def health():
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(roles.router)
 app.include_router(projects.router)
 app.include_router(dashboard.router)
 app.include_router(ai.router)

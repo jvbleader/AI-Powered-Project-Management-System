@@ -22,6 +22,33 @@ export const SYSTEM_ROLE_OPTIONS = [
 export interface Department {
   id: number;
   name: string;
+  description?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  userCount?: number;
+  projectCount?: number;
+  teamCount?: number;
+}
+
+export interface DepartmentPayload {
+  name: string;
+  description?: string | null;
+}
+
+export interface SystemRole {
+  id: number;
+  name: string;
+  description?: string | null;
+  isAdmin: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  userCount: number;
+}
+
+export interface RolePayload {
+  name: string;
+  description?: string | null;
+  isAdmin?: boolean;
 }
 
 export type JobRole =

@@ -12,9 +12,7 @@ from app.schemas.task_schema import LogWorkCreate, TaskAttachmentCreate, TaskCre
 from app.services.task_log_service import create_task_log
 from app.utils.dashboard_helpers import normalize_task_status
 from app.utils.project_helpers import (
-    has_companywide_project_access,
     list_accessible_project_ids,
-    list_managed_project_ids,
     user_can_access_project,
     user_can_manage_project,
 )
@@ -75,6 +73,70 @@ def _require_project_access(db: Session, project_id: int, user_id: int):
 def _can_manage_project_tasks(db: Session, project_id: int, user_id: int) -> bool:
     user = _get_current_user(db, user_id)
     return user_can_manage_project(db, project_id, user)
+
+
+def _parse_user_id(value) -> Optional[int]:
+    if value is None:
+        return None
+    text = str(value).replace("usr-", "").strip()
+    if not text:
+        return None
+    return int(text)
+
+
+def _task_assignee_user_ids(db: Session, task_id: int) -> tuple[int, ...]:
+    return tuple(int(row[1]) for row in task_repository.list_task_assignee_users(db, [task_id]))
+
+
+def _has_child_tasks(db: Session, task_id: int) -> bool:
+    return bool(task_repository.get_tasks_by_parent_id(db, task_id))
+
+
+def _collect_leaf_assignee_user_ids(db: Session, task_id: int) -> set[int]:
+    children = task_repository.get_tasks_by_parent_id(db, task_id)
+    if not children:
+        return set(_task_assignee_user_ids(db, task_id))
+
+    leaf_ids: set[int] = set()
+    for child in children:
+        leaf_ids |= _collect_leaf_assignee_user_ids(db, child.id)
+    return leaf_ids
+
+
+def _replace_task_assignees(
+    db: Session,
+    task: Task,
+    user_ids: Iterable[int],
+    actor_member_id: int,
+) -> tuple[int, ...]:
+    unique_ids = tuple(dict.fromkeys(int(user_id) for user_id in user_ids))
+    task_repository.clear_task_assignees(db, task.id)
+    applied: list[int] = []
+    for user_id in unique_ids:
+        member = project_repository.get_project_member(db, task.project_id, user_id)
+        if not member:
+            continue
+        task_repository.add_task_assignee(db, task.id, member.id, actor_member_id)
+        applied.append(user_id)
+    return tuple(applied)
+
+
+def _sync_task_assignees_from_leaves(db: Session, task: Task, actor_member_id: int) -> None:
+    if not _has_child_tasks(db, task.id):
+        return
+    leaf_user_ids = _collect_leaf_assignee_user_ids(db, task.id)
+    if set(_task_assignee_user_ids(db, task.id)) != leaf_user_ids:
+        _replace_task_assignees(db, task, leaf_user_ids, actor_member_id)
+
+
+def _sync_ancestor_assignees(db: Session, task: Task, actor_member_id: int) -> None:
+    parent_id = task.parent_task_id
+    while parent_id:
+        parent = task_repository.get_task_by_id(db, parent_id)
+        if not parent:
+            return
+        _sync_task_assignees_from_leaves(db, parent, actor_member_id)
+        parent_id = parent.parent_task_id
 
 
 def _require_manage_project_tasks(db: Session, project_id: int, user_id: int):
@@ -172,45 +234,22 @@ def list_accessible_tasks(
     if not accessible_project_ids:
         return []
 
-    if has_companywide_project_access(user):
-        tasks = task_repository.list_tasks(
-            db,
-            project_ids=accessible_project_ids,
-            sprint_id=sprint_id,
-        )
-        return _normalize_tasks(_sort_tasks(tasks))
-
-    managed_project_ids = set(list_managed_project_ids(db, user))
-    merged_tasks: dict[int, Task] = {}
-
-    if managed_project_ids:
-        for task in task_repository.list_tasks(
-            db,
-            project_ids=sorted(managed_project_ids),
-            sprint_id=sprint_id,
-        ):
-            merged_tasks[task.id] = task
-
-    member_only_project_ids = sorted(set(accessible_project_ids) - managed_project_ids)
-    if member_only_project_ids:
-        for task in task_repository.list_tasks(
-            db,
-            project_ids=member_only_project_ids,
-            sprint_id=sprint_id,
-            assignee_user_id=current_user_id,
-        ):
-            merged_tasks[task.id] = task
-
-    return _normalize_tasks(_sort_tasks(merged_tasks.values()))
+    # Thành viên dự án được xem toàn bộ task của các dự án mình tham gia.
+    tasks = task_repository.list_tasks(
+        db,
+        project_ids=accessible_project_ids,
+        sprint_id=sprint_id,
+    )
+    return _normalize_tasks(_sort_tasks(tasks))
 
 
 def create_task(db: Session, project_id: int, current_user_id: int, task_in: TaskCreate):
-    # Mọi user đăng nhập đều được tạo task ở bất kỳ dự án nào; tự join membership nếu chưa có.
+    # Mọi người có quyền truy cập dự án đều được tạo task.
     project = project_repository.get_project_by_id(db, project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    actor_user = _get_current_user(db, current_user_id)
+    actor_user = _require_project_access(db, project_id, current_user_id)
     actor_member = _get_or_create_actor_member(db, project_id, actor_user.id)
     _validate_parent_task(db, project_id, task_in.parent_task_id)
 
@@ -222,14 +261,18 @@ def create_task(db: Session, project_id: int, current_user_id: int, task_in: Tas
     task = task_repository.create_task(db, task_data)
 
     for assignee_user_id in task_in.assignee_user_ids:
+        parsed_user_id = _parse_user_id(assignee_user_id)
+        if parsed_user_id is None:
+            continue
         assignee_member = project_repository.get_project_member(
             db,
             project_id,
-            int(assignee_user_id.replace("usr-", "")),
+            parsed_user_id,
         )
         if assignee_member:
             task_repository.add_task_assignee(db, task.id, assignee_member.id, actor_member.id)
 
+    _sync_ancestor_assignees(db, task, actor_member.id)
     db.commit()
     db.refresh(task)
     return _normalize_task(task)
@@ -262,6 +305,7 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 
     _ensure_task_update_access(db, task, current_user_id, update_data)
 
+    previous_parent_id = task.parent_task_id
     parent_task_id = update_data.get("parent_task_id")
     if parent_task_id == task.id:
         raise HTTPException(
@@ -304,6 +348,15 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 
     task = task_repository.update_task(db, task, update_data)
 
+    if "parent_task_id" in update_data:
+        actor_member = _get_or_create_actor_member(db, task.project_id, current_user_id)
+        if previous_parent_id and previous_parent_id != task.parent_task_id:
+            previous_parent = task_repository.get_task_by_id(db, previous_parent_id)
+            if previous_parent:
+                _sync_task_assignees_from_leaves(db, previous_parent, actor_member.id)
+                _sync_ancestor_assignees(db, previous_parent, actor_member.id)
+        _sync_ancestor_assignees(db, task, actor_member.id)
+
     if "status" in update_data and update_data["status"] == "done" and task.parent_task_id:
         _auto_complete_parent_recursive(db, task.parent_task_id)
 
@@ -326,56 +379,70 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 def add_assignee(
     db: Session,
     task_id: int,
-    user_id_to_assign: str,
+    user_id_to_assign: Optional[str],
     current_user_id: int,
+    user_ids_to_assign: Optional[list[str]] = None,
 ) -> TaskAssigneeChange:
     task = get_task(db, task_id, current_user_id)
     actor_user = _require_project_access(db, task.project_id, current_user_id)
 
-    previous_user_ids = tuple(
-        int(row[1]) for row in task_repository.list_task_assignee_users(db, [task.id])
-    )
+    if _has_child_tasks(db, task.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Không thể gán trực tiếp task cha. Người thực hiện được lấy từ các task lá.",
+        )
 
+    previous_user_ids = _task_assignee_user_ids(db, task.id)
     is_manager = _can_manage_project_tasks(db, task.project_id, current_user_id)
-    target_user_id = str(user_id_to_assign).replace("usr-", "") if user_id_to_assign else ""
-    next_user_id = int(target_user_id) if target_user_id else None
-    current_user_ids = (next_user_id,) if next_user_id is not None else ()
+
+    if user_ids_to_assign is not None:
+        requested_ids = [_parse_user_id(value) for value in user_ids_to_assign]
+        next_user_ids = tuple(dict.fromkeys(user_id for user_id in requested_ids if user_id is not None))
+    else:
+        parsed_user_id = _parse_user_id(user_id_to_assign)
+        next_user_ids = (parsed_user_id,) if parsed_user_id is not None else ()
 
     if not is_manager:
-        if target_user_id and target_user_id != str(current_user_id):
+        previous_set = set(previous_user_ids)
+        next_set = set(next_user_ids)
+        added = next_set - previous_set
+        removed = previous_set - next_set
+        if (added - {current_user_id}) or (removed - {current_user_id}):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Bạn chỉ có thể tự nhận task cho chính mình. Chỉ Quản lý/Leader mới được giao việc cho người khác.",
+                detail="Bạn chỉ có thể tự thêm mình vào người thực hiện. Chỉ Quản lý/Leader mới được giao việc hoặc gỡ người khác.",
             )
 
     change = TaskAssigneeChange(
         previous_user_ids=previous_user_ids,
-        current_user_ids=current_user_ids,
+        current_user_ids=next_user_ids,
     )
     if not change.changed:
         return change
 
-    if not user_id_to_assign:
+    actor_member = _get_or_create_actor_member(db, task.project_id, actor_user.id)
+
+    if not next_user_ids:
         task_repository.clear_task_assignees(db, task.id)
+        _sync_ancestor_assignees(db, task, actor_member.id)
         db.commit()
         return change
 
-    assignee_member = project_repository.get_project_member(
-        db,
-        task.project_id,
-        next_user_id,
-    )
-    if not assignee_member:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User is not a member of this project",
-        )
+    for user_id in next_user_ids:
+        assignee_member = project_repository.get_project_member(db, task.project_id, user_id)
+        if not assignee_member:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is not a member of this project",
+            )
 
-    actor_member = _get_or_create_actor_member(db, task.project_id, actor_user.id)
-    task_repository.clear_task_assignees(db, task.id)
-    task_repository.add_task_assignee(db, task.id, assignee_member.id, actor_member.id)
+    applied_user_ids = _replace_task_assignees(db, task, next_user_ids, actor_member.id)
+    _sync_ancestor_assignees(db, task, actor_member.id)
     db.commit()
-    return change
+    return TaskAssigneeChange(
+        previous_user_ids=previous_user_ids,
+        current_user_ids=applied_user_ids,
+    )
 
 
 def get_attachments(db: Session, task_id: int, current_user_id: int):
@@ -423,6 +490,10 @@ def add_logwork(db: Session, task_id: int, current_user_id: int, logwork_in: Log
     logwork_data["task_id"] = task_id
     logwork_data["project_member_id"] = actor_member.id
 
+    project = project_repository.get_project_by_id(db, task.project_id)
+    if project and project.manager_id == current_user_id:
+        logwork_data["status"] = "APPROVED"
+
     logwork = task_repository.create_logwork(db, logwork_data)
     db.commit()
     db.refresh(logwork)
@@ -432,5 +503,12 @@ def add_logwork(db: Session, task_id: int, current_user_id: int, logwork_in: Log
 def delete_task(db: Session, task_id: int, current_user_id: int):
     task = get_task(db, task_id, current_user_id)
     _require_manage_project_tasks(db, task.project_id, current_user_id)
+    parent_id = task.parent_task_id
+    actor_member = _get_or_create_actor_member(db, task.project_id, current_user_id)
     task_repository.delete_task(db, task)
+    if parent_id:
+        parent = task_repository.get_task_by_id(db, parent_id)
+        if parent:
+            _sync_task_assignees_from_leaves(db, parent, actor_member.id)
+            _sync_ancestor_assignees(db, parent, actor_member.id)
     db.commit()

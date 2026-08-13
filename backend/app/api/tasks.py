@@ -24,7 +24,8 @@ from app.utils.dashboard_helpers import build_task_estimate_rollup, build_task_s
 
 
 class AssigneeRequest(BaseModel):
-    user_id: str
+    user_id: Optional[str] = None
+    user_ids: Optional[List[str]] = None
 
 
 router = APIRouter(prefix="/api/projects/{project_id}/tasks", tags=["Tasks"])
@@ -62,6 +63,11 @@ def _hydrate_task_list_response(db: Session, tasks: List[TaskResponse]):
         )
 
     assignees_by_task_id = {task.id: [] for task in tasks}
+    parent_ids_with_children = {
+        project_task.parent_task_id
+        for project_task in all_project_tasks
+        if project_task.parent_task_id
+    }
     creator_user_ids_by_member_id: dict[int, int | None] = {}
     assignee_rows = task_service.task_repository.list_task_assignee_users(
         db,
@@ -96,6 +102,7 @@ def _hydrate_task_list_response(db: Session, tasks: List[TaskResponse]):
                 task.deadline = calculated_deadline
 
         task.assignees = assignees_by_task_id.get(task.id, [])
+        task.has_children = task.id in parent_ids_with_children
         task.key = f"TASK-{task.id}"
         if task.created_by_member_id not in creator_user_ids_by_member_id:
             member = task_service.project_repository.get_project_member_by_id(
@@ -260,7 +267,13 @@ def add_assignee(
 ):
     from app.services.task_log_service import create_task_log, notify_task_assignee_changed
 
-    assignee_change = task_service.add_assignee(db, task_id, req.user_id, current_user.id)
+    assignee_change = task_service.add_assignee(
+        db,
+        task_id,
+        req.user_id,
+        current_user.id,
+        user_ids_to_assign=req.user_ids,
+    )
     task = task_service.task_repository.get_task_by_id(db, task_id)
 
     if task and assignee_change.changed:
@@ -381,42 +394,41 @@ def create_logwork(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.services.task_log_service import notify_logwork_on_task
+
     lw = task_service.add_logwork(db, task_id, current_user.id, logwork_in)
+    notifications: list[Notification] = []
 
     task = task_service.task_repository.get_task_by_id(db, task_id)
     if task:
+        notifications.extend(
+            notify_logwork_on_task(
+                db,
+                task=task,
+                actor_user_id=current_user.id,
+                actor_name=current_user.full_name,
+                hours_spent=logwork_in.hours_spent,
+            )
+        )
+
         project = task_service.project_repository.get_project_by_id(db, task.project_id)
         if project and project.manager_id and project.manager_id != current_user.id:
             notification = Notification(
                 user_id=project.manager_id,
                 type="LOGWORK_SUBMITTED",
                 title="Có nhật ký công việc mới",
-                content=f"{current_user.full_name} đã gửi logwork {logwork_in.hours_spent}h chờ duyệt trong dự án '{project.name}'",
+                content=(
+                    f"{current_user.full_name} đã gửi logwork {logwork_in.hours_spent:g}h "
+                    f"chờ duyệt trong dự án '{project.name}'"
+                ),
                 link=f"/logwork-approvals?highlightLogworkId={lw.id}",
             )
             db.add(notification)
             db.commit()
             db.refresh(notification)
+            notifications.append(notification)
 
-            async def send_ws():
-                await manager.send_personal_message(
-                    {
-                        "type": "NEW_NOTIFICATION",
-                        "data": {
-                            "id": notification.id,
-                            "type": notification.type,
-                            "title": notification.title,
-                            "content": notification.content,
-                            "link": notification.link,
-                            "is_read": False,
-                            "created_at": notification.created_at.isoformat(),
-                        },
-                    },
-                    project.manager_id,
-                )
-
-            background_tasks.add_task(send_ws)
-
+    _enqueue_notification_ws(background_tasks, notifications)
     return lw
 
 

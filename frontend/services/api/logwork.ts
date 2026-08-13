@@ -94,6 +94,8 @@ export const logworkApi = {
       const body: Record<string, any> = {};
       if (payload.hours !== undefined) body.hours_spent = payload.hours;
       if (payload.hoursSpent !== undefined) body.hours_spent = payload.hoursSpent;
+      if (payload.date !== undefined) body.work_date = payload.date;
+      if (payload.workDate !== undefined) body.work_date = payload.workDate;
       if (payload.note !== undefined) body.work_content = payload.note;
       if (payload.workContent !== undefined) body.work_content = payload.workContent;
       if (payload.comment !== undefined) body.comment = payload.comment;

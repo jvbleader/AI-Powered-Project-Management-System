@@ -34,6 +34,7 @@ function getStatusTone(status: UserStatus) {
 interface UserDetailModalProps {
   user: UserProfile;
   departments: Department[];
+  roles?: { name: string; description?: string | null }[];
   taskSummary: { total: number; open: number; inProgress: number };
   canManageUsers: boolean;
   onClose: () => void;
@@ -43,10 +44,8 @@ interface UserDetailModalProps {
   onRoleDraftChange: (roles: UserRole[]) => void;
   departmentDraft: string;
   onDepartmentDraftChange: (dept: string) => void;
-  isSavingStatus: boolean;
-  onSaveStatus: () => void;
-  isSavingRoles: boolean;
-  onSaveRoles: () => void;
+  isSaving: boolean;
+  onSave: (statusDirty: boolean, rolesDirty: boolean) => void;
   isResettingPassword: boolean;
   onResetPassword: () => void;
   error: string | null;
@@ -56,6 +55,7 @@ interface UserDetailModalProps {
 export function UserDetailModal({
   user,
   departments,
+  roles,
   taskSummary,
   canManageUsers,
   onClose,
@@ -65,10 +65,8 @@ export function UserDetailModal({
   onRoleDraftChange,
   departmentDraft,
   onDepartmentDraftChange,
-  isSavingStatus,
-  onSaveStatus,
-  isSavingRoles,
-  onSaveRoles,
+  isSaving,
+  onSave,
   isResettingPassword,
   onResetPassword,
   error,
@@ -131,7 +129,7 @@ export function UserDetailModal({
           <div className={styles.detailReadonlyBody}>
             <div className={styles.readonlyGrid}>
               <article>
-                <span>Mã định danh</span>
+                <span>Mã nhân viên</span>
                 <strong>{user.employeeCode ?? user.id}</strong>
               </article>
               <article>
@@ -165,36 +163,23 @@ export function UserDetailModal({
           </div>
         ) : (
           <>
-            <div className={styles.detailTaskStrip} style={{ padding: "0 1.35rem 1rem" }}>
-              <article>
-                <span>Mã định danh</span>
-                <strong>{user.employeeCode ?? user.id}</strong>
-              </article>
-              <article>
-                <span>Số điện thoại</span>
-                <strong>{user.phoneNumber || "—"}</strong>
-              </article>
-              <article>
-                <span>Tổng task</span>
-                <strong>{taskSummary.total}</strong>
-              </article>
-              <article>
-                <span>Task mở</span>
-                <strong>{taskSummary.open}</strong>
-              </article>
-              <article>
-                <span>Đang tiến hành</span>
-                <strong>{taskSummary.inProgress}</strong>
-              </article>
-            </div>
-
-            <div className={styles.detailLayout}>
+            <div className={styles.detailLayout} style={{ paddingTop: "1rem" }}>
               <section className={styles.detailPanel}>
                 <div className={styles.panelHeader}>
                   <div>
-                    <span className="kicker">Truy cập & bảo mật</span>
-                    <h3>Trạng thái và mật khẩu</h3>
+                    <h3>Thông tin chung</h3>
                   </div>
+                </div>
+
+                <div className={styles.detailFacts} style={{ marginBottom: "0.5rem" }}>
+                  <article style={{ padding: "0.75rem" }}>
+                    <span>Mã nhân viên</span>
+                    <strong style={{ fontSize: "0.95rem" }}>{user.employeeCode ?? user.id}</strong>
+                  </article>
+                  <article style={{ padding: "0.75rem" }}>
+                    <span>Số điện thoại</span>
+                    <strong style={{ fontSize: "0.95rem" }}>{user.phoneNumber || "—"}</strong>
+                  </article>
                 </div>
 
                 <div className={styles.optionGrid}>
@@ -207,42 +192,16 @@ export function UserDetailModal({
                     >
                       <strong>{userStatusLabel(status)}</strong>
                       <small>
-                        {status === "ACTIVE" ? "Hoạt động bình thường" : "Đã ngừng hoạt động"}
+                        {status === "ACTIVE" ? "Đang làm việc" : "Đã nghỉ việc"}
                       </small>
                     </button>
                   ))}
                 </div>
 
-                <div className={styles.detailActionStack}>
-                  <button
-                    type="button"
-                    className="primary-button"
-                    onClick={onSaveStatus}
-                    disabled={isSavingStatus || !statusDirty}
-                  >
-                    {isSavingStatus ? "Đang lưu..." : "Lưu trạng thái"}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={onResetPassword}
-                    disabled={isResettingPassword}
-                  >
-                    {isResettingPassword ? "Đang xử lý..." : "Khôi phục mật khẩu mặc định"}
-                  </button>
-                </div>
-              </section>
-
-              <section className={`${styles.detailPanel} ${styles.detailPanelRoles}`}>
-                <div className={styles.panelHeader}>
-                  <div>
-                    <span className="kicker">Phân quyền</span>
-                    <h3>Phòng ban & vai trò</h3>
-                  </div>
-                </div>
+                <div className={styles.panelDivider} style={{ margin: "0.5rem 0" }} />
 
                 <label className={styles.filterField}>
-                  <span>Phòng ban</span>
+                  <span style={{ fontWeight: 600, color: "var(--ink)", marginBottom: "0.25rem", display: "block" }}>Phòng ban</span>
                   <FilterSelect
                     value={departmentDraft}
                     onChange={onDepartmentDraftChange}
@@ -257,24 +216,54 @@ export function UserDetailModal({
                   />
                 </label>
 
+                <div className={styles.panelDivider} style={{ margin: "0.5rem 0" }} />
+
+                <div className={styles.detailActionStack} style={{ marginTop: "auto" }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={onResetPassword}
+                    disabled={isResettingPassword}
+                    style={{ width: "100%", justifyContent: "center" }}
+                  >
+                    {isResettingPassword ? "Đang xử lý..." : "Khôi phục mật khẩu mặc định"}
+                  </button>
+                </div>
+              </section>
+
+              <section className={`${styles.detailPanel} ${styles.detailPanelRoles}`}>
+                <div className={styles.panelHeader}>
+                  <div>
+                    <h3>Vai trò hệ thống</h3>
+                  </div>
+                </div>
+
                 <div className={styles.roleChecklist}>
-                  {SYSTEM_ROLE_OPTIONS.map((role) => {
-                    const checked = roleDraft.includes(role);
+                  {(roles?.length
+                    ? roles
+                    : SYSTEM_ROLE_OPTIONS.map((name) => ({
+                        name,
+                        description: ROLE_DESCRIPTIONS[name] ?? null,
+                      }))
+                  ).map((role) => {
+                    const checked = roleDraft.includes(role.name);
 
                     return (
                       <label
-                        key={role}
+                        key={role.name}
                         className={`${styles.roleOption} ${checked ? styles.roleOptionActive : ""}`}
                       >
                         <input
                           type="radio"
                           name="roleDraft"
                           checked={checked}
-                          onChange={() => toggleRole(role)}
+                          onChange={() => toggleRole(role.name)}
                         />
                         <span>
-                          <strong>{roleLabel(role)}</strong>
-                          <small>{ROLE_DESCRIPTIONS[role] ?? "Vai trò vận hành cơ bản."}</small>
+                          <strong>{roleLabel(role.name)}</strong>
+                          <small>
+                            {role.description?.trim() || ROLE_DESCRIPTIONS[role.name] || "Vai trò vận hành cơ bản."}
+                          </small>
                         </span>
                       </label>
                     );
@@ -287,15 +276,25 @@ export function UserDetailModal({
                   </p>
                 ) : null}
 
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={onSaveRoles}
-                  disabled={isSavingRoles || !rolesDirty}
-                >
-                  {isSavingRoles ? "Đang lưu..." : "Lưu phòng ban & vai trò"}
-                </button>
               </section>
+            </div>
+
+            <div style={{ padding: "1rem 1.35rem", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: "1rem", marginTop: "1rem" }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={onClose}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => onSave(statusDirty, rolesDirty)}
+                disabled={isSaving || (!statusDirty && !rolesDirty)}
+              >
+                {isSaving ? "Đang lưu..." : "Lưu thay đổi"}
+              </button>
             </div>
 
             {error ? <p className={`form-error ${styles.detailFeedback}`}>{error}</p> : null}

@@ -26,7 +26,7 @@ export function CreateSprintModal({
   onClose,
   onSuccess,
   sprintToEdit,
-  canManage = true,
+  canManage = false,
 }: CreateSprintModalProps) {
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
@@ -58,6 +58,11 @@ export function CreateSprintModal({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setFormError(null);
+
+    if (!canManage) {
+      setFormError("Chỉ PM/PO/GM hoặc Leader của dự án này mới được tạo hoặc cập nhật sprint.");
+      return;
+    }
 
     if (!name.trim() || !startDate || !endDate) {
       setFormError("Vui lòng nhập tên, ngày bắt đầu và ngày kết thúc.");
@@ -310,7 +315,7 @@ export function CreateSprintModal({
             >
               Đóng
             </button>
-            {(!sprintToEdit || canManage) && (
+            {canManage && (
               <button
                 type="submit"
                 data-testid="create-sprint-submit"

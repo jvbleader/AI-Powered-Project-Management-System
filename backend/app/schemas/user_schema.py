@@ -13,9 +13,25 @@ class UserLogin(BaseModel):
 class DepartmentResponse(BaseModel):
     id: int
     name: str
+    description: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    user_count: int = 0
+    project_count: int = 0
+    team_count: int = 0
 
     class Config:
         from_attributes = True
+
+
+class DepartmentCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class DepartmentUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 
 class UserProfile(BaseModel):

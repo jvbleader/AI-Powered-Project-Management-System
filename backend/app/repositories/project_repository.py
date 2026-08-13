@@ -4,9 +4,11 @@ from typing import List, Optional, Tuple
 from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.department_model import Department
 from app.models.project_model import Project, ProjectMember, Role
 from app.models.task_model import Task
 from app.models.user_model import User
+from app.utils.personnel_rank import personnel_rank_sql_order
 
 
 def _active_project_member_filter():
@@ -161,6 +163,7 @@ def list_project_members(
         db.query(ProjectMember, User, Role)
         .join(User, ProjectMember.user_id == User.id)
         .join(Role, User.role_id == Role.id)
+        .outerjoin(Department, User.department_id == Department.id)
         .options(joinedload(User.department), joinedload(User.team), joinedload(User.role_ref))
         .filter(ProjectMember.project_id == project_id)
     )
@@ -169,7 +172,12 @@ def list_project_members(
     if search:
         term = f"%{search.lower()}%"
         query = query.filter(or_(User.full_name.ilike(term), User.email.ilike(term)))
-    return query.order_by(desc(ProjectMember.joined_at), desc(ProjectMember.id)).all()
+    return query.order_by(
+        personnel_rank_sql_order(Role.name, Department.name).asc(),
+        Role.name.asc(),
+        User.full_name.asc(),
+        ProjectMember.id.asc(),
+    ).all()
 
 
 def list_project_user_ids(

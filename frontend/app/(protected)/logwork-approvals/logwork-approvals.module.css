@@ -41,17 +41,22 @@
 }
 
 .tableWrap {
+  overflow: hidden;
   overflow-x: auto;
   flex: 1;
   width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
 }
 
 .table {
   width: 100%;
   min-width: 100%;
   border-collapse: collapse;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: #ffffff;
+  border: none;
+  background: transparent;
 }
 
 .table thead tr {
@@ -91,6 +96,32 @@
   min-width: 120px;
 }
 
+.staffFilterHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.staffFilterInput {
+  width: 100%;
+  max-width: 140px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+  outline: none;
+  background: rgba(248, 250, 252, 0.8);
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.staffFilterInput:focus {
+  border-color: var(--accent);
+  background: #ffffff;
+}
+
 .colProject {
   width: 12%;
   min-width: 120px;
@@ -109,7 +140,7 @@
 .colHours {
   width: 8%;
   white-space: nowrap;
-  text-align: center;
+  text-align: left;
 }
 
 .colContent {
@@ -120,14 +151,14 @@
 .colActions {
   width: 120px;
   min-width: 120px;
-  text-align: center;
+  text-align: left;
   white-space: nowrap;
 }
 
 .headerFilter {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.45rem;
 }
 
@@ -181,6 +212,11 @@
   justify-content: center;
   border-radius: 4px;
   transition: background 0.2s;
+}
+
+.filterIconButtonLg {
+  width: 26px;
+  height: 26px;
 }
 
 .filterIconButton:hover {
@@ -388,7 +424,7 @@
 
 .actions {
   display: inline-flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: nowrap;
@@ -429,27 +465,86 @@
   padding: 0;
 }
 
-@keyframes logworkRowHighlight {
-  0% {
-    background-color: rgba(59, 130, 246, 0.38);
-    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.45);
-  }
+.paginationBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
+  color: var(--ink-light);
+}
 
+.paginationActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+@keyframes logworkRowHighlight {
+  0%,
   70% {
     background-color: rgba(59, 130, 246, 0.38);
-    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.45);
   }
 
   100% {
     background-color: transparent;
-    box-shadow: none;
   }
 }
 
-.rowHighlight {
+.rowHighlight td {
+  border-radius: 0;
   animation: logworkRowHighlight 5s ease-out forwards;
 }
 
-.rowHighlight td {
-  background-color: inherit;
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translate3d(24px, -8px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.toast {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 2rem));
+  padding: 0.8rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.4;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
+  animation: toastSlideIn 180ms ease-out;
+}
+
+.toast-success {
+  border-color: rgba(5, 150, 105, 0.45);
+  background: #10b981;
+}
+
+.toast-error {
+  border-color: rgba(220, 38, 38, 0.45);
+  background: #ef4444;
+}
+
+@media (max-width: 640px) {
+  .toast {
+    top: 1rem;
+    right: 1rem;
+    left: 1rem;
+    width: auto;
+    max-width: none;
+  }
 }

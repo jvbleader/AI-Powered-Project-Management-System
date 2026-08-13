@@ -12,7 +12,8 @@
 }
 
 .modalSurface {
-  width: min(var(--modal-width, var(--modal-width-md)), 100%);
+  --modal-width: var(--modal-width-xl);
+  width: min(var(--modal-width, var(--modal-width-xl)), 100%);
   max-height: min(92vh, 980px);
   background: var(--modal-surface);
   border: 1px solid var(--modal-border);
@@ -131,7 +132,7 @@ select.inputControl {
 
 textarea.inputControl {
   resize: vertical;
-  min-height: 100px;
+  min-height: 180px;
 }
 
 .modalFooter {

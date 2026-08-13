@@ -118,6 +118,15 @@ def user_role_requires_manager_scope(user: User | None) -> bool:
     return get_user_role_name(user) in {ROLE_PM, ROLE_LEADER}
 
 
+def can_view_global_dashboard_team_activity(user: User | None) -> bool:
+    """PM, Leader, Giám đốc, Head of Dev, Admin: xem overdue/upcoming/logwork team trên Dashboard tổng."""
+    return (
+        is_admin_user(user)
+        or has_companywide_project_access(user)
+        or user_role_requires_manager_scope(user)
+    )
+
+
 def compute_project_metrics(db: Session, project_id: int) -> ProjectMetricsResponse:
     tasks = project_repository.get_project_tasks(db, project_id)
     if not tasks:
@@ -330,6 +339,20 @@ def user_can_manage_project(db: Session, project_id: int, user: User | None) -> 
 
     membership = project_repository.get_project_member(db, project_id, user.id)
     return bool(membership) and user_role_requires_manager_scope(user)
+
+
+def user_can_manage_sprints(db: Session, project_id: int, user: User | None) -> bool:
+    """Chỉ PM/PO/GM hoặc Leader của đúng dự án đó được tạo/sửa sprint.
+
+    Không bypass Admin / Giám đốc / Head of Dev — họ tạo task được nếu truy cập
+    được dự án, nhưng không tạo sprint trừ khi cũng là PM/Leader của dự án đó.
+    """
+    if not user or not user_role_requires_manager_scope(user):
+        return False
+    if project_repository.get_project_member(db, project_id, user.id):
+        return True
+    project = project_repository.get_project_by_id(db, project_id)
+    return bool(project and project.manager_id == user.id)
 
 
 def paginate(total: int, page: int, page_size: int) -> int:

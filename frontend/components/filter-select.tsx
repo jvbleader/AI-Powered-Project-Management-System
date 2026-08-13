@@ -18,8 +18,10 @@ interface FilterSelectProps {
   searchable?: boolean;
   searchPlaceholder?: string;
   /** Larger trigger for denser dashboard headers */
-  size?: "default" | "lg";
+  size?: "sm" | "default" | "lg";
   disabled?: boolean;
+  variant?: "default" | "combobox";
+  style?: React.CSSProperties;
 }
 
 export function FilterSelect({
@@ -33,6 +35,8 @@ export function FilterSelect({
   searchPlaceholder = "Tìm kiếm...",
   size = "default",
   disabled = false,
+  variant = "default",
+  style,
 }: FilterSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -43,50 +47,60 @@ export function FilterSelect({
     function handleClickOutside(event: MouseEvent) {
       if (ref.current && !ref.current.contains(event.target as Node)) {
         setIsOpen(false);
-        setSearchQuery("");
+        if (variant !== "combobox") setSearchQuery("");
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [variant]);
 
   useEffect(() => {
-    if (isOpen && searchable) {
+    if (isOpen && searchable && variant !== "combobox") {
       const timer = window.setTimeout(() => searchInputRef.current?.focus(), 0);
       return () => window.clearTimeout(timer);
     }
-  }, [isOpen, searchable]);
+  }, [isOpen, searchable, variant]);
 
   const selectedOption = options.find((o) => o.value === value);
 
+  // If combobox, we filter by searchQuery typed in the trigger.
   const filteredOptions = useMemo(() => {
-    if (!searchable || !searchQuery.trim()) return options;
     const q = searchQuery.trim().toLowerCase();
+    if (!q) return options;
     return options.filter(
       (opt) =>
         opt.label.toLowerCase().includes(q) ||
         opt.value.toLowerCase().includes(q),
     );
-  }, [options, searchable, searchQuery]);
+  }, [options, searchQuery]);
 
   const isLarge = size === "lg";
+  const isSmall = size === "sm";
+  const displayLabel = selectedOption ? selectedOption.label : placeholder;
+  const isCombobox = variant === "combobox";
 
   return (
     <div
       ref={ref}
       style={{
         position: "relative",
-        minWidth: isLarge ? "260px" : "180px",
+        minWidth: isLarge ? "260px" : isSmall ? "120px" : "180px",
         width: "100%",
+        ...style,
       }}
     >
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => {
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
           if (disabled) return;
-          setIsOpen((open) => !open);
-          if (isOpen) setSearchQuery("");
+          if (isCombobox) {
+            setIsOpen(true);
+            searchInputRef.current?.focus();
+          } else {
+            setIsOpen((open) => !open);
+            if (isOpen) setSearchQuery("");
+          }
         }}
         className={className}
         style={{
@@ -95,15 +109,15 @@ export function FilterSelect({
           justifyContent: "space-between",
           textAlign: "left",
           width: "100%",
-          minHeight: isLarge ? "46px" : undefined,
-          padding: isLarge ? "0.85rem 1.35rem" : "0.6rem 1.25rem",
+          minHeight: isLarge ? "46px" : isSmall ? "24px" : undefined,
+          padding: isLarge ? "0.85rem 1.35rem" : isSmall ? "0.15rem 0.6rem" : "0.6rem 1.25rem",
           borderRadius: "9999px",
-          border: isOpen ? "1px solid var(--primary)" : "1px solid var(--border)",
+          border: isOpen ? "1px solid var(--primary)" : "1px solid #cbd5e1",
           background: disabled ? "rgba(248, 250, 252, 0.9)" : "#ffffff",
           color: "var(--foreground)",
-          fontSize: isLarge ? "0.95rem" : "0.875rem",
+          fontSize: isLarge ? "0.95rem" : isSmall ? "0.75rem" : "0.875rem",
           fontWeight: 500,
-          cursor: disabled ? "not-allowed" : "pointer",
+          cursor: disabled ? "not-allowed" : (isCombobox ? "text" : "pointer"),
           opacity: disabled ? 0.7 : 1,
           outline: "none",
           transition: "border-color 0.2s ease, box-shadow 0.2s ease",
@@ -154,15 +168,44 @@ export function FilterSelect({
               </svg>
             </div>
           )}
-          <span
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {selectedOption ? selectedOption.label : placeholder}
-          </span>
+          {isCombobox ? (
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={isOpen ? searchQuery : displayLabel}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (!isOpen) setIsOpen(true);
+                if (e.target.value === "") onChange("");
+              }}
+              onFocus={() => setIsOpen(true)}
+              placeholder={placeholder}
+              style={{
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                width: "100%",
+                fontSize: "inherit",
+                color: "inherit",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                padding: 0,
+                margin: 0,
+                lineHeight: "1",
+                fontFamily: "inherit",
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {displayLabel}
+            </span>
+          )}
         </div>
         <span
           style={{
@@ -202,7 +245,7 @@ export function FilterSelect({
             </svg>
           )}
         </span>
-      </button>
+      </div>
 
       {isOpen && (
         <div
@@ -221,7 +264,7 @@ export function FilterSelect({
             minWidth: isLarge ? "280px" : undefined,
           }}
         >
-          {searchable ? (
+          {searchable && !isCombobox ? (
             <div style={{ padding: "4px 4px 8px" }}>
               <input
                 ref={searchInputRef}

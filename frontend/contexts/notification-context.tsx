@@ -16,6 +16,7 @@ export type NotificationType =
   | "TASK_UNASSIGNED"
   | "TASK_UPDATED"
   | "LOGWORK_SUBMITTED"
+  | "LOGWORK_ON_TASK"
   | "LOGWORK_APPROVED"
   | "LOGWORK_REJECTED"
   | string;

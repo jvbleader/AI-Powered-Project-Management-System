@@ -4,6 +4,7 @@ import {
   ApiResponse,
   CreateUserPayload,
   Department,
+  DepartmentPayload,
   PaginatedUsers,
   UpdateProfilePayload,
   UserDirectoryFilters,
@@ -23,15 +24,72 @@ import {
 } from "./core";
 import { ROLE_ADMIN } from "@/lib/utils/format";
 
+type BackendDepartment = {
+  id: number;
+  name: string;
+  description?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  user_count?: number;
+  project_count?: number;
+  team_count?: number;
+};
+
+export function toFrontendDepartment(raw: BackendDepartment): Department {
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description ?? null,
+    createdAt: raw.created_at ?? null,
+    updatedAt: raw.updated_at ?? null,
+    userCount: raw.user_count ?? 0,
+    projectCount: raw.project_count ?? 0,
+    teamCount: raw.team_count ?? 0,
+  };
+}
+
 export const userApi = {
   async getDepartments(): Promise<ApiResponse<Department[]>> {
     try {
-      const result = await requestApi<Department[]>({ method: "GET", path: "/api/departments" });
-      return wrapBackendResponse(result.data);
+      const result = await requestApi<BackendDepartment[]>({ method: "GET", path: "/api/departments" });
+      return wrapBackendResponse((result.data || []).map(toFrontendDepartment));
     } catch (error) {
       throw new Error(
         error instanceof Error ? error.message : "Không thể tải danh sách phòng ban.",
       );
+    }
+  },
+
+  async createDepartment(payload: DepartmentPayload): Promise<ApiResponse<Department>> {
+    try {
+      const result = await requestApi<BackendDepartment>(
+        { method: "POST", path: "/api/departments" },
+        { body: JSON.stringify({ name: payload.name, description: payload.description ?? null }) },
+      );
+      return wrapBackendResponse(toFrontendDepartment(result.data));
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Không thể tạo phòng ban.");
+    }
+  },
+
+  async updateDepartment(departmentId: number, payload: DepartmentPayload): Promise<ApiResponse<Department>> {
+    try {
+      const result = await requestApi<BackendDepartment>(
+        { method: "PATCH", path: `/api/departments/${departmentId}` },
+        { body: JSON.stringify({ name: payload.name, description: payload.description ?? null }) },
+      );
+      return wrapBackendResponse(toFrontendDepartment(result.data));
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Không thể cập nhật phòng ban.");
+    }
+  },
+
+  async deleteDepartment(departmentId: number): Promise<ApiResponse<null>> {
+    try {
+      await requestApi({ method: "DELETE", path: `/api/departments/${departmentId}` });
+      return wrapBackendResponse(null);
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Không thể xóa phòng ban.");
     }
   },
 

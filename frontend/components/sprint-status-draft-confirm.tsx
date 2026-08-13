@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { aiApi } from "@/services/api";
+import { getStoredDraftStatus, isPersistedMessageId, setStoredDraftStatus } from "@/lib/assistant-storage";
 
 type SprintStatusDraft = {
   sprint_id: number | string;
@@ -16,26 +17,37 @@ export function SprintStatusDraftConfirm({
   draft,
   messageId,
   initialStatus = "pending",
+  onDraftResolved,
 }: {
   draft: string;
   messageId?: string;
   initialStatus?: "pending" | "confirmed" | "rejected";
+  onDraftResolved?: (messageId: string, status: "confirmed" | "rejected") => void;
 }) {
+  const persistedStatus = messageId ? getStoredDraftStatus(messageId) : null;
+  const resolvedInitialStatus =
+    initialStatus !== "pending"
+      ? initialStatus
+      : persistedStatus === "confirmed" || persistedStatus === "rejected"
+        ? persistedStatus
+        : "pending";
+
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(initialStatus === "confirmed");
-  const [isRejected, setIsRejected] = useState(initialStatus === "rejected");
+  const [isSuccess, setIsSuccess] = useState(resolvedInitialStatus === "confirmed");
+  const [isRejected, setIsRejected] = useState(resolvedInitialStatus === "rejected");
   const [error, setError] = useState<string | null>(null);
 
-  const [items, setItems] = useState<SprintStatusDraft[]>(() => {
+  const items = useMemo<SprintStatusDraft[]>(() => {
     try {
       const data = JSON.parse(draft);
       return Array.isArray(data) ? data : [data];
     } catch {
       return [];
     }
-  });
+  }, [draft]);
 
-  const canConfirm = useMemo(() => items.length > 0 && items.every((i) => i.sprint_id && i.status), [items]);
+  const hasPersistedMessage = isPersistedMessageId(messageId);
+  const canConfirm = items.length > 0 && items.every((item) => item.sprint_id && item.status);
 
   if (items.length === 0) {
     try {
@@ -50,24 +62,23 @@ export function SprintStatusDraftConfirm({
     return null;
   }
 
+  const markResolved = (status: "confirmed" | "rejected") => {
+    if (!messageId) return;
+    setStoredDraftStatus(messageId, status);
+    onDraftResolved?.(messageId, status);
+  };
+
   const handleConfirm = async () => {
+    if (!hasPersistedMessage || !messageId) {
+      setError("Bản nháp chưa được lưu. Vui lòng đợi tin nhắn lưu xong rồi xác nhận lại.");
+      return;
+    }
     try {
       setIsSubmitting(true);
       setError(null);
-      await aiApi.confirmSprintStatus(
-        items.map((item) => ({
-          sprint_id: Number(item.sprint_id),
-          status: String(item.status).toLowerCase(),
-        })),
-        messageId && !messageId.startsWith("assistant-") ? Number(messageId) : null
-      );
+      await aiApi.confirmSprintStatus(Number(messageId));
       setIsSuccess(true);
-      if (messageId && !messageId.startsWith("assistant-")) {
-        const editedDraft = JSON.stringify(items, null, 2);
-        await aiApi
-          .updateMessage(messageId, "```json_sprint_status_draft_confirmed\n" + editedDraft + "\n```")
-          .catch(console.error);
-      }
+      markResolved("confirmed");
     } catch (e: any) {
       setError(e?.message || "Không thể cập nhật trạng thái Sprint.");
     } finally {
@@ -76,12 +87,19 @@ export function SprintStatusDraftConfirm({
   };
 
   const handleReject = async () => {
-    setIsRejected(true);
-    if (messageId && !messageId.startsWith("assistant-")) {
-      const editedDraft = JSON.stringify(items, null, 2);
-      await aiApi
-        .updateMessage(messageId, "```json_sprint_status_draft_rejected\n" + editedDraft + "\n```")
-        .catch(console.error);
+    if (!hasPersistedMessage || !messageId) {
+      setError("Bản nháp chưa được lưu. Vui lòng đợi tin nhắn lưu xong rồi thử lại.");
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      await aiApi.rejectDraft(Number(messageId), "json_sprint_status_draft");
+      setIsRejected(true);
+      markResolved("rejected");
+    } catch (e: any) {
+      setError(e?.message || "Không thể từ chối bản nháp.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -101,6 +119,8 @@ export function SprintStatusDraftConfirm({
     );
   }
 
+  const actionsDisabled = isSubmitting || !hasPersistedMessage || !canConfirm;
+
   return (
     <div style={{ margin: "16px 0", borderRadius: "16px", border: "1px solid #e2e8f0", backgroundColor: "#fff", overflow: "hidden" }}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0", backgroundColor: "#f8fafc" }}>
@@ -108,7 +128,7 @@ export function SprintStatusDraftConfirm({
           Xác nhận đổi trạng thái Sprint
         </h3>
         <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#64748b" }}>
-          AI chỉ đề xuất — chưa ghi database cho đến khi bạn xác nhận.
+          Hệ thống sẽ cập nhật đúng trạng thái trong bản nháp, không nhận chỉnh sửa tay.
         </p>
       </div>
 
@@ -122,37 +142,30 @@ export function SprintStatusDraftConfirm({
         {items.map((item, idx) => (
           <div key={idx} style={{ padding: "12px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc" }}>
             <div style={{ fontWeight: 600, color: "#334155", fontSize: "14px" }}>
-              {item.name || `Sprint #${item.sprint_id}`}
+              {item.name?.trim() || "Chưa có tên sprint"}
             </div>
             <div style={{ marginTop: 6, fontSize: "13px", color: "#475569" }}>
-              {item.current_status || "?"} →{" "}
-              <select
-                value={item.status}
-                onChange={(e) => {
-                  const next = [...items];
-                  next[idx] = { ...item, status: e.target.value };
-                  setItems(next);
-                }}
-                style={{ marginLeft: 4, padding: "4px 8px", borderRadius: 6, border: "1px solid #cbd5e1" }}
-              >
-                <option value="planning">planning</option>
-                <option value="active">active</option>
-                <option value="closed">closed</option>
-              </select>
+              {item.current_status || "?"} → {item.status}
             </div>
           </div>
         ))}
       </div>
 
+      {!hasPersistedMessage && (
+        <div style={{ margin: "0 20px 12px", fontSize: "13px", color: "#1d4ed8", backgroundColor: "#eff6ff", padding: "12px", borderRadius: "8px", border: "1px solid #bfdbfe" }}>
+          Đang lưu bản nháp vào hội thoại. Nút xác nhận sẽ mở sau khi lưu xong.
+        </div>
+      )}
+
       <div style={{ padding: "14px 20px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "flex-end", gap: 10, backgroundColor: "#f8fafc" }}>
-        <button type="button" onClick={handleReject} disabled={isSubmitting} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer" }}>
+        <button type="button" onClick={handleReject} disabled={actionsDisabled} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: actionsDisabled ? "not-allowed" : "pointer", opacity: actionsDisabled ? 0.7 : 1 }}>
           Từ chối
         </button>
         <button
           type="button"
           onClick={handleConfirm}
-          disabled={isSubmitting || !canConfirm}
-          style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", cursor: "pointer", opacity: isSubmitting || !canConfirm ? 0.7 : 1 }}
+          disabled={actionsDisabled}
+          style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", cursor: actionsDisabled ? "not-allowed" : "pointer", opacity: actionsDisabled ? 0.7 : 1 }}
         >
           {isSubmitting ? "Đang cập nhật..." : "Xác nhận cập nhật"}
         </button>

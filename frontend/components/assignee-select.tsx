@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { UserAvatar } from "@/components/user-avatar";
 import type { UserProfile } from "@/types";
 
 interface AssigneeSelectProps {
-  value: string;
-  onChange: (value: string) => void;
+  value: string | string[];
+  onChange: (value: string[]) => void;
   options: UserProfile[];
   disabled?: boolean;
   title?: string;
   placeholder?: string;
   className?: string;
+}
+
+function normalizeIds(value: string | string[] | undefined | null) {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
+  }
+  return value ? [value] : [];
 }
 
 export function AssigneeSelect({
@@ -26,6 +33,7 @@ export function AssigneeSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const selectedIds = useMemo(() => normalizeIds(value), [value]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -37,13 +45,22 @@ export function AssigneeSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const selectedOption = options.find((o) => o.id === value);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const selectedOptions = options.filter((user) => selectedIds.includes(user.id));
   const filteredOptions = options.filter(
     (user) =>
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (user.employeeCode && user.employeeCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      user.id.toLowerCase().includes(searchQuery.toLowerCase())
+      user.id.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  function toggleUser(userId: string) {
+    if (selectedIds.includes(userId)) {
+      onChange(selectedIds.filter((id) => id !== userId));
+      return;
+    }
+    onChange([...selectedIds, userId]);
+  }
 
   return (
     <div ref={ref} style={{ position: "relative", width: "100%" }} title={title}>
@@ -57,28 +74,64 @@ export function AssigneeSelect({
           justifyContent: "space-between",
           textAlign: "left",
           width: "100%",
+          overflow: "visible",
           cursor: disabled ? "not-allowed" : "pointer",
           gap: "8px",
         }}
         disabled={disabled}
       >
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
-          {selectedOption ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden", width: "100%" }}>
-              <UserAvatar
-                userId={selectedOption.id}
-                email={selectedOption.email}
-                name={selectedOption.name}
-                avatarUrl={selectedOption.avatarUrl}
-                size={24}
-                style={{ flexShrink: 0 }}
-              />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {selectedOption.name} - {selectedOption.employeeCode || (selectedOption.id.startsWith("usr-") ? selectedOption.id : `usr-${selectedOption.id}`)}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
+          {selectedOptions.length ? (
+            selectedOptions.map((user) => (
+              <span
+                key={user.id}
+                onMouseEnter={() => setHoveredId(user.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                style={{
+                  position: "relative",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "999px",
+                }}
+              >
+                <UserAvatar
+                  userId={user.id}
+                  email={user.email}
+                  name={user.name}
+                  avatarUrl={user.avatarUrl}
+                  size={22}
+                  style={{ flexShrink: 0 }}
+                />
+                {hoveredId === user.id ? (
+                  <span
+                    style={{
+                      position: "absolute",
+                      bottom: "calc(100% + 8px)",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: "#0f172a",
+                      color: "#fff",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      lineHeight: 1.2,
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      whiteSpace: "nowrap",
+                      zIndex: 30,
+                      pointerEvents: "none",
+                      boxShadow: "0 8px 20px rgba(15, 23, 42, 0.18)",
+                    }}
+                  >
+                    {user.name}
+                  </span>
+                ) : null}
               </span>
-            </div>
+            ))
           ) : (
-            <span style={{ color: "var(--foreground-muted)", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{placeholder}</span>
+            <span style={{ color: "var(--foreground-muted)", width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {placeholder}
+            </span>
           )}
         </div>
         <svg
@@ -111,7 +164,7 @@ export function AssigneeSelect({
             marginTop: "4px",
             padding: "4px",
             listStyle: "none",
-            maxHeight: "250px",
+            maxHeight: "280px",
             overflowY: "auto",
             boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
           }}
@@ -129,17 +182,14 @@ export function AssigneeSelect({
                 border: "1px solid var(--border)",
                 borderRadius: "4px",
                 fontSize: "0.875rem",
-                outline: "none"
+                outline: "none",
               }}
-              onFocus={(e) => e.target.style.borderColor = "var(--primary)"}
-              onBlur={(e) => e.target.style.borderColor = "var(--border)"}
+              onFocus={(e) => (e.target.style.borderColor = "var(--primary)")}
+              onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
             />
           </div>
           <li
-            onClick={() => {
-              onChange("");
-              setIsOpen(false);
-            }}
+            onClick={() => onChange([])}
             style={{
               padding: "8px 12px",
               cursor: "pointer",
@@ -153,45 +203,65 @@ export function AssigneeSelect({
             {placeholder}
           </li>
           {filteredOptions.length > 0 ? (
-            filteredOptions.map((user) => (
-              <li
-                key={user.id}
-                onClick={() => {
-                  onChange(user.id);
-                  setIsOpen(false);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 12px",
-                  cursor: "pointer",
-                  borderRadius: "4px",
-                  background: value === user.id ? "var(--surface-sunken)" : "transparent",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = value === user.id ? "var(--surface-sunken)" : "transparent")
-                }
-              >
-                <UserAvatar
-                  userId={user.id}
-                  email={user.email}
-                  name={user.name}
-                  avatarUrl={user.avatarUrl}
-                  size={28}
-                  style={{ flexShrink: 0 }}
-                />
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--ink)", lineHeight: 1.2 }}>
-                    {user.name}
+            filteredOptions.map((user) => {
+              const checked = selectedIds.includes(user.id);
+              return (
+                <li
+                  key={user.id}
+                  onClick={() => toggleUser(user.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    borderRadius: "4px",
+                    background: checked ? "var(--surface-sunken)" : "transparent",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-sunken)")}
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = checked ? "var(--surface-sunken)" : "transparent")
+                  }
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      border: checked ? "0" : "1.5px solid rgba(15, 23, 42, 0.28)",
+                      background: checked ? "var(--accent)" : "#fff",
+                      color: "#fff",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {checked ? "✓" : ""}
                   </span>
-                  <span style={{ fontSize: "12px", color: "var(--foreground-muted)", marginTop: "2px" }}>
-                    {user.employeeCode || (user.id.startsWith("usr-") ? user.id : `usr-${user.id}`)}
-                  </span>
-                </div>
-              </li>
-            ))) : (
+                  <UserAvatar
+                    userId={user.id}
+                    email={user.email}
+                    name={user.name}
+                    avatarUrl={user.avatarUrl}
+                    size={28}
+                    style={{ flexShrink: 0 }}
+                  />
+                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                    <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--ink)", lineHeight: 1.2 }}>
+                      {user.name}
+                    </span>
+                    <span style={{ fontSize: "12px", color: "var(--foreground-muted)", marginTop: "2px" }}>
+                      {user.employeeCode || (user.id.startsWith("usr-") ? user.id : `usr-${user.id}`)}
+                    </span>
+                  </div>
+                </li>
+              );
+            })
+          ) : (
             <li style={{ padding: "8px 12px", color: "var(--foreground-muted)", textAlign: "center", fontSize: "0.875rem" }}>
               Không tìm thấy kết quả
             </li>

@@ -6,7 +6,9 @@ from app.core.dependencies import get_current_user
 from app.models.user_model import User
 from app.schemas.user_schema import (
     AdminResetPassword,
+    DepartmentCreate,
     DepartmentResponse,
+    DepartmentUpdate,
     PaginatedUsersResponse,
     UpdateAvatar,
     UpdatePhone,
@@ -59,6 +61,35 @@ def get_departments(
     db: Session = Depends(get_db),
 ):
     return department_service.get_departments(db)
+
+
+@router.post("/api/departments", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
+def create_department(
+    data: DepartmentCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return department_service.create_department(db, current_user, data)
+
+
+@router.patch("/api/departments/{department_id}", response_model=DepartmentResponse)
+def update_department(
+    department_id: int,
+    data: DepartmentUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return department_service.update_department(db, current_user, department_id, data)
+
+
+@router.delete("/api/departments/{department_id}")
+def delete_department(
+    department_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    department_service.delete_department(db, current_user, department_id)
+    return {"message": "Đã xóa phòng ban."}
 
 
 @router.post("/api/users", response_model=UserProfile, status_code=status.HTTP_201_CREATED)

@@ -84,6 +84,7 @@ class LogWorkCreate(LogWorkBase):
 
 
 class LogWorkUpdate(BaseModel):
+    work_date: Optional[date] = None
     hours_spent: Optional[float] = None
     work_content: Optional[str] = None
     comment: Optional[str] = None
@@ -103,10 +104,12 @@ class LogWorkResponse(LogWorkBase):
     project_member_id: int
     user_id: Optional[int] = None
     user_name: Optional[str] = None
+    user_email: Optional[str] = None
     project_id: Optional[int] = None
     project_name: Optional[str] = None
     task_title: Optional[str] = None
     status: str
+    reject_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -230,6 +233,7 @@ class TaskResponse(TaskBase):
     key: Optional[str] = None  # Ví dụ: TASK-123
     assignees: List[TaskAssigneeResponse] = []
     spent_hours: float = 0.0
+    has_children: bool = False
 
     @field_validator("created_at", "updated_at", "completed_at")
     @classmethod

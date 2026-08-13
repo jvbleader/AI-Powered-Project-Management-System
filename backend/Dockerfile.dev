@@ -7,14 +7,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 COPY pyproject.toml README.md ./
+# Create a dummy app directory so setuptools can discover the package
+RUN mkdir app && touch app/__init__.py
+
+# Editable install so volume-mounted /app is the live package source.
+# This step is now cached unless pyproject.toml changes!
+RUN pip install --no-cache-dir -e . \
+    && pip install --no-cache-dir "bcrypt<5"
+
+# Now copy the actual source code
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 COPY scripts ./scripts
-
-# Editable install so volume-mounted /app is the live package source.
-RUN pip install --no-cache-dir -e . \
-    && pip install --no-cache-dir "bcrypt<5"
 
 # Browser E2E (pytest-playwright) needs Chromium + OS libs inside the image.
 # Download browsers once at build; install-deps is best-effort for slim images.

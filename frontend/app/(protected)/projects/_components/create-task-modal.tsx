@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { taskApi } from "@/services/api";
 import { AssigneeSelect } from "@/components/assignee-select";
@@ -19,6 +19,20 @@ interface CreateTaskModalProps {
 }
 
 const today = new Date().toISOString().split("T")[0];
+
+const TASK_DESCRIPTION_TEMPLATE = `1. Mục tiêu:
+
+2. Tiêu chí / ràng buộc:
+
+3. Cách làm:
+
+4. Đầu ra:
+
+5. Tiêu chí chấp nhận:
+- 
+- `;
+
+const TASK_DESCRIPTION_FIRST_INPUT_POS = TASK_DESCRIPTION_TEMPLATE.indexOf("\n\n2.");
 
 function resolveTaskDates(task: EnrichedTask | undefined) {
   const startDate = task?.startDate || today;
@@ -44,11 +58,14 @@ export function CreateTaskModal({
   const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "CRITICAL">("MEDIUM");
   const [startDate, setStartDate] = useState(today);
   const [dueDate, setDueDate] = useState(today);
-  const [assigneeId, setAssigneeId] = useState(() => projectType === "waterfall" ? currentUserId : "");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(() =>
+    projectType === "waterfall" && currentUserId ? [currentUserId] : [],
+  );
   const [estimatedHours, setEstimatedHours] = useState("");
   const [parentTaskId, setParentTaskId] = useState(defaultParentTaskId);
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   const parentTaskOptions = useMemo(
     () => tasks.filter((task) => task.projectId === projectId),
@@ -68,6 +85,25 @@ export function CreateTaskModal({
   }, [isOpen, defaultParentTaskId, tasks]);
 
   if (!isOpen) return null;
+
+  const handleDescriptionFocus = (event: React.FocusEvent<HTMLTextAreaElement>) => {
+    event.target.style.borderColor = "var(--accent)";
+    event.target.style.boxShadow = "0 0 0 4px rgba(37, 99, 235, 0.1)";
+    event.target.style.background = "#ffffff";
+
+    if (!description.trim()) {
+      setDescription(TASK_DESCRIPTION_TEMPLATE);
+      requestAnimationFrame(() => {
+        const textarea = descriptionRef.current;
+        if (!textarea) return;
+        const cursorPos =
+          TASK_DESCRIPTION_FIRST_INPUT_POS >= 0
+            ? TASK_DESCRIPTION_FIRST_INPUT_POS
+            : TASK_DESCRIPTION_TEMPLATE.length;
+        textarea.setSelectionRange(cursorPos, cursorPos);
+      });
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -94,7 +130,8 @@ export function CreateTaskModal({
         startDate,
         dueDate,
         estimateHours: estimatedHours ? parseFloat(estimatedHours) : 0,
-        assigneeId: assigneeId,
+        assigneeId: assigneeIds[0] || "",
+        assigneeIds,
         sprintId: null,
         parentTaskId: parentTaskId || null,
         spentHours: 0,
@@ -186,10 +223,11 @@ export function CreateTaskModal({
             <div style={{ marginBottom: "0.75rem", marginTop: "1.25rem" }}>
               <span className="task-detail-field-label" style={{ marginBottom: "0.5rem", display: "block" }}>Mô tả công việc</span>
               <textarea
+                ref={descriptionRef}
                 data-testid="task-description"
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                rows={6}
+                rows={10}
                 style={{
                   width: "100%",
                   padding: "0.85rem 1rem",
@@ -204,11 +242,7 @@ export function CreateTaskModal({
                   fontFamily: "inherit",
                   transition: "all 0.2s"
                 }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = "var(--accent)";
-                  e.target.style.boxShadow = "0 0 0 4px rgba(37, 99, 235, 0.1)";
-                  e.target.style.background = "#ffffff";
-                }}
+                onFocus={handleDescriptionFocus}
                 onBlur={(e) => {
                   e.target.style.borderColor = "rgba(148, 163, 184, 0.25)";
                   e.target.style.boxShadow = "none";
@@ -218,7 +252,7 @@ export function CreateTaskModal({
               />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.25rem", paddingTop: "1rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1.25rem", paddingTop: "1rem" }}>
               <label className="task-detail-field">
                 <span className="task-detail-field-label">Trạng thái</span>
                 <CustomSelect
@@ -261,16 +295,41 @@ export function CreateTaskModal({
               <label className="task-detail-field" style={{ opacity: projectType === "agile" ? 0.5 : 1 }}>
                 <span className="task-detail-field-label">Người thực hiện</span>
                 <AssigneeSelect
-                  value={assigneeId}
-                  onChange={(val) => setAssigneeId(val)}
+                  value={assigneeIds}
+                  onChange={setAssigneeIds}
                   options={users}
                   className="task-detail-control"
                   disabled={projectType === "agile"}
                 />
               </label>
 
+              <label className="task-detail-field">
+                <span className="task-detail-field-label">Thời gian ước tính (giờ)</span>
+                <input
+                  data-testid="task-estimated-hours"
+                  className="task-detail-control"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={estimatedHours}
+                  onChange={(event) => {
+                    const newEstimate = event.target.value;
+                    setEstimatedHours(newEstimate);
+                    const parsed = parseFloat(newEstimate) || 0;
+                    if (parsed > 0 && startDate) {
+                      const daysRequired = Math.ceil(parsed / 8);
+                      const startDateObj = new Date(startDate);
+                      startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
+                      setDueDate(startDateObj.toISOString().split("T")[0]);
+                    }
+                  }}
+                  placeholder="Ví dụ: 6"
+                  style={{ fontFamily: "inherit" }}
+                />
+              </label>
+
               {projectType !== "agile" && (
-                <label className="task-detail-field">
+                <label className="task-detail-field" style={{ gridColumn: "1 / -1" }}>
                   <span className="task-detail-field-label">Parent task</span>
                   <CustomSelect
                     testId="task-parent"
@@ -361,31 +420,6 @@ export function CreateTaskModal({
                     </svg>
                   </span>
                 </span>
-              </label>
-
-              <label className="task-detail-field">
-                <span className="task-detail-field-label">Thời gian ước tính (giờ)</span>
-                <input
-                  data-testid="task-estimated-hours"
-                  className="task-detail-control"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={estimatedHours}
-                  onChange={(event) => {
-                    const newEstimate = event.target.value;
-                    setEstimatedHours(newEstimate);
-                    const parsed = parseFloat(newEstimate) || 0;
-                    if (parsed > 0 && startDate) {
-                      const daysRequired = Math.ceil(parsed / 8);
-                      const startDateObj = new Date(startDate);
-                      startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
-                      setDueDate(startDateObj.toISOString().split("T")[0]);
-                    }
-                  }}
-                  placeholder="Ví dụ: 6"
-                  style={{ fontFamily: "inherit" }}
-                />
               </label>
             </div>
             

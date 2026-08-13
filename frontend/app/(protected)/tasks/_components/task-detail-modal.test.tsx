@@ -30,6 +30,7 @@ const task: Task = {
   status: "TODO",
   priority: "HIGH",
   assigneeId: "usr-2",
+  assigneeIds: ["usr-2"],
   assigneeName: "Người thực hiện",
   assigneeEmail: "assignee@example.com",
   reporterId: "usr-1",
@@ -94,5 +95,47 @@ describe("TaskDetailModal estimated hours", () => {
       estimateHours: 7,
       dueDate: "2026-08-19",
     });
+  });
+});
+
+describe("TaskDetailModal delete", () => {
+  beforeEach(() => {
+    jest.mocked(taskApi.getEnrichedTask).mockResolvedValue({ data: task } as never);
+    jest.mocked(taskApi.listLogworks).mockResolvedValue({ data: [] } as never);
+    jest.mocked(taskApi.getLogs).mockResolvedValue({ data: [] } as never);
+    jest.mocked(taskApi.remove).mockResolvedValue({ data: undefined } as never);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("calls remove after confirming delete even when mousedown bubbles from the popup", async () => {
+    const onClose = jest.fn();
+    const onTaskDeleted = jest.fn();
+
+    render(
+      <TaskDetailModal
+        taskId={task.id}
+        isOpen
+        onClose={onClose}
+        onTaskUpdated={jest.fn()}
+        onTaskDeleted={onTaskDeleted}
+        users={[]}
+        viewerId="usr-1"
+        canManage
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Xoá task" }));
+
+    const confirmButton = await screen.findByRole("button", { name: "Xoá" });
+    fireEvent.mouseDown(confirmButton);
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(taskApi.remove).toHaveBeenCalledWith(task.id);
+    });
+    expect(onTaskDeleted).toHaveBeenCalledWith(task.id);
   });
 });

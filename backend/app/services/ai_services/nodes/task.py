@@ -15,11 +15,25 @@ from app.core.config import get_settings
 from app.core.connection import engine
 from app.services import project_service
 from app.services.ai_services.intent_guards import (
+    build_low_weight_history_block,
+    format_active_project_line,
     is_destructive_or_forbidden_write,
-    latest_user_text,
+    is_task_creation_followup,
+    is_underspecified_task_create,
+    latest_human_text,
+    looks_like_task_create,
+    low_weight_summary_block,
     refuse_destructive_message,
+    refuse_if_unauthorized_sprint_draft,
+    remember_conversation_project,
+    resolve_guard_project,
+    task_create_hard_guard_message,
 )
 from app.services.ai_services.state import AgentState
+from app.services.ai_services.task_draft_structure import (
+    normalize_task_draft_for_project_types,
+    preserve_task_draft_structure,
+)
 from app.services.ai_services.task_title_rules import (
     find_non_meaningful_task_titles,
     format_task_title_issues,
@@ -32,7 +46,11 @@ from app.services.ai_services.tools.sprint_tools import (
 )
 from app.services.ai_services.tools.sql_guard import wrap_sql_tools
 from app.services.ai_services.tools.task_tools import query_tasks
-from app.services.ai_services.tools.team_tools import get_user_workload, query_team_members
+from app.services.ai_services.tools.team_tools import (
+    get_project_team_workload,
+    get_user_workload,
+    query_team_members,
+)
 from app.services.ai_services.tools.timesheet_tools import query_logworks
 
 logger = logging.getLogger("AI_AGENT")
@@ -54,12 +72,14 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
     """
     db_session = config.get("configurable", {}).get("db")
     project_id = config.get("configurable", {}).get("project_id")
+    conversation_project_id = config.get("configurable", {}).get("conversation_project_id")
     current_user = config.get("configurable", {}).get("current_user")
+    thread_id = config.get("configurable", {}).get("thread_id")
 
     if not db_session or not current_user:
         raise ValueError("Missing db or current_user in config")
 
-    latest_preview = latest_user_text(state.get("messages"))
+    latest_preview = latest_human_text(state.get("messages"))
     if is_destructive_or_forbidden_write(latest_preview):
         logger.info("Task node refuse: destructive/SQL write intent")
         return {"messages": [AIMessage(content=refuse_destructive_message())]}
@@ -67,55 +87,144 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
     projects, _, _ = project_service.list_projects(
         db_session, current_user, page_size=1000
     )
+    messages = state.get("messages")
+    summary = state.get("summary", "")
+    active_project = resolve_guard_project(
+        latest_preview,
+        projects,
+        project_id,
+        messages=messages,
+        summary=summary,
+        conversation_project_id=conversation_project_id,
+    )
+    remember_conversation_project(db_session, thread_id, current_user.id, active_project)
+    logger.info(f"Active conversation project: {format_active_project_line(active_project)}")
+    guard_kwargs = {
+        "current_user": current_user,
+        "db": db_session,
+        "messages": messages,
+        "summary": summary,
+        "conversation_project_id": conversation_project_id,
+    }
+    guard_message = task_create_hard_guard_message(
+        latest_preview, projects, project_id, **guard_kwargs
+    )
+    if guard_message:
+        logger.info("Task node hard guard: blocked create-task hallucination")
+        return {"messages": [AIMessage(content=guard_message)]}
+
     accessible_projects_text = "\n".join([f"- {p.name} (ID: {p.id}, Type: {p.project_type})" for p in projects])
     project_type_map = {p.id: p.project_type.lower() for p in projects}
+    project_names = [p.name for p in projects]
+    task_name_supplied = (
+        looks_like_task_create(latest_preview)
+        and not is_underspecified_task_create(latest_preview, project_names)
+    ) or is_task_creation_followup(messages)
 
-    summary = state.get("summary", "")
-    summary_text = f"\n\nBẢN TÓM TẮT LỊCH SỬ TRÒ CHUYỆN:\n{summary}" if summary else ""
+    summary_text = low_weight_summary_block(summary)
 
     system_prompt = (
         "Bạn là Trợ lý AI Giao việc (Task Delegation Agent) chuyên nghiệp.\n\n"
         "NHIỆM VỤ CỐT LÕI:\n"
-        "- Phân tích yêu cầu của người dùng, phân rã dự án/tính năng thành các task nhỏ, cụ thể và khả thi.\n"
-        "- BẮT BUỘC sử dụng công cụ (tools) để tra cứu thông tin (xem dự án có thành viên nào, khối lượng công việc ra sao).\n\n"
+        "- Phân tích yêu cầu của người dùng rồi lập BẢN NHÁP (json_task_draft / json_sprint_draft) để người dùng xem và xác nhận trên UI.\n"
+        "- Khi người dùng yêu cầu tạo sprint / tạo task / cây task / phân rã / lên kế hoạch:\n"
+        "  + TẠO SPRINT: chỉ PM/PO/GM hoặc Leader CỦA ĐÚNG DỰ ÁN đó được tạo. "
+        "Nếu user không thuộc các role này → TỪ CHỐI, không xuất json_sprint_draft. "
+        "Kể cả câu chung như 'tạo sprint cho [dự án]' (khi ĐỦ quyền) → KHÔNG hỏi tên; "
+        "đọc tiến độ + sprint đã có, đặt TÊN SPRINT MÔ TẢ CỤ THỂ theo việc còn lại, rồi XUẤT json_sprint_draft ngay.\n"
+        "  + TẠO TASK THƯỜNG mà chưa nêu TÊN TASK → HỎI TÊN, DỪNG, CẤM xuất draft "
+        "(cây task / WBS / phân rã cả dự án thì không cần tên từng task).\n"
+        "  + MÔ TẢ / NGÀY → CẤM hỏi. BẮT BUỘC đọc dự án bằng tool rồi điền `description`/`goal`, "
+        "`start_date`, `end_date`, `deadline` ĐÚNG 100% theo context dự án tại thời điểm đó "
+        "(mô tả dự án, lịch dự án, sprint hiện có, việc còn lại). Không bịa ngày, không bịa mô tả ngoài dữ liệu tool.\n"
+        "- QUY TRÌNH ĐỌC CONTEXT (bắt buộc trước khi xuất draft, theo thứ tự):\n"
+        "  1) `get_project_overview(project_id)` — mô tả dự án, tiến độ, task chưa xong, sprint hiện có.\n"
+        "  2) `query_tasks(project_id=...)` nếu cần thêm chi tiết việc đã/đang làm.\n"
+        "  3) `query_sprints(project_id=...)` khi lập sprint (chỉ Agile).\n"
+        "  4) CHỈ VỚI WATERFALL: `get_project_team_workload(project_id)` BẮT BUỘC trước khi gán người "
+        "(workload + lịch start/deadline từng thành viên). Với Agile, CẤM gán người nên không gọi workload để phân công.\n"
+        "- Nguồn sự thật để soạn draft: tên task (user nêu) / tên sprint (user nêu, hoặc đặt tên mô tả việc còn lại — CẤM 'Sprint N'/ID) + mô tả/ngày từ tool. "
+        "KHÔNG bịa module/tính năng không có trong dự án. Tránh trùng việc chưa xong. Tập trung phần còn lại.\n"
+        "- Cũng hỏi lại khi KHÔNG xác định được dự án nào (không có tên trong câu mới, không có dự án hội thoại, không có dự án đang xem).\n"
+        "- ⛔ NGUỒN SỰ THẬT: Chỉ bám YÊU CẦU MỚI NHẤT + dữ liệu tool. CẤM copy checklist/bản nháp từ lịch sử chat.\n"
+        "- BẮT BUỘC dùng tool để đọc dự án trước khi xuất draft.\n\n"
         "HƯỚNG DẪN CHỌN CÔNG CỤ (HYBRID):\n"
         "- NHÓM 1: PYTHON TOOLS (Ưu tiên): Luôn ưu tiên dùng các hàm như `get_project_members`, `get_user_workload`... vì an toàn và có sẵn.\n"
         "- NHÓM 2: SQL TOOLS (Chỉ dùng khi cần): Dùng `sql_db_query` để viết SQL thuần nếu Nhóm 1 không đáp ứng được yêu cầu thống kê phức tạp.\n\n"
         f"1. Người dùng hiện tại có ID là: {current_user.id}.\n"
-        f"2. DỰ ÁN MẶC ĐỊNH (dự án người dùng đang xem trên màn hình): ID = {project_id if project_id else 'Không có'}.\n"
-        f"3. THỜI GIAN HIỆN TẠI (Hôm nay): {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n\n"
+        f"2. DỰ ÁN MẶC ĐỊNH (đang xem trên màn hình): ID = {project_id if project_id else 'Không có'}.\n"
+        f"3. DỰ ÁN ĐANG NÓI TRONG HỘI THOẠI: {format_active_project_line(active_project)}.\n"
+        f"4. THỜI GIAN HIỆN TẠI (Hôm nay): {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n\n"
         "===========================================================\n"
         f"DANH SÁCH CÁC DỰ ÁN NGƯỜI DÙNG CÓ THỂ TRUY CẬP:\n{accessible_projects_text}\n"
         "===========================================================\n"
         "LUẬT DÙNG TOOL VÀ THAM SỐ BẮT BUỘC:\n"
         "- Mỗi tool đều định nghĩa rõ tham số nào là (BẮT BUỘC). Nếu thiếu tham số bắt buộc (ví dụ `user_id`), BẠN KHÔNG ĐƯỢC ĐOÁN MÒ.\n"
         "- ĐỐI VỚI PROJECT_ID: Chỉ tái dùng project từ hội thoại khi câu mới VẪN hỏi về CÙNG dự án. Nếu câu mới nói 'các dự án', 'tất cả', 'của tôi quản lý' mà không chỉ định 1 tên dự án → BỎ TRỐNG project_id khi gọi `query_tasks` / `query_team_members` để quét accessible. KHÔNG được gắn cứng dự án câu trước.\n"
-        "- CHỈ sử dụng DỰ ÁN MẶC ĐỊNH nếu từ đầu đến cuối người dùng chưa từng nhắc dự án và câu hỏi rõ ràng cần đúng 1 dự án.\n\n"
+        "- NẾU câu mới là follow-up cùng một dự án ('tạo sprint nữa', 'thêm task', 'làm tiếp', 'sprint đó', 'trong dự án này') mà KHÔNG nêu dự án khác: BẮT BUỘC dùng DỰ ÁN ĐANG NÓI TRONG HỘI THOẠI (rồi mới tới dự án đang xem trên màn hình). CẤM hỏi lại 'dự án nào'.\n"
+        "- CHỈ hỏi lại tên dự án khi chưa có DỰ ÁN ĐANG NÓI TRONG HỘI THOẠI, chưa có dự án trên màn hình, và câu mới cũng không nêu tên.\n\n"
         "### [PROJECT METHODOLOGY RULES (LUẬT LOẠI DỰ ÁN)]\n"
-        "- Mỗi dự án có 1 loại (Type) là 'agile' hoặc 'waterfall'.\n"
+        "- Mỗi dự án có 1 loại (Type) là 'agile' hoặc 'waterfall'. Đọc Type từ DANH SÁCH DỰ ÁN ở trên — đây là nguồn sự thật.\n"
         "- NẾU dự án là 'agile' MÀ người dùng yêu cầu xem biểu đồ Gantt (Gantt chart), BẮT BUỘC thông báo: 'Dự án này đang quản lý theo mô hình Agile nên không hỗ trợ biểu đồ Gantt.'\n"
-        "- NẾU dự án là 'waterfall' MÀ người dùng yêu cầu tạo/xem Sprint, BẮT BUỘC thông báo: 'Dự án này đang quản lý theo mô hình Waterfall nên không có khái niệm Sprint.'\n\n"
+        "- ⛔ SPRINT CHỈ CHO AGILE: Nếu dự án là 'waterfall' mà người dùng yêu cầu tạo/xem/đổi trạng thái Sprint → TỪ CHỐI NGAY. "
+        "KHÔNG hỏi thêm mục tiêu hay thời gian, KHÔNG xuất json_sprint_draft. "
+        "Chỉ nói: dự án Waterfall không có khái niệm Sprint; Sprint chỉ dùng cho dự án Agile.\n"
+        "- ⛔ CÂY TASK / WBS: CHỈ được tạo cho dự án WATERFALL. Nếu người dùng nói 'cây task', 'task tree', 'WBS', 'cấu trúc cây' với dự án AGILE → TỪ CHỐI, KHÔNG xuất json_task_draft, KHÔNG chuyển thành danh sách phẳng giả cây. Chỉ nói ngắn: dự án Agile không hỗ trợ cây task, cấu trúc cha-con chỉ dùng cho Waterfall.\n\n"
         "### [QUY TẮC ĐÁNH GIÁ KÍCH THƯỚC TASK VÀ PHÂN RÃ (BREAKDOWN)]\n"
-        "Khi người dùng yêu cầu tạo/giao một công việc lớn, cách phân rã (breakdown) sẽ phụ thuộc vào LOẠI DỰ ÁN (Agile hay Waterfall):\n"
-        "- NẾU DỰ ÁN LÀ WATERFALL (WBS): BẮT BUỘC PHÂN RÃ THÀNH CẤU TRÚC CÂY. Tạo ĐÚNG MỘT Task Cha ở ngoài cùng, và ĐƯA TẤT CẢ các task nhỏ vừa phân rã vào trong mảng `subtasks` của Task Cha đó.\n"
+        "- PHẢI PHÂN LOẠI KHẮT KHE THEO NGỮ NGHĨA, KHÔNG tin mù quáng ET do chính bạn vừa ước lượng.\n"
+        "- MẶC ĐỊNH LÀ TASK LỚN nếu tên user chỉ mô tả một hành động/phạm vi chung chung của con người mà chưa chỉ ra đầu ra cụ thể, "
+        "ví dụ: 'thanh toán bằng VNPAY', 'quản lý khách hàng', 'kiểm tra hệ thống', 'theo dõi tiến độ', 'xử lý đơn hàng', "
+        "'làm đăng nhập', 'hoàn thiện báo cáo'. Những câu này ẩn chứa nhiều bước/luồng nên BẮT BUỘC đọc context rồi phân rã.\n"
+        "- TASK LỚN còn bao gồm: ET > 8 giờ; có từ hai đầu ra độc lập; nhiều actor/trạng thái/nhánh thành công-thất bại; "
+        "nhiều giai đoạn có thể nghiệm thu riêng; hoặc tiêu đề gộp nhiều hành động/phạm vi. Không được cố tình ghi ET <= 8 để né phân rã.\n"
+        "- CHỈ LÀ TASK NHỎ khi đồng thời thỏa TẤT CẢ: phạm vi rất cụ thể; chỉ một thay đổi/đầu ra nghiệm thu được; "
+        "một người có thể làm liền mạch trong thời gian ngắn và ET <= 8 giờ; không còn luồng con độc lập hợp lý. "
+        "Ví dụ: 'Code validator chữ ký callback VNPAY', 'Thêm trường mã giao dịch vào response', 'Sửa mapping trạng thái timeout'.\n"
+        "- Task nhỏ thì GIỮ NGUYÊN, không chia vụn thành từng nút bấm, câu lệnh hay API lẻ không có giá trị nghiệm thu riêng.\n"
+        "- Tự đánh giá dựa trên tên user + context dự án; không chờ user nói 'task lớn' hay yêu cầu break. Không chia theo số phần cơ học hoặc chỉ theo layer kỹ thuật.\n"
+        "Khi task lớn cần phân rã, cấu trúc phụ thuộc vào LOẠI DỰ ÁN:\n"
+        "- NẾU DỰ ÁN LÀ WATERFALL (WBS): BẮT BUỘC PHÂN RÃ THÀNH CẤU TRÚC CÂY. Tạo ĐÚNG MỘT Task Cha ở ngoài cùng, và ĐƯA TẤT CẢ các task nhỏ vừa phân rã vào trong mảng `subtasks` của Task Cha đó. "
+        "KHÔNG GIỚI HẠN ĐỘ SÂU: được phép Epic -> Hạng mục -> Task -> Subtask -> ... bao nhiêu cấp cũng được; tiếp tục phân rã đệ quy cho tới khi mọi task lá đều cụ thể, nghiệm thu được và <= 8 giờ.\n"
         "- NẾU DỰ ÁN LÀ AGILE: KHÔNG ĐƯỢC DÙNG CẤU TRÚC CÂY (Không dùng `subtasks`). Mọi task sau khi phân rã phải là một danh sách phẳng (flat list) gồm các task độc lập, ngang hàng nhau (như User Story/Task trong Backlog).\n\n"
         "QUY TRÌNH TẠO TASK BẰNG LỆNH JSON_TASK_DRAFT:\n"
-        "Bước 1: Đánh giá task to hay nhỏ, xác định Project Type bằng cách gọi tool.\n"
-        "Bước 2: Phân công người phụ trách (assignee) dựa theo LOẠI DỰ ÁN và yêu cầu:\n"
-        "   - NẾU DỰ ÁN LÀ AGILE: MẶC ĐỊNH KHÔNG GÁN CHO AI (để null `assignee_id` và `assignee_name`) nếu người dùng không yêu cầu đích danh. CHỈ GÁN khi người dùng CHỈ ĐỊNH ĐÍCH DANH ai làm.\n"
-        "   - NẾU DỰ ÁN LÀ WATERFALL: LUÔN LUÔN PHẢI GÁN cho 1 người. Nếu người dùng không chỉ định, hãy tự chọn 1 người phù hợp nhất (ưu tiên người dùng hiện tại hoặc người đang rảnh việc) để gán.\n"
-        "   - Để tìm người, dùng tool `query_team_members` và `get_user_workload`.\n"
-        "   - `assignee_id` trong json_task_draft BẮT BUỘC là `user_id` (trường user_id từ query_team_members), "
+        "Bước 0: Nếu là TẠO TASK THƯỜNG mà chưa có TÊN TASK → HỎI TÊN, DỪNG, CẤM xuất json_task_draft. "
+        "Ngoại lệ: cây task / WBS / phân rã cả dự án thì không cần tên từng task. "
+        "Khi đã có tên (hoặc là cây cả dự án): gọi `get_project_overview`, "
+        "điền mô tả + start_date/deadline 100% từ context dự án. CẤM hỏi ngày hay mô tả.\n"
+        "Bước 1: Đánh giá task to hay nhỏ, xác định Project Type từ overview/danh sách dự án.\n"
+        "Bước 2: Phân công người phụ trách (assignee):\n"
+        "   - ⛔ NẾU DỰ ÁN LÀ AGILE: TUYỆT ĐỐI KHÔNG PHÂN CÔNG BẤT KỲ AI, kể cả khi user yêu cầu đích danh. "
+        "CẤM xuất `assignee_id`, `assignee_ids`, `assignee_name`; người thực hiện phải để trống để phân công trong Sprint/Backlog sau.\n"
+        "   - CHỈ NẾU DỰ ÁN LÀ WATERFALL: gọi `get_project_team_workload(project_id)` trước khi gán. Không đoán workload.\n"
+        "   - Chọn người theo: vai trò phù hợp + workload hiện tại thấp (ít task mở, ít `open_estimated_hours`) "
+        "+ lịch `busy_windows` KHÔNG chồng với start_date–deadline của task mới.\n"
+        "   - ⛔ CẤM CHỒNG LỊCH: Không gán task mới cho người đang có task todo/in_progress "
+        "mà khoảng [start_date, deadline] GIAO NHAU với task mới. "
+        "Hai khoảng [A,B] và [C,D] chồng khi A <= D và C <= B. "
+        "Nếu mọi người đều bận trong cửa sổ đó: DỜI start_date/deadline task mới sang khoảng trống gần nhất "
+        "(vẫn bám lịch dự án), KHÔNG chồng lên việc họ đang làm. "
+        "Trong CÙNG bản nháp, cũng không gán 2 task mới cho cùng 1 người với lịch chồng nhau.\n"
+        "   - TASK NẶNG (ET lớn / nhiều luồng / parent phức tạp / priority high|critical): "
+        "được gán NHIỀU người cùng lúc qua `assignee_ids` (mảng user_id) và `assignee_name` (tên cách nhau bằng dấu phẩy). "
+        "Vẫn ghi `assignee_id` = người chính (lead, thường là người rảnh nhất trong nhóm được chọn). "
+        "Mỗi người trong nhóm cũng phải rảnh (không chồng lịch) trong cửa sổ task đó.\n"
+        "   - TASK NHẸ: gán 1 người (`assignee_id` + `assignee_name`).\n"
+        "   - NẾU DỰ ÁN LÀ WATERFALL: LUÔN phải gán. Task nhẹ 1 người; task nặng có thể nhiều người. "
+        "Ưu tiên người rảnh, lịch không chồng, role phù hợp (không mặc định gán hết cho user hiện tại nếu người khác rảnh hơn).\n"
+        "   - `assignee_id` / từng phần tử `assignee_ids` BẮT BUỘC là `user_id` từ tool, "
         "TUYỆT ĐỐI KHÔNG dùng `project_member_id`.\n"
         "   - Khi cần biết một người thuộc những dự án nào trong scope của bạn: gọi `query_team_members(search_name=...)` **không** truyền project_id để quét mọi dự án accessible.\n"
         "   - LƯU Ý TRÙNG TÊN: Nếu người dùng yêu cầu giao task cho một người cụ thể bằng tên (VD: 'giao cho Anh'), nhưng tool `query_team_members` trả về NHIỀU người có tên giống hoặc gần giống nhau, BẠN TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ Ý CHỌN ĐẠI. Bạn PHẢI dừng việc tạo task và HỎI LẠI người dùng để họ chọn chính xác. Hãy liệt kê danh sách những người trùng tên kèm theo vai trò (role) để người dùng dễ phân biệt.\n"
+        "   - ⛔ KHI CHỈ CẬP NHẬT NGƯỜI THỰC HIỆN: Chỉ hỗ trợ với WATERFALL. Nếu bản nháp JSON đã có sẵn, BẮT BUỘC giữ NGUYÊN VẸN cấu trúc task/subtasks, title, description, estimated_hours, start_date, deadline; chỉ sửa trường assignee sau khi kiểm tra workload. Với AGILE phải từ chối phân công và giữ mọi assignee trống.\n"
         "Bước 3: LẬP LUẬN GIAO VIỆC VÀ TẠO BẢN NHÁP.\n"
-        "   - Bạn ĐƯỢC PHÉP viết 1-2 câu giải thích lý do tại sao lại giao task cho người đó (Ví dụ: 'Người phù hợp nhất là X vì đang trống việc...').\n"
-        "   - Cuối cùng, TRONG CÙNG MỘT CÂU TRẢ LỜI, BẮT BUỘC trả về ĐÚNG MỘT khối Markdown chứa mã JSON định dạng `json_task_draft`.\n"
-        "   - ⛔ LỆNH CẤM: TUYỆT ĐỐI KHÔNG ĐƯỢC nói kiểu 'Bây giờ tôi sẽ tạo bản nháp' rồi kết thúc câu trả lời mà không có JSON. BẮT BUỘC PHẢI CHỨA JSON TRONG MỌI TRƯỜNG HỢP.\n"
+        "   - Bạn ĐƯỢC PHÉP viết 1-2 câu giải thích vì sao gán người đó (workload, lịch trống, task nặng nên gán nhiều người...).\n"
+        "   - Viết 1–2 câu tóm tắt những gì dự án đang có / đã làm đến đâu, rồi "
+        "TRONG CÙNG MỘT CÂU TRẢ LỜI BẮT BUỘC trả về ĐÚNG MỘT khối Markdown `json_task_draft`.\n"
+        "   - ⛔ LỆNH CẤM: TUYỆT ĐỐI KHÔNG được nói 'Bây giờ tôi sẽ tạo bản nháp' rồi kết thúc mà không có JSON.\n"
+        "   - NGOẠI LỆ: Chỉ được hỏi lại khi tạo task thường chưa có TÊN TASK, hoặc chưa xác định được dự án — khi đó KHÔNG xuất json_task_draft. Tạo sprint thì KHÔNG hỏi tên.\n"
         "   - ⛔ CẤM tuyệt đối: Nếu người dùng yêu cầu XÓA task / xóa hết / chạy SQL ghi (UPDATE/DELETE/DROP): "
         "KHÔNG liệt kê task hiện có để 'tạo lại', KHÔNG xuất json_task_draft. Chỉ từ chối ngắn gọn.\n"
-        "VÍ DỤ VỀ CẤU TRÚC JSON:\n"
+        "VÍ DỤ VỀ CẤU TRÚC JSON WATERFALL (Agile phải là danh sách phẳng và bỏ toàn bộ trường assignee):\n"
         "```json_task_draft\n"
         "[\n"
         "  {{\n"
@@ -129,7 +238,8 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
         "    }},\n"
         "    \"priority\": \"high\",\n"
         "    \"assignee_id\": 123,\n"
-        "    \"assignee_name\": \"...\",\n"
+        "    \"assignee_ids\": [123, 456],\n"
+        "    \"assignee_name\": \"An, Bình\",\n"
         "    \"project_id\": 10,\n"
         "    \"type\": \"task\",\n"
         "    \"estimated_hours\": 24,\n"
@@ -175,32 +285,58 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
         "- BẮT BUỘC cung cấp thuộc tính `start_date` và `deadline` (định dạng YYYY-MM-DD) cho TẤT CẢ task lớn nhỏ ở mọi cấp độ.\n"
         "- ĐỐI VỚI DỰ ÁN WATERFALL (TREE TASK): `start_date` của task cha PHẢI LÀ ngày bắt đầu sớm nhất của các task con, và `deadline` của task cha PHẢI LÀ ngày kết thúc muộn nhất của các task con.\n"
         "- QUY TẮC ĐÁNH GIÁ THỰC TẾ (ET HỢP LÝ): Ước lượng thời gian (ET) phải CỰC KỲ SÁT VỚI THỰC TẾ dựa trên kinh nghiệm phát triển phần mềm! Đừng mặc định gán task nào cũng 8 tiếng. Hãy phân loại thực tế: Task Dễ (1-2 tiếng), Task Trung Bình (3-5 tiếng), Task Khó (6-8 tiếng).\n"
-        "- ĐỐI VỚI WATERFALL: Không bắt buộc chỉ chia 2 cấp (Cha - Con). Nếu một task cực kỳ phức tạp (VD: Xây dựng hệ thống 80h), bạn HOÀN TOÀN CÓ THỂ CHIA THÀNH NHIỀU CẤP ĐỘ SÂU (Epic Cha -> Task Con -> Subtask Cháu -> ...) tuỳ ý sao cho hợp lý nhất.\n"
+        "- ĐỐI VỚI WATERFALL: TUYỆT ĐỐI KHÔNG giới hạn 2 cấp hay bất kỳ số cấp cố định nào. Nếu task con vẫn còn lớn/chung chung thì phải tiếp tục tạo subtasks sâu hơn, tới khi mọi lá đều đủ nhỏ và rõ ràng.\n"
         "- ⛔ LỆNH CẤM TUYỆT ĐỐI VỚI TASK LÁ (NGƯỜI THỰC THI TRỰC TIẾP): KHÔNG BAO GIỜ ĐƯỢC VƯỢT QUÁ 8 TIẾNG! \n"
         "- Nếu bạn thấy một công việc cần 10h, 12h hay 40h để hoàn thành, BẠN BẮT BUỘC PHẢI CHẺ NHỎ nó ra. \n"
         "   + Nếu là Waterfall: Chẻ thành các `subtasks` con, cháu. Task Cha có ET là TỔNG của các con nên ĐƯỢC PHÉP > 8 tiếng, nhưng nhánh lá dưới cùng phải <= 8.\n"
         "   + Nếu là Agile: Chẻ thành các task độc lập ngang hàng, mỗi task <= 8 tiếng.\n"
         "\nLUẬT TẠO SPRINT (NẾU NGƯỜI DÙNG YÊU CẦU TẠO SPRINT):\n"
-        "- ĐỐI VỚI DỰ ÁN WATERFALL: TUYỆT ĐỐI TỪ CHỐI TẠO SPRINT.\n"
-        "- NẾU DỰ ÁN ĐANG CÓ SPRINT HOẠT ĐỘNG (ACTIVE): BẠN VẪN ĐƯỢC PHÉP TẠO THÊM SPRINT MỚI (trạng thái tương lai/planning). TUYỆT ĐỐI KHÔNG TỪ CHỐI TẠO SPRINT với lý do dự án đang có sprint hoạt động.\n"
-        "- BẮT BUỘC trả về một mảng chứa đối tượng sprint bọc trong khối code markdown ```json_sprint_draft ... ``` để giao diện hiển thị bản nháp cho người dùng xác nhận.\n"
-        "- Mỗi đối tượng sprint phải có: `project_id` (số), `name` (chuỗi), `start_date` (chuỗi YYYY-MM-DD), `end_date` (chuỗi YYYY-MM-DD), `goal` (chuỗi).\n"
-        "- BẮT BUỘC phải viết một mô tả/mục tiêu (goal) thật hay, chi tiết và hợp lý cho sprint kể cả khi người dùng không cung cấp.\n"
-        "- Ví dụ:\n"
+        "- Bước 0 (TRƯỚC MỌI THỨ): Xác định Type dự án từ DANH SÁCH DỰ ÁN. "
+        "Nếu waterfall → TỪ CHỐI NGAY, không hỏi mục tiêu/thời gian, không xuất json_sprint_draft.\n"
+        "- CHỈ tạo sprint khi Type = agile VÀ user là PM/PO/GM hoặc Leader của đúng dự án đó. "
+        "Role khác → TỪ CHỐI, không xuất json_sprint_draft.\n"
+        "- BẮT BUỘC gọi `get_project_overview` (và `query_sprints` nếu overview chưa đủ) rồi XUẤT json_sprint_draft. "
+        "Câu kiểu 'tạo sprint cho [dự án]' cũng phải ra draft ngay. CẤM hỏi tên / mô tả / ngày.\n"
+        "- Các trường:\n"
+        "  + `name`: TÊN MÔ TẢ CỤ THỂ theo việc còn lại / mục tiêu chu kỳ (bám mô tả dự án + open_tasks + style tên sprint đã có). "
+        "Nếu user đã nêu tên cụ thể thì dùng đúng tên đó. Không trùng tên sprint hiện có.\n"
+        "    CẤM tuyệt đối: 'Sprint 1', 'Sprint 4', 'Sprint N', 'SPRINT-3', mã số, sprint_id, project_id, mã dự án. "
+        "Đó là mã, không phải tên.\n"
+        "    ĐÚNG: 'Hoàn thiện đăng nhập và phân quyền', 'Đối soát giao dịch và hoàn tiền'.\n"
+        "  + `project_name`: tên dự án (chữ, không dùng ID).\n"
+        "  + `start_date` / `end_date`: 100% từ sprint đã có + lịch dự án (ưu tiên khoảng user nêu nếu có; "
+        "không thì bắt đầu sau ngày kết thúc sprint gần nhất, hoặc hôm nay nếu chưa có sprint; dài 1–2 tuần, "
+        "không vượt `end_date` dự án nếu có). Phải khớp dữ liệu tool, không bịa.\n"
+        "  + `goal`: BẮT BUỘC là mô tả MỤC TIÊU SPRINT CHI TIẾT, rõ ràng, bám 100% dữ liệu tool "
+        "(mô tả dự án + open_tasks + sprint đã có). Tập trung việc còn lại. "
+        "CẤM 1 câu ngắn/mơ hồ kiểu 'ổn định quyền truy cập', 'hoàn thiện backlog', 'tiếp tục các việc còn lại'.\n"
+        "    `goal` phải là MỘT chuỗi (dùng \\n) gồm ĐỦ 5 mục, mỗi mục có gạch đầu dòng cụ thể:\n"
+        "    1) Mục tiêu — sprint này phải đạt kết quả nghiệp vụ/kỹ thuật gì, vì sao cần làm ngay.\n"
+        "    2) Đầu vào (input) — dữ liệu, màn hình, API, sprint/task đang dở, ràng buộc lịch mà team phải dựa vào.\n"
+        "    3) Việc cần hoàn thành — các hạng mục cụ thể sẽ làm trong chu kỳ (lấy từ open_tasks / phần còn lại).\n"
+        "    4) Đầu ra (output) — sản phẩm bàn giao được: màn hình, luồng, API, báo cáo, trạng thái backlog…\n"
+        "    5) Tiêu chí hoàn thành — checklist nghiệm thu rõ (cái gì xong thì đóng sprint được).\n"
+        "    Mỗi mục ít nhất 2–4 gạch đầu dòng, viết tiếng Việt, sát dữ liệu tool, không bịa module không có trong dự án.\n"
+        "- Mỗi đối tượng sprint phải có: `project_id` (số, chỉ để hệ thống), `project_name` (tên dự án), "
+        "`name` (tên sprint mô tả), `start_date` (YYYY-MM-DD), `end_date` (YYYY-MM-DD), `goal`.\n"
+        "- Viết 1–2 câu tóm tắt tiến độ rồi xuất ĐÚNG MỘT khối ```json_sprint_draft``` trong cùng câu trả lời.\n"
+        "- Ví dụ CẤU TRÚC (CẤM copy giá trị mẫu):\n"
         "```json_sprint_draft\n"
         "[\n"
         "  {{\n"
         "    \"project_id\": 10,\n"
-        "    \"name\": \"Sprint 1\",\n"
-        "    \"start_date\": \"2024-01-01\",\n"
-        "    \"end_date\": \"2024-01-14\",\n"
-        "    \"goal\": \"Hoàn thiện tính năng đăng nhập và quản lý người dùng...\"\n"
+        "    \"project_name\": \"<tên dự án>\",\n"
+        "    \"name\": \"<tên mô tả việc còn lại, KHÔNG dùng Sprint N hay ID>\",\n"
+        "    \"start_date\": \"YYYY-MM-DD\",\n"
+        "    \"end_date\": \"YYYY-MM-DD\",\n"
+        "    \"goal\": \"1. Mục tiêu:\\n- ...\\n2. Đầu vào (input):\\n- ...\\n3. Việc cần hoàn thành:\\n- ...\\n4. Đầu ra (output):\\n- ...\\n5. Tiêu chí hoàn thành:\\n- ...\"\n"
         "  }}\n"
         "]\n"
         "```\n\n"
         "\nLUẬT ĐỔI TRẠNG THÁI SPRINT:\n"
         "- Dùng tool `propose_sprint_status_update` để kiểm tra quyền và lấy bản nháp.\n"
-        "- Tool KHÔNG ghi database. Sau khi tool OK, BẮT BUỘC xuất ```json_sprint_status_draft``` theo draft trả về.\n"
+        "- Tool KHÔNG ghi database. Sau khi tool OK, BẮT BUỘC xuất ```json_sprint_status_draft``` theo draft trả về "
+        "(giữ nguyên `name` là tên sprint thật, CẤM thay bằng sprint_id).\n"
         "- TUYỆT ĐỐI KHÔNG nói đã cập nhật xong trước khi người dùng xác nhận trên UI.\n"
     )
     system_prompt += summary_text
@@ -211,6 +347,7 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
         query_team_members,
         query_tasks,
         get_user_workload,
+        get_project_team_workload,
         query_sprints,
         propose_sprint_status_update,
         query_logworks,
@@ -246,26 +383,53 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
     )
     
     messages = state.get("messages", [])
-    if len(messages) > 1:
-        history_msgs = messages[:-1]
-        latest_msg = messages[-1].content
-        chat_history_str = "\n".join([f"{'User' if m.type == 'human' else 'AI'}: {m.content}" for m in history_msgs])
-        input_str = (
-            f"LỊCH SỬ TRÒ CHUYỆN:\n{chat_history_str}\n\n"
-            f"YÊU CẦU MỚI NHẤT:\n{latest_msg}"
-        )
-    else:
-        latest_msg = messages[0].content if messages else ""
-        input_str = f"YÊU CẦU MỚI NHẤT:\n{latest_msg}"
+    latest_human = None
+    for message in reversed(messages):
+        if getattr(message, "type", None) in ("human", "user"):
+            latest_human = message
+            break
+    latest_msg = getattr(latest_human, "content", "") if latest_human else ""
+
+    history_block = build_low_weight_history_block(messages)
+    input_parts = []
+    if history_block:
+        input_parts.append(history_block)
+    input_parts.append(
+        "YÊU CẦU MỚI NHẤT (nguồn sự thật — trọng số 100%, CẤM suy diễn từ lịch sử AI):\n"
+        f"{latest_msg}"
+    )
+    input_str = "\n\n".join(input_parts)
 
     input_str += (
         "\n\n[!!! CẢNH BÁO QUAN TRỌNG TỪ HỆ THỐNG !!!]\n"
-        "1. KHÔNG ĐƯỢC BẮT CHƯỚC CẤU TRÚC PHÂN RÃ (CÂY HAY PHẲNG) TỪ LỊCH SỬ TRÒ CHUYỆN NẾU CHÚNG KHÁC LOẠI DỰ ÁN CỦA YÊU CẦU MỚI!\n"
+        "1. KHÔNG ĐƯỢC BẮT CHƯỚC CÂU HỎI/CHECKLIST/CẤU TRÚC PHÂN RÃ TỪ LỊCH SỬ NẾU KHÁC YÊU CẦU MỚI NHẤT!\n"
         "2. TUÂN THỦ NGHIÊM NGẶT THEO DỰ ÁN MỚI NHẤT:\n"
-        "   - Nếu Agile: BẮT BUỘC phân rã thành DANH SÁCH PHẲNG ngang hàng (KHÔNG dùng mảng subtasks).\n"
-        "   - Nếu Waterfall: BẮT BUỘC phân rã thành CẤU TRÚC CÂY (Dùng mảng subtasks).\n"
-        "3. LỆNH CẤM: BẠN TUYỆT ĐỐI KHÔNG ĐƯỢC LIỆT KÊ/GIẢI THÍCH DẠNG DANH SÁCH BULLET HOẶC VĂN BẢN (VD: 1. Phân tích... 1.1. Nghiên cứu...). HÃY TRẢ VỀ TRỰC TIẾP KHỐI MARKDOWN CHỨA MÃ JSON LUÔN."
+        "   - Nếu người dùng yêu cầu SPRINT mà dự án là Waterfall: TỪ CHỐI, không hỏi thêm, không xuất json_sprint_draft.\n"
+        "   - Nếu Agile và yêu cầu tạo sprint (kể cả 'tạo sprint cho [dự án]' không có tên): "
+        "ĐỌC tiến độ + sprint đã có, đặt TÊN MÔ TẢ CỤ THỂ (CẤM 'Sprint N'/ID), rồi XUẤT json_sprint_draft ngay. CẤM hỏi tên/ngày/mô tả.\n"
+        "   - Nếu người dùng yêu cầu CÂY TASK/WBS mà dự án là Agile: TỪ CHỐI, không xuất json_task_draft.\n"
+        "   - Nếu Agile và người dùng tạo task thường (không nói cây): nếu CHƯA có tên task → HỎI TÊN. "
+        "Nếu ĐÃ có tên: ĐỌC DỰ ÁN rồi XUẤT json_task_draft danh sách phẳng, KHÔNG dùng subtasks. "
+        "Mô tả và ngày lấy 100% từ context.\n"
+        "   - Nếu Waterfall và yêu cầu cây task / phân rã cả dự án: ĐỌC DỰ ÁN rồi XUẤT json_task_draft CẤU TRÚC CÂY. "
+        "Nếu tạo task thường mà chưa có tên → HỎI TÊN.\n"
+        "3. SAU KHI ĐỌC TOOL: 1–2 câu tóm tắt tiến độ, rồi TRẢ VỀ TRỰC TIẾP KHỐI MARKDOWN JSON. "
+        "CẤM liệt kê dài dạng bullet thay cho JSON.\n"
+        "4. Chỉ hỏi lại khi thiếu TÊN task thường, hoặc chưa xác định được dự án (kể cả sau khi xem hội thoại). "
+        "Tạo sprint thì không hỏi tên. Follow-up như 'tạo sprint nữa' phải dùng dự án đang nói. "
+        "CẤM hỏi mô tả/ngày. CẤM bịa module/ngày không có trong dữ liệu tool.\n"
+        "5. AGILE: tuyệt đối không gán người và không xuất bất kỳ trường assignee nào, kể cả user yêu cầu đích danh. "
+        "WATERFALL: khi gán người phải gọi `get_project_team_workload` trước; task nặng được gán nhiều người (`assignee_ids`). "
+        "CẤM chồng lịch với task đang làm của người đó (start–deadline giao nhau). "
+        "Ưu tiên người workload thấp / lịch trống."
     )
+    if task_name_supplied:
+        input_str += (
+            "\n6. ⛔ HARD GUARD: Người dùng ĐÃ cung cấp tên/nội dung task trong yêu cầu mới nhất. "
+            "Phần nội dung đứng sau từ `task` (hoặc câu trả lời trực tiếp cho câu hỏi bổ sung task) "
+            "chính là tên task. TUYỆT ĐỐI KHÔNG hỏi lại tên, không yêu cầu tên cụ thể hơn. "
+            "Hãy đọc context dự án và xuất `json_task_draft` ngay."
+        )
 
     logger.info("==== BẮT ĐẦU TASK NODE ====")
     logger.info(f"User Request: {latest_msg}")
@@ -342,15 +506,16 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
 
         title_issues = find_non_meaningful_task_titles(tasks)
 
-        if not violating_tasks and not title_issues:
-            return output_str
-
         if violating_tasks:
             logger.warning(f"Found tasks > 8H. Calling LLM to re-break: {violating_tasks}")
         if title_issues:
             logger.warning(f"Found generic task titles. Calling LLM to rewrite: {title_issues}")
 
-        issue_sections = []
+        issue_sections = [
+            "BẮT BUỘC kiểm tra lại NGỮ NGHĨA KÍCH THƯỚC của TOÀN BỘ task, kể cả task đang ghi ET <= 8H. "
+            "Một tên chỉ là hành động/phạm vi chung chung của con người (như thanh toán, quản lý, kiểm tra, theo dõi, "
+            "xử lý, làm/hoàn thiện một chức năng lớn) phải coi là TASK LỚN nếu chưa chỉ ra đúng một đầu ra cụ thể."
+        ]
         if violating_tasks:
             issue_sections.append(
                 "Các TASK LÁ (không có subtasks) sau đang vượt quá 8H:\n"
@@ -366,11 +531,15 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
             "Bản nháp JSON task của bạn đang có lỗi cần sửa:\n"
             f"{chr(10).join(issue_sections)}\n\n"
             "Hãy trả về lại TOÀN BỘ JSON DRAFT gốc, nhưng PHẢI sửa sạch toàn bộ lỗi trên.\n"
+            f"- BẢN ĐỒ LOẠI DỰ ÁN (project_id -> type): {json.dumps(project_type_map, ensure_ascii=False)}.\n"
+            "- CHỈ giữ task thành một task nhỏ khi nó có đúng một thay đổi/đầu ra cụ thể, một người làm liền mạch trong thời gian ngắn, ET <= 8H và không còn luồng con độc lập.\n"
+            "- Với task chung chung hoặc bao gồm nhiều actor/trạng thái/nhánh/giai đoạn: bắt buộc phân rã theo đầu ra có thể nghiệm thu; không được giảm ET giả tạo để giữ nguyên.\n"
             "- Nếu task lá vượt quá 8H: bắt buộc bẻ nhỏ thành các task con có ý nghĩa theo đúng ngữ cảnh nghiệp vụ/kết quả đầu ra.\n"
-            "- Nếu dự án là Waterfall: đưa các task con vào mảng `subtasks` của task bị lỗi.\n"
+            "- Nếu dự án là Waterfall: đưa task con vào `subtasks`; KHÔNG GIỚI HẠN ĐỘ SÂU và phải tiếp tục phân rã đệ quy đến khi mọi lá cụ thể, nghiệm thu được, <= 8H.\n"
             "- Nếu dự án là Agile: tách task bị lỗi thành nhiều task ngang hàng (flat), KHÔNG dùng `subtasks`.\n"
             "- Với tiêu đề task: tuyệt đối không dùng placeholder hoặc số thứ tự kiểu 'Task 1', 'Subtask 1', 'Chức năng 1', 'Phần 1'. Mỗi task phải có tiêu đề riêng mô tả đúng luồng xử lý hoặc kết quả bàn giao.\n"
-            "- Giữ nguyên project_id, assignee, priority, start_date, deadline và các trường khác nếu không bắt buộc phải đổi vì phân rã lại.\n\n"
+            "- Giữ nguyên project_id, priority, start_date, deadline và các trường khác nếu không bắt buộc phải đổi vì phân rã lại.\n"
+            "- Với Agile: danh sách phải phẳng và XÓA toàn bộ assignee_id, assignee_ids, assignee_name. Với Waterfall: giữ assignee hiện có.\n\n"
             "TRẢ VỀ ĐÚNG MỘT KHỐI MARKDOWN ```json_task_draft ... ``` CHỨA JSON, KHÔNG ĐƯỢC GIẢI THÍCH THÊM."
         )
         
@@ -472,17 +641,64 @@ async def task_node(state: AgentState, config: RunnableConfig) -> dict:
                 
             fallback_prompt = (
                 "Bạn đã phân tích hệ thống nhưng hết thời gian để tiếp tục dùng Tool. "
-                "Dựa trên yêu cầu gốc và dữ liệu đã lấy được dưới đây, hãy BẮT BUỘC sinh ra bản nháp JSON (json_task_draft) tốt nhất có thể.\n\n"
+                "Dựa trên yêu cầu gốc và dữ liệu đã lấy được dưới đây, hãy BẮT BUỘC sinh ra bản nháp JSON "
+                "(json_task_draft hoặc json_sprint_draft tùy yêu cầu) tốt nhất có thể. "
+                "CẤM hỏi lại thông tin.\n\n"
                 f"{input_str}\n\n"
                 "DỮ LIỆU ĐÃ THU THẬP:\n"
                 f"{steps_str}"
             )
-            fallback_messages = [SystemMessage(content=system_prompt)] + history_msgs + [HumanMessage(content=fallback_prompt)]
+            fallback_messages = [SystemMessage(content=system_prompt)] + [HumanMessage(content=fallback_prompt)]
             fallback_response = await llm.ainvoke(fallback_messages)
             final_answer = fallback_response.content
+
+        asks_for_task_name = bool(
+            re.search(
+                r"(cung\s*cấp|cho\s+(tôi|mình)\s+biết|đặt)\s+.*tên|"
+                r"tên\s+(cụ\s*thể\s+)?(của\s+)?(task|công\s*việc)",
+                final_answer,
+                flags=re.IGNORECASE,
+            )
+        )
+        if task_name_supplied and asks_for_task_name and "```json_task_draft" not in final_answer:
+            logger.warning("Task name was supplied but agent asked again; retrying with hard guard")
+            retry_input = (
+                f"{input_str}\n\n"
+                "LẦN TRẢ LỜI TRƯỚC CỦA BẠN ĐÃ HỎI LẠI TÊN TASK SAI QUY TẮC. "
+                f"Yêu cầu `{latest_msg}` đã chứa tên task. "
+                "BẮT BUỘC dùng tên đó, gọi tool đọc dự án và xuất json_task_draft ngay; CẤM hỏi thêm."
+            )
+            retry_response = await agent_executor.ainvoke(
+                {"input": retry_input},
+                config=config,
+            )
+            retry_answer = retry_response.get("output", "")
+            if retry_answer:
+                final_answer = retry_answer
             
         final_answer = fix_task_draft_et(final_answer)
         final_answer = await check_and_rebreak_tasks_with_llm(final_answer)
+        final_answer = preserve_task_draft_structure(final_answer, messages)
+        final_answer = normalize_task_draft_for_project_types(
+            final_answer,
+            project_type_map,
+            project_id,
+        )
+        forced = task_create_hard_guard_message(
+            latest_preview, projects, project_id, **guard_kwargs
+        )
+        if forced:
+            final_answer = forced
+        else:
+            unauthorized = refuse_if_unauthorized_sprint_draft(
+                final_answer,
+                latest_preview,
+                projects,
+                project_id,
+                **guard_kwargs,
+            )
+            if unauthorized:
+                final_answer = unauthorized
         logger.info(f"LLM Raw Output:\n{final_answer}")
         logger.info("==== KẾT THÚC TASK NODE ====")
 

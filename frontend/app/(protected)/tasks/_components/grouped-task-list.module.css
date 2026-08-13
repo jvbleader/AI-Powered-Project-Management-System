@@ -1,142 +1,556 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1.1rem;
 }
 
-.projectSection {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.taskTable {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
 }
 
-.projectHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid var(--border-subtle);
+.taskTable col.colKey {
+  width: 7.5rem;
+  min-width: 7.5rem;
 }
 
-.projectTitle {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.taskTable col.colTitle {
+  width: 22rem;
+  min-width: 18rem;
 }
 
-.taskCount {
-  font-size: 0.85rem;
-  background: var(--surface-sunken);
-  color: var(--foreground-muted);
-  padding: 0.15rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle);
+.taskTable col.colAssigneeCode {
+  width: 8rem;
+  min-width: 7.5rem;
 }
 
-.cardList {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 1rem;
+.taskTable col.colAssignee {
+  width: 12rem;
+  min-width: 11rem;
 }
 
-.taskCard {
-  background: var(--surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  transition: all 0.2s ease;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+.taskTable col.colStatus {
+  width: 10rem;
+  min-width: 9.5rem;
 }
 
-.taskCard:hover {
-  border-color: rgba(37, 99, 235, 0.3);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
+.taskTable col.colPriority {
+  width: 9rem;
+  min-width: 8.5rem;
 }
 
-.cardHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
+.taskTable col.colDue {
+  width: 8rem;
+  min-width: 7.5rem;
 }
 
-.taskKey {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--foreground-muted);
-  background: var(--surface-sunken);
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+.columnHeaderRow th,
+.taskRow td {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+  text-align: left;
   white-space: nowrap;
 }
 
-.taskTitle {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--ink);
-  line-height: 1.4;
-  margin: 0.25rem 0 0 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.columnHeaderRow th:first-child,
+.taskRow td:first-child {
+  padding-left: 1.15rem;
 }
 
-.cardFooter {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: auto;
-  padding-top: 1rem;
-  border-top: 1px dashed var(--border-subtle);
+.columnHeaderRow th:last-child,
+.taskRow td:last-child {
+  padding-right: 1.15rem;
 }
 
-.metaGroup {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.columnHeaderRow {
+  background: rgba(248, 250, 252, 0.92);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
-.priorityBadge {
-  font-size: 0.75rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-weight: 500;
+.columnHeaderRow th {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  font-weight: 700;
 }
 
-.dueDate {
+.colKey,
+.colTitle,
+.colAssigneeCode,
+.colAssignee,
+.colStatus,
+.colPriority,
+.colDue {
+  min-width: 0;
+}
+
+.headerFilter {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.75rem;
-  color: var(--foreground-muted);
+  min-width: 0;
 }
 
-.dueDate.overdue {
-  color: #dc2626;
+.filterTriggerWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.filterIconButton {
+  width: 22px;
+  height: 22px;
+  border: none;
+  padding: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.filterIconButton:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.filterIconButtonActive {
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.filterIcon {
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.filterIconActive {
+  color: var(--accent);
+}
+
+.dropdownMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 210px;
+  max-width: 280px;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  padding: 0.35rem;
+}
+
+.colDue .dropdownMenu {
+  left: 0;
+  right: auto;
+}
+
+.dropdownSearchWrap {
+  padding: 0.25rem;
+  margin-bottom: 0.2rem;
+}
+
+.dropdownSearchInput {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+  outline: none;
+  background: #fff;
+  color: var(--ink);
+}
+
+.dropdownSearchInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.dropdownList {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.dropdownItem {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdownItem:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.dropdownItemActive {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.projectSection {
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.03),
+    0 8px 24px rgba(37, 99, 235, 0.04);
+}
+
+.projectHeader {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.1);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: rgba(239, 246, 255, 0.72);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.projectHeaderCollapsed {
+  border-bottom-color: transparent;
+  border-radius: var(--radius-md);
+}
+
+.projectHeader:hover {
+  background: rgba(219, 234, 254, 0.55);
+}
+
+.projectHeader:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
+
+.projectAccent {
+  position: absolute;
+  left: 0;
+  top: 0.7rem;
+  bottom: 0.7rem;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: var(--accent);
+  opacity: 0.9;
+}
+
+.projectHeaderMain {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.projectTitleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.projectLabel {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+.projectIdentity {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.projectTitle {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+  line-height: 1.2;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskCount {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.taskCountLabel {
+  font-size: 0.78rem;
   font-weight: 500;
+  letter-spacing: 0;
 }
 
-.dueDateIcon {
+.chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex-shrink: 0;
+  margin-left: auto;
+  border-radius: 9px;
+  color: var(--accent-strong);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  transition: transform 0.18s ease, color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.chevron svg {
   width: 14px;
   height: 14px;
 }
 
-.emptyProject {
-  color: var(--foreground-muted);
-  font-size: 0.9rem;
-  font-style: italic;
-  padding: 1rem;
-  background: var(--surface-sunken);
-  border-radius: 8px;
+.chevronCollapsed {
+  transform: rotate(-90deg);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.collapsePanel {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.22s ease;
+}
+
+.collapsePanelClosed {
+  grid-template-rows: 0fr;
+}
+
+.collapseInner {
+  overflow: hidden;
+  min-height: 0;
+  background: #fff;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.tableScroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.paginationBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1.15rem 0.95rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(248, 250, 252, 0.72);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.paginationActions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.paginationActions :global(.secondary-button) {
+  min-height: 32px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+}
+
+.paginationActions :global(.secondary-button:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.paginationPage {
+  min-width: 2.75rem;
   text-align: center;
-  border: 1px dashed var(--border-subtle);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.taskList {
+  list-style: none;
+  margin: 0;
+  padding: 0.15rem 0;
+}
+
+.taskRow {
+  cursor: pointer;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.taskRow td {
+  border-top: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.taskRow:hover {
+  background: var(--surface-muted);
+}
+
+.taskRow:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+  background: var(--surface-muted);
+}
+
+.taskKey {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(93, 107, 130, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+.taskTitle {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}
+
+.assigneeCode {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(71, 85, 105, 0.95);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.assigneeName {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.metaStatus,
+.metaPriority,
+.metaDue {
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.colStatus :global(.pill),
+.colPriority :global(.pill) {
+  max-width: none;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: nowrap;
+}
+
+.metaDue {
+  display: block;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.dueSoon {
+  color: var(--watch);
+}
+
+.dueOverdue {
+  color: var(--critical);
+  font-weight: 600;
+}
+
+.emptyProject,
+.emptyFilterResult {
+  margin: 0.75rem 0;
+  padding: 0.9rem 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+  background: var(--surface-muted);
+  border-radius: 10px;
+  border: 1px dashed var(--surface-border);
+}
+
+.emptyFilterResult {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.clearFiltersButton {
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  background: #fff;
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clearFiltersButton:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+@media (max-width: 1100px) {
+  .taskTable {
+    min-width: 980px;
+  }
+}
+
+@media (max-width: 640px) {
+  .projectHeader {
+    padding-top: 0.85rem;
+    padding-bottom: 0.85rem;
+  }
+
+  .projectTitle {
+    font-size: 1.22rem;
+  }
 }

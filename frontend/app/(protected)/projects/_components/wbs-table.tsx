@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusPill } from "@/components/ui";
-import { UserAvatar } from "@/components/user-avatar";
-import { taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
+import { AssigneeAvatars } from "@/components/assignee-avatars";
+import { formatAssigneeNames, taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
 import type { EnrichedTask } from "@/types";
 import styles from "../../team/styles/team.module.css";
 
@@ -163,16 +163,12 @@ export function WbsTable({ tasks }: WbsTableProps) {
             <td>{node.task.dueDate}</td>
             <td>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <UserAvatar
-                  userId={node.task.assignee.id}
-                  email={node.task.assignee.email}
-                  name={node.task.assignee.name}
-                  avatarUrl={node.task.assignee.avatarUrl}
+                <AssigneeAvatars
+                  assignees={node.task.assignees?.length ? node.task.assignees : node.task.assignee ? [node.task.assignee] : []}
                   size={24}
-                  className={styles.avatarToken}
                 />
                 <span className={styles.userCellCopy}>
-                  <small style={{ margin: 0 }}>{node.task.assignee.name}</small>
+                  <small style={{ margin: 0 }}>{formatAssigneeNames(node.task, "Chưa phân công")}</small>
                 </span>
               </div>
             </td>

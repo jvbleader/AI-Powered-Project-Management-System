@@ -14,6 +14,7 @@ from app.utils.project_helpers import (
     list_accessible_project_ids,
     list_managed_project_ids,
     user_can_manage_project,
+    user_can_manage_sprints,
 )
 
 # Runtime inject từ AgentExecutor — không để LLM tự truyền
@@ -99,4 +100,18 @@ def deny_if_cannot_manage_project(
         return {"error": "Không xác định được người dùng hiện tại."}
     if not user_can_manage_project(db, project_id, user):
         return {"error": f"Bạn không có quyền quản lý dự án ID {project_id}."}
+    return None
+
+
+def deny_if_cannot_manage_sprints(
+    db: Session, user: User | None, project_id: int
+) -> dict[str, Any] | None:
+    if not user:
+        return {"error": "Không xác định được người dùng hiện tại."}
+    if not user_can_manage_sprints(db, project_id, user):
+        return {
+            "error": (
+                "Chỉ PM/PO/GM hoặc Leader của dự án này mới được tạo hoặc cập nhật sprint."
+            )
+        }
     return None

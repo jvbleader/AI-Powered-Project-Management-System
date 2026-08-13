@@ -1,5 +1,6 @@
 import { authApi } from "@/services/api";
 import { resolveAvatarUrl } from "@/lib/utils/avatar";
+import { clearAssistantSessionStorage } from "@/lib/assistant-storage";
 import { type AuthSession, LoginPayload } from "@/types";
 
 export const STORAGE_KEY = "flowpilot-session-v1";
@@ -54,6 +55,7 @@ function clearClientSession() {
   window.localStorage.removeItem(STORAGE_KEY);
   window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
   window.localStorage.removeItem("flowpilot-user-directory-v1");
+  clearAssistantSessionStorage();
 }
 
 /** Xóa snapshot client, không gọi API logout / không broadcast sang tab khác. */

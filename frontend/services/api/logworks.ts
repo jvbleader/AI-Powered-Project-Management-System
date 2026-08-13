@@ -4,6 +4,8 @@ export interface PendingLogWork {
   id: number;
   task_id: number;
   project_member_id: number;
+  user_id?: number;
+  user_email?: string;
   user_name: string;
   project_id?: number;
   project_name?: string;
@@ -34,11 +36,14 @@ export const logworkApi = {
     return res.data;
   },
 
-  reject: async (logworkId: number) => {
-    const res = await requestApi<PendingLogWork>({
-      method: "PATCH",
-      path: `/api/v1/logworks/${logworkId}/reject`,
-    });
+  reject: async (logworkId: number, reason?: string) => {
+    const res = await requestApi<PendingLogWork>(
+      {
+        method: "PATCH",
+        path: `/api/v1/logworks/${logworkId}/reject`,
+      },
+      reason ? { body: JSON.stringify({ reason }) } : undefined,
+    );
     return res.data;
   },
 };

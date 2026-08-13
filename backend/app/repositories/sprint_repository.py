@@ -25,7 +25,7 @@ def list_sprints(
         query = query.filter(Sprint.project_id == project_id)
     if project_ids_subquery is not None:
         query = query.filter(Sprint.project_id.in_(project_ids_subquery))
-    return query.order_by(desc(Sprint.created_at)).all()
+    return query.order_by(desc(Sprint.start_date), desc(Sprint.id)).all()
 
 
 def create_sprint(db: Session, sprint_data: dict) -> Sprint:

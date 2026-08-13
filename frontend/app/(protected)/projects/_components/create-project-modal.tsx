@@ -193,7 +193,7 @@ export function CreateProjectModal({
                       onChange={() => setNewProjectType("agile")}
                       style={{ margin: 0 }}
                     />
-                    Agile (Kanban)
+                    Agile
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                     <input
@@ -219,7 +219,7 @@ export function CreateProjectModal({
                   onChange={(event) => setNewProjectDescription(event.target.value)}
                   placeholder="Mô tả mục tiêu và phạm vi của dự án..."
                   required
-                  rows={4}
+                  rows={8}
                 />
               </div>
 

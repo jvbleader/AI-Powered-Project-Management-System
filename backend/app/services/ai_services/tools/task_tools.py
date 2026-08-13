@@ -168,6 +168,8 @@ def query_tasks(
                         "title": t.title,
                         "status": t.status,
                         "priority": t.priority,
+                        "parent_task_id": t.parent_task_id,
+                        "sprint_id": t.sprint_id,
                         "deadline": t.deadline.isoformat() if t.deadline else None,
                         "assignees": assignees,
                     }

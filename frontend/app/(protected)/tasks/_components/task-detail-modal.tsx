@@ -3,11 +3,18 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AssigneeSelect } from "@/components/assignee-select";
 import { taskApi } from "@/services/api";
 import { CustomSelect } from "@/components/custom-select";
-import { formatDateTime, canAccessLogworkApprovalsRole } from "@/lib/utils/format";
+import {
+  formatDateTime,
+  canAccessLogworkApprovalsRole,
+  canEditPendingLogwork,
+  logworkStatusClassName,
+  logworkStatusLabel,
+} from "@/lib/utils/format";
 import { resolveAvatarUrl } from "@/lib/utils/avatar";
 import type { EnrichedTask, Task, TaskLogworkEntry, UserProfile, TaskLog } from "@/types";
 import { LogworkModal } from "./logwork-modal";
 import { LogworkEntryDetailModal } from "./logwork-entry-detail-modal";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 function truncateText(text: string, max = 52) {
   const value = text.trim();
@@ -15,14 +22,48 @@ function truncateText(text: string, max = 52) {
   return value.length <= max ? value : `${value.slice(0, max)}…`;
 }
 
-function logworkStatusLabel(status: TaskLogworkEntry["status"]) {
-  if (status === "APPROVED") return "Đã duyệt";
-  if (status === "REJECTED") return "Từ chối";
-  return "Chờ duyệt";
+
+function parseAssigneeLogIds(value: string | null | undefined) {
+  if (!value?.trim()) return [];
+
+  return value
+    .split(/[,\s]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => (token.startsWith("usr-") ? token : `usr-${token}`));
 }
 
-function logworkSummary(entry: TaskLogworkEntry) {
-  return `${entry.hoursSpent}h · ${logworkStatusLabel(entry.status)} · ${truncateText(entry.workContent)}`;
+function resolveAssigneeIdsToNames(ids: string[], users: UserProfile[]) {
+  return ids
+    .map((id) => {
+      const user = users.find(
+        (candidate) =>
+          candidate.id === id ||
+          candidate.id === id.replace(/^usr-/, "") ||
+          candidate.employeeCode === id,
+      );
+      return user?.name || id;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatAssigneeChangeMessage(
+  oldValue: string | null | undefined,
+  newValue: string | null | undefined,
+  users: UserProfile[],
+) {
+  const previousIds = parseAssigneeLogIds(oldValue);
+  const currentIds = parseAssigneeLogIds(newValue);
+  const previousSet = new Set(previousIds);
+  const currentSet = new Set(currentIds);
+  const addedIds = currentIds.filter((id) => !previousSet.has(id));
+  const removedIds = previousIds.filter((id) => !currentSet.has(id));
+
+  return {
+    addedNames: addedIds.length ? resolveAssigneeIdsToNames(addedIds, users) : "",
+    removedNames: removedIds.length ? resolveAssigneeIdsToNames(removedIds, users) : "",
+  };
 }
 
 const ESTIMATE_SAVE_DELAY_MS = 2_000;
@@ -67,6 +108,7 @@ interface TaskDetailModalProps {
   users: UserProfile[];
   viewerId: string;
   canManage: boolean;
+  showGoToProject?: boolean;
 }
 
 export function TaskDetailModal({
@@ -78,6 +120,7 @@ export function TaskDetailModal({
   users,
   viewerId,
   canManage,
+  showGoToProject = true,
 }: TaskDetailModalProps) {
   const [task, setTask] = useState<EnrichedTask | Task | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -87,68 +130,89 @@ export function TaskDetailModal({
   const [editDesc, setEditDesc] = useState("");
   const [estimateDraft, setEstimateDraft] = useState("0");
   const [isLogworkModalOpen, setIsLogworkModalOpen] = useState(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [selectedLogworkEntry, setSelectedLogworkEntry] = useState<TaskLogworkEntry | null>(null);
+  const [editingLogworkEntry, setEditingLogworkEntry] = useState<TaskLogworkEntry | null>(null);
   const estimateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingEstimateRef = useRef<PendingEstimateUpdate | null>(null);
 
   const [logworks, setLogworks] = useState<TaskLogworkEntry[]>([]);
   const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setIsConfirmDeleteOpen(false);
+    }
+  }, [isOpen]);
+
   const canEditTask = canManage; // Theo yêu cầu: Chỉ Manager và Leader (canManage) mới được sửa tiêu đề, mô tả
   const canUpdateStatus = true; // Ai cũng có thể update status (vì cũng có quyền kéo thả)
   const canLogwork = true;
 
-  const resolvedAssignee =
-    task && "assignee" in task && task.assignee
-      ? task.assignee
+  const resolvedAssignees: UserProfile[] = (() => {
+    if (task && "assignees" in task && Array.isArray(task.assignees) && task.assignees.length) {
+      return task.assignees.filter(Boolean) as UserProfile[];
+    }
+    const ids = task?.assigneeIds?.length
+      ? task.assigneeIds
       : task?.assigneeId
-        ? (users.find((user) => user.id === task.assigneeId) ??
-          ({
-            id: task.assigneeId,
-            name: task.assigneeName || "Người dùng",
-            email: task.assigneeEmail || "",
-            role: "MEMBER",
-            roles: ["MEMBER"],
-            title: task.assigneeEmail || "Thành viên dự án",
-            initials: (task.assigneeName || "ND")
-              .split(/\s+/)
-              .filter(Boolean)
-              .slice(0, 2)
-              .map((part) => part[0]?.toUpperCase() ?? "")
-              .join(""),
-            presence: "online",
-            capacityHours: 40,
-            workloadHours: 0,
-            focusScore: 0,
-            isActive: true,
-            status: "ACTIVE",
-            avatarUrl: resolveAvatarUrl({
-              userId: task.assigneeId,
-              email: task.assigneeEmail,
-              name: task.assigneeName || "Người dùng",
-            }),
-          } satisfies UserProfile))
-        : null;
+        ? [task.assigneeId]
+        : [];
+    return ids
+      .map((assigneeId) => {
+        const fromUsers = users.find((user) => user.id === assigneeId);
+        if (fromUsers) return fromUsers;
+        const preview = task?.assignees?.find((assignee) => assignee.id === assigneeId);
+        return {
+          id: assigneeId,
+          name: preview?.name || task?.assigneeName || "Người dùng",
+          email: preview?.email || task?.assigneeEmail || "",
+          role: "MEMBER",
+          roles: ["MEMBER"],
+          title: preview?.email || task?.assigneeEmail || "Thành viên dự án",
+          initials: (preview?.name || task?.assigneeName || "ND")
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0]?.toUpperCase() ?? "")
+            .join(""),
+          presence: "online",
+          capacityHours: 40,
+          workloadHours: 0,
+          focusScore: 0,
+          isActive: true,
+          status: "ACTIVE",
+          avatarUrl: resolveAvatarUrl({
+            userId: assigneeId,
+            email: preview?.email || task?.assigneeEmail,
+            name: preview?.name || task?.assigneeName || "Người dùng",
+          }),
+        } satisfies UserProfile;
+      });
+  })();
 
   const projectMemberIds = task && "project" in task ? task.project?.memberIds : null;
   const projectUsers = projectMemberIds
     ? users.filter((u) => projectMemberIds.includes(u.id))
     : users;
 
+  const extraAssignees = resolvedAssignees.filter(
+    (assignee) => !projectUsers.some((user) => user.id === assignee.id),
+  );
   const assigneeOptions = canManage
-    ? resolvedAssignee && !projectUsers.some((user) => user.id === resolvedAssignee.id)
-      ? [resolvedAssignee, ...projectUsers]
-      : projectUsers
-    : resolvedAssignee && resolvedAssignee.id !== viewerId
-      ? [resolvedAssignee, ...projectUsers.filter((user) => user.id === viewerId)]
-      : projectUsers.filter((user) => user.id === viewerId);
+    ? [...extraAssignees, ...projectUsers]
+    : [
+        ...extraAssignees.filter((assignee) => assignee.id !== viewerId),
+        ...projectUsers.filter((user) => user.id === viewerId),
+      ];
 
   const isWaterfall = task && "project" in task && task.project?.projectType === "waterfall";
   const isAgile = task && "project" in task && task.project?.projectType === "agile";
   const isBacklog = isAgile && !task?.sprintId;
 
+  const hasChildren = Boolean(task?.hasChildren);
   // Người quản lý trong dự án waterfall có quyền assign thành viên. Còn agile thì kéo rồi tự gán trên Kanban.
-  const canEditAssignee = isWaterfall ? canManage : false;
+  const canEditAssignee = isWaterfall ? canManage && !hasChildren : false;
   const viewer = users.find((user) => user.id === viewerId);
   const canGoToLogworkApprovals = viewer ? canAccessLogworkApprovalsRole(viewer.role) : false;
 
@@ -188,12 +252,11 @@ export function TaskDetailModal({
 
   useEffect(() => {
     const handleNewNotification = () => {
-      // If a task notification arrives and the modal is open for this task, we can refetch logs
       if (isOpen && taskId) {
-        taskApi
-          .getLogs(taskId)
-          .then((res) => setTaskLogs(res.data))
-          .catch(() => {});
+        void Promise.all([
+          taskApi.getLogs(taskId).then((res) => setTaskLogs(res.data)),
+          taskApi.listLogworks(taskId).then((res) => setLogworks(res.data)),
+        ]).catch(() => {});
       }
     };
     window.addEventListener("new_notification", handleNewNotification);
@@ -280,16 +343,19 @@ export function TaskDetailModal({
   }
 
   function handleClose() {
+    if (isConfirmDeleteOpen || isLogworkModalOpen || selectedLogworkEntry) {
+      return;
+    }
     void commitPendingEstimate();
     onClose();
   }
 
-  async function handleAssigneeChange(nextAssigneeId: string) {
+  async function handleAssigneeChange(nextAssigneeIds: string[]) {
     if (!task) return;
 
     setIsSaving(true);
     try {
-      await taskApi.updateAssignee(task.id, nextAssigneeId);
+      await taskApi.updateAssignee(task.id, nextAssigneeIds);
       const [refreshed, newLogs] = await Promise.all([
         taskApi.getEnrichedTask(task.id, undefined, { users }),
         taskApi.getLogs(task.id),
@@ -332,9 +398,6 @@ export function TaskDetailModal({
 
   async function handleDeleteTask() {
     if (!task) return;
-    if (!confirm("Bạn có chắc chắn muốn xoá task này không?")) {
-      return;
-    }
 
     setIsSaving(true);
     try {
@@ -438,12 +501,12 @@ export function TaskDetailModal({
                 padding: "0.5rem 1rem",
                 fontSize: "0.85rem",
               }}
-              onClick={() => void handleDeleteTask()}
+              onClick={() => setIsConfirmDeleteOpen(true)}
               disabled={isLoading || isSaving}
             >
               Xoá task
             </button>
-            {task?.projectId ? (
+            {showGoToProject && task?.projectId ? (
               <a
                 href={`/projects/${task.projectId}?tab=${isWaterfall ? "gantt" : "kanban"}&highlightTaskId=${task.id}&highlightColor=green`}
                 className="secondary-button"
@@ -463,7 +526,10 @@ export function TaskDetailModal({
               <button
                 type="button"
                 className="primary-button"
-                onClick={() => setIsLogworkModalOpen(true)}
+                onClick={() => {
+                  setEditingLogworkEntry(null);
+                  setIsLogworkModalOpen(true);
+                }}
                 disabled={isLoading}
                 style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}
               >
@@ -520,24 +586,6 @@ export function TaskDetailModal({
                 </label>
 
                 <label className="task-detail-field">
-                  <span className="task-detail-field-label">Người thực hiện</span>
-                  <AssigneeSelect
-                    className="task-detail-control"
-                    value={isBacklog ? "" : task?.assigneeId || ""}
-                    onChange={(val) => void handleAssigneeChange(val)}
-                    disabled={isLoading || isSaving || !canEditAssignee}
-                    title={
-                      isAgile
-                        ? "Trong mô hình Agile, người thực hiện được tự động gán khi kéo thả Task trên bảng Kanban."
-                        : !canManage
-                          ? "Chỉ quản lý mới có quyền phân công người thực hiện trong dự án Waterfall."
-                          : ""
-                    }
-                    options={assigneeOptions}
-                  />
-                </label>
-
-                <label className="task-detail-field">
                   <span className="task-detail-field-label">Ưu tiên</span>
                   <CustomSelect
                     className="task-detail-control"
@@ -568,6 +616,40 @@ export function TaskDetailModal({
                       { value: "HIGH", label: "Cao" },
                       { value: "CRITICAL", label: "Khẩn cấp" },
                     ]}
+                  />
+                </label>
+
+                <label className="task-detail-field">
+                  <span className="task-detail-field-label">Người thực hiện</span>
+                  <AssigneeSelect
+                    className="task-detail-control"
+                    value={isBacklog ? [] : task?.assigneeIds?.length ? task.assigneeIds : task?.assigneeId ? [task.assigneeId] : []}
+                    onChange={(val) => void handleAssigneeChange(val)}
+                    disabled={isLoading || isSaving || !canEditAssignee}
+                    title={
+                      hasChildren
+                        ? "Người thực hiện task cha được lấy từ tất cả người thực hiện các task lá."
+                        : isAgile
+                          ? "Kéo thả trên Kanban sẽ tự thêm người kéo vào danh sách người thực hiện, không gỡ người đang được gán."
+                          : !canManage
+                            ? "Chỉ quản lý mới có quyền phân công người thực hiện trong dự án Waterfall."
+                            : ""
+                    }
+                    options={assigneeOptions}
+                  />
+                </label>
+
+                <label className="task-detail-field">
+                  <span className="task-detail-field-label">Thời gian ước tính</span>
+                  <input
+                    className="task-detail-control"
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={estimateDraft}
+                    onChange={(event) => scheduleEstimateUpdate(event.target.value)}
+                    onBlur={() => void commitPendingEstimate()}
+                    disabled={isLoading || isSaving || !canEditTask}
                   />
                 </label>
 
@@ -635,20 +717,6 @@ export function TaskDetailModal({
                       </svg>
                     </span>
                   </span>
-                </label>
-
-                <label className="task-detail-field">
-                  <span className="task-detail-field-label">Thời gian ước tính</span>
-                  <input
-                    className="task-detail-control"
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={estimateDraft}
-                    onChange={(event) => scheduleEstimateUpdate(event.target.value)}
-                    onBlur={() => void commitPendingEstimate()}
-                    disabled={isLoading || isSaving || !canEditTask}
-                  />
                 </label>
               </div>
 
@@ -726,14 +794,36 @@ export function TaskDetailModal({
                       </div>
                       <div style={{ color: "var(--foreground)" }}>
                         {log.action === "assigned" ? (
-                          <span>
-                            Đã giao việc cho{" "}
-                            <strong style={{ color: "var(--primary-fg)" }}>
-                              {users.find((u) => u.id === log.new_value)?.name ||
-                                log.new_value ||
-                                "Trống"}
-                            </strong>
-                          </span>
+                          (() => {
+                            const { addedNames, removedNames } = formatAssigneeChangeMessage(
+                              log.old_value,
+                              log.new_value,
+                              users,
+                            );
+
+                            if (!addedNames && !removedNames) {
+                              return <span>Đã cập nhật người thực hiện</span>;
+                            }
+
+                            return (
+                              <span>
+                                {addedNames ? (
+                                  <>
+                                    Đã giao việc cho{" "}
+                                    <strong style={{ color: "var(--primary-fg)" }}>{addedNames}</strong>
+                                  </>
+                                ) : null}
+                                {addedNames && removedNames ? ". " : null}
+                                {removedNames ? (
+                                  <>
+                                    Đã xóa{" "}
+                                    <strong style={{ color: "var(--primary-fg)" }}>{removedNames}</strong>{" "}
+                                    khỏi task
+                                  </>
+                                ) : null}
+                              </span>
+                            );
+                          })()
                         ) : log.action === "updated" ? (
                           <span>
                             Đã cập nhật <strong>{log.field_changed}</strong>
@@ -811,7 +901,13 @@ export function TaskDetailModal({
                           {formatDateTime(entry.createdAt)}
                         </span>
                       </div>
-                      <div style={{ color: "var(--foreground)" }}>{logworkSummary(entry)}</div>
+                      <div className="task-detail-logwork-meta">
+                        <span className="task-detail-logwork-hours">{entry.hoursSpent}h</span>
+                        <span className={`logwork-status-pill ${logworkStatusClassName(entry.status)}`}>
+                          {logworkStatusLabel(entry.status)}
+                        </span>
+                        <span className="task-detail-logwork-note">{truncateText(entry.workContent)}</span>
+                      </div>
                     </button>
                   ))
                 ) : (
@@ -828,9 +924,13 @@ export function TaskDetailModal({
       {task ? (
         <LogworkModal
           isOpen={isLogworkModalOpen}
-          onClose={() => setIsLogworkModalOpen(false)}
+          onClose={() => {
+            setIsLogworkModalOpen(false);
+            setEditingLogworkEntry(null);
+          }}
           taskId={task.id}
           userId={viewerId}
+          entry={editingLogworkEntry}
           onSuccess={async () => {
             const response = await taskApi.listLogworks(task.id);
             setLogworks(response.data);
@@ -843,6 +943,29 @@ export function TaskDetailModal({
         isOpen={!!selectedLogworkEntry}
         onClose={() => setSelectedLogworkEntry(null)}
         canGoToApprovals={canGoToLogworkApprovals}
+        canEdit={
+          selectedLogworkEntry
+            ? canEditPendingLogwork(selectedLogworkEntry.status, selectedLogworkEntry.userId, viewerId)
+            : false
+        }
+        onEdit={() => {
+          if (!selectedLogworkEntry) return;
+          setEditingLogworkEntry(selectedLogworkEntry);
+          setSelectedLogworkEntry(null);
+          setIsLogworkModalOpen(true);
+        }}
+      />
+
+      <ConfirmModal
+        isOpen={isConfirmDeleteOpen}
+        onClose={() => setIsConfirmDeleteOpen(false)}
+        onConfirm={async () => {
+          await handleDeleteTask();
+          setIsConfirmDeleteOpen(false);
+        }}
+        title="Xoá task"
+        message="Bạn có chắc chắn muốn xoá task này không? Hành động này không thể hoàn tác."
+        confirmText="Xoá"
       />
     </div>
   );

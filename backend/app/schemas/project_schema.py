@@ -108,6 +108,31 @@ class RoleResponse(BaseModel):
         from_attributes = True
 
 
+class RoleDetailResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    is_admin: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    user_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class RoleCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_admin: bool = False
+
+
+class RoleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_admin: Optional[bool] = None
+
+
 class PaginatedProjectsResponse(BaseModel):
     items: List[ProjectResponse]
     total: int

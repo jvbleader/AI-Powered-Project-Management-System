@@ -1,10 +1,13 @@
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
 from app.services.ai_services.intent_guards import (
+    build_low_weight_history_block,
     is_destructive_or_forbidden_write,
-    latest_user_text,
+    is_task_creation_followup,
+    latest_human_text,
+    low_weight_summary_block,
 )
 from app.services.ai_services.state import AgentState
 import logging
@@ -36,7 +39,7 @@ def supervisor_node(state: AgentState) -> dict:
         dict: Chứa quyết định điều hướng (router_decision).
     """
     messages = state["messages"]
-    latest = latest_user_text(messages)
+    latest = latest_human_text(messages)
 
     # Chặn sớm: xóa hàng loạt / SQL ghi — không để LLM route sang task/qna rồi "tạo lại" draft.
     if is_destructive_or_forbidden_write(latest):
@@ -44,8 +47,16 @@ def supervisor_node(state: AgentState) -> dict:
         logger.info(f"User: {latest[:200]}")
         return {"router_decision": "out_of_scope"}
 
+    # Câu trả lời cho yêu cầu bổ sung thông tin task phải tiếp tục luồng task,
+    # kể cả khi bản thân câu mới không chứa từ khóa nghiệp vụ.
+    if is_task_creation_followup(messages):
+        logger.info("==== SUPERVISOR TASK FOLLOW-UP ====")
+        logger.info(f"Tiếp tục luồng tạo task với câu trả lời: {latest[:200]}")
+        return {"router_decision": "task"}
+
     summary = state.get("summary", "")
-    summary_text = f"\n\nBẢN TÓM TẮT LỊCH SỬ TRÒ CHUYỆN:\n{summary}" if summary else ""
+    summary_text = low_weight_summary_block(summary)
+    history_block = build_low_weight_history_block(messages)
 
     system_prompt = (
         "Bạn là Điều phối viên (Supervisor) cấp cao của hệ thống Quản lý dự án thông minh.\n"
@@ -65,6 +76,8 @@ def supervisor_node(state: AgentState) -> dict:
         "   - HOẶC yêu cầu phá hủy/ghi DB trực tiếp: xóa task/hết task, DELETE/UPDATE/DROP/TRUNCATE SQL, wipe dữ liệu.\n"
         "     (AI không hỗ trợ xóa hay chạy SQL ghi — phải từ chối.)\n\n"
         "LƯU Ý QUAN TRỌNG:\n"
+        "- Phân loại theo YÊU CẦU MỚI NHẤT (trọng số 100%). Lịch sử 20 tin gần nhất trọng số 30–40%, chỉ để hiểu follow-up.\n"
+        "- CẤM giữ nguyên ý định/câu trả lời của lượt trước nếu câu mới là lệnh khác.\n"
         "- Hãy suy luận dựa trên Ý ĐỊNH THỰC SỰ của câu. Ví dụ: Nếu người dùng hỏi 'Nên làm gì hôm nay?', đó là ý định TÌM LỜI KHUYÊN (qna), không phải là tạo task.\n"
         "- Câu có từ khóa nghiệp vụ ('dự án', 'task'…) nhưng là LỆNH XÓA / SQL GHI → 'out_of_scope'.\n"
         "- Các câu nghiệp vụ còn lại (tra cứu / tạo task) xếp 'qna' hoặc 'task', không xếp 'out_of_scope' chỉ vì tên dự án lạ.\n"
@@ -72,9 +85,17 @@ def supervisor_node(state: AgentState) -> dict:
     )
     system_prompt += summary_text
 
+    router_input = latest
+    if history_block:
+        router_input = (
+            f"{history_block}\n\n"
+            f"YÊU CẦU MỚI NHẤT (trọng số 100% — phân loại theo câu này):\n{latest}"
+        )
+
     router_llm = llm.with_structured_output(RouterSchema)
     response = router_llm.invoke(
-        [SystemMessage(content=system_prompt)] + messages, config={"tags": ["supervisor_llm"]}
+        [SystemMessage(content=system_prompt), HumanMessage(content=router_input)],
+        config={"tags": ["supervisor_llm"]},
     )
 
     # HARDCODE FALLBACK: từ khóa nghiệp vụ → qna, NHƯNG không ghi đè lệnh phá hủy.

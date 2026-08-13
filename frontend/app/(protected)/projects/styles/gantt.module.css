@@ -1,11 +1,13 @@
 .ganttContainer {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 24px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.78);
-  overflow: auto;
+  overflow: hidden;
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 13px;
@@ -19,23 +21,29 @@
   min-height: 100%;
 }
 
-.ganttLeftPane {
-  flex: 0 0 890px;
-  min-width: 890px;
-  border-right: 1px solid #dcdcdc;
-  position: sticky;
-  left: 0;
+.ganttLeftPane,
+.ganttRightPane {
+  flex: 1 1 50%;
+  width: 50%;
+  min-width: 0;
+  overflow-x: scroll;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   background: #ffffff;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
+}
+
+.ganttLeftPane {
+  border-right: 1px solid #d0d7e2;
+  box-shadow: 6px 0 16px rgba(15, 23, 42, 0.06);
+  z-index: 2;
 }
 
 .ganttRightPane {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: max-content;
+  z-index: 1;
+}
+
+.ganttPaneInner {
+  min-height: 100%;
 }
 
 .ganttHeaderRow {
@@ -45,21 +53,20 @@
   color: #333333;
   font-weight: 600;
   height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 25;
 }
 
-.ganttLeftHeader {
-  display: flex;
-  flex: 0 0 auto;
-  border-right: 1px solid #dcdcdc;
-  background: #f8f9fa;
-  height: 100%;
-}
+
 
 .ganttLeftHeaderCell {
   display: flex;
   align-items: center;
   padding: 0 12px;
   border-right: 1px solid #dcdcdc;
+  background: #f8f9fa;
+  flex-shrink: 0;
 }
 
 .ganttLeftHeaderCell:last-child {
@@ -103,6 +110,12 @@
   color: #555;
 }
 
+.ganttDayHeaderToday {
+  background: rgba(22, 163, 74, 0.14);
+  color: #15803d;
+  font-weight: 700;
+}
+
 .ganttBody {
   display: flex;
   flex-direction: column;
@@ -117,28 +130,23 @@
 }
 
 /* Root tasks get a subtle neutral emphasis, not a semantic color */
-.ganttRowRoot .ganttLeftCell {
+.ganttRowRoot .ganttLeftCol {
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
 /* Alternating rows */
-.ganttRow:nth-child(even) .ganttLeftCell:not(.ganttRowRoot) {
+.ganttRow:nth-child(even) .ganttLeftCol:not(.ganttRowRoot .ganttLeftCol) {
   background: #fafafa;
 }
 
-.ganttRow:hover .ganttLeftCell {
+.ganttRow:hover .ganttLeftCol,
+.ganttRowHovered .ganttLeftCol {
   background: #e8f1ff;
 }
 
-.ganttRow:hover .ganttRightCell {
+.ganttRow:hover .ganttRightCell,
+.ganttRowHovered .ganttRightCell {
   background: rgba(232, 241, 255, 0.45);
-}
-
-.ganttLeftCell {
-  display: flex;
-  flex: 0 0 auto;
-  border-right: 1px solid #dcdcdc;
-  background: #ffffff;
 }
 
 .ganttLeftCol {
@@ -150,6 +158,18 @@
   gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.stickyCol {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+}
+
+.ganttHeaderRow .stickyCol {
+  z-index: 35;
 }
 
 @keyframes flashHighlightBlueAnim {
@@ -157,6 +177,13 @@
   80% { background-color: rgba(59, 130, 246, 0.4); }
   100% { background-color: transparent; }
 }
+
+@keyframes flashStickyBlueAnim {
+  0% { background-color: rgb(191, 219, 254); }
+  80% { background-color: rgb(191, 219, 254); }
+  100% { background-color: #ffffff; }
+}
+
 .flashHighlightBlue::after {
   content: "";
   position: absolute;
@@ -166,11 +193,47 @@
   animation: flashHighlightBlueAnim 5s ease-out forwards;
 }
 
+.flashHighlightBlue > .stickyCol {
+  animation: flashStickyBlueAnim 5s ease-out forwards;
+}
+
+@keyframes flashHighlightYellowAnim {
+  0% { background-color: rgba(245, 158, 11, 0.42); }
+  80% { background-color: rgba(245, 158, 11, 0.42); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flashStickyYellowAnim {
+  0% { background-color: rgb(253, 230, 138); }
+  80% { background-color: rgb(253, 230, 138); }
+  100% { background-color: #ffffff; }
+}
+
+.flashHighlightYellow::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+  animation: flashHighlightYellowAnim 5s ease-out forwards;
+}
+
+.flashHighlightYellow > .stickyCol {
+  animation: flashStickyYellowAnim 5s ease-out forwards;
+}
+
 @keyframes flashHighlightRedAnim {
   0% { background-color: rgba(220, 38, 38, 0.4); }
   80% { background-color: rgba(220, 38, 38, 0.4); }
   100% { background-color: transparent; }
 }
+
+@keyframes flashStickyRedAnim {
+  0% { background-color: rgb(252, 165, 165); }
+  80% { background-color: rgb(252, 165, 165); }
+  100% { background-color: #ffffff; }
+}
+
 .flashHighlightRed::after {
   content: "";
   position: absolute;
@@ -180,11 +243,22 @@
   animation: flashHighlightRedAnim 5s ease-out forwards;
 }
 
+.flashHighlightRed > .stickyCol {
+  animation: flashStickyRedAnim 5s ease-out forwards;
+}
+
 @keyframes flashHighlightGreenAnim {
   0% { background-color: rgba(22, 163, 74, 0.4); }
   80% { background-color: rgba(22, 163, 74, 0.4); }
   100% { background-color: transparent; }
 }
+
+@keyframes flashStickyGreenAnim {
+  0% { background-color: rgb(187, 247, 208); }
+  80% { background-color: rgb(187, 247, 208); }
+  100% { background-color: #ffffff; }
+}
+
 .flashHighlightGreen::after {
   content: "";
   position: absolute;
@@ -194,12 +268,53 @@
   animation: flashHighlightGreenAnim 5s ease-out forwards;
 }
 
+.flashHighlightGreen > .stickyCol {
+  animation: flashStickyGreenAnim 5s ease-out forwards;
+}
+
+.flashHighlightBlue::after,
+.flashHighlightYellow::after,
+.flashHighlightRed::after,
+.flashHighlightGreen::after {
+  display: none;
+}
+
+.flashHighlightBlue > .ganttLeftCol,
+.flashHighlightBlue > .ganttRightCell {
+  animation: flashStickyBlueAnim 5s ease-out forwards;
+}
+
+.flashHighlightYellow > .ganttLeftCol,
+.flashHighlightYellow > .ganttRightCell {
+  animation: flashStickyYellowAnim 5s ease-out forwards;
+}
+
+.flashHighlightRed > .ganttLeftCol,
+.flashHighlightRed > .ganttRightCell {
+  animation: flashStickyRedAnim 5s ease-out forwards;
+}
+
+.flashHighlightGreen > .ganttLeftCol,
+.flashHighlightGreen > .ganttRightCell {
+  animation: flashStickyGreenAnim 5s ease-out forwards;
+}
+
+.flashHighlightBlue > .ganttLeftCol,
+.flashHighlightBlue > .ganttRightCell,
+.flashHighlightYellow > .ganttLeftCol,
+.flashHighlightYellow > .ganttRightCell,
+.flashHighlightRed > .ganttLeftCol,
+.flashHighlightRed > .ganttRightCell,
+.flashHighlightGreen > .ganttLeftCol,
+.flashHighlightGreen > .ganttRightCell {
+  background-image: none;
+}
+
 .ganttLeftCol:last-child {
   border-right: none;
 }
 
 .priorityCol {
-  justify-content: center;
 }
 
 .ganttRightCell {
@@ -229,15 +344,60 @@
 .ganttBar {
   position: relative;
   z-index: 1;
-  height: 20px;
-  margin-top: 9px;
-  border-radius: 2px;
+  height: 22px;
+  margin-top: 8px;
+  padding: 2px 0;
+  box-sizing: border-box;
+  border-radius: 0;
   border: 1px solid transparent;
-  transition: all 0.2s ease;
+  transition: filter 0.2s ease, transform 0.2s ease;
 }
+
 .ganttBar:hover {
   transform: translateY(-1px);
   filter: brightness(1.05);
+}
+
+.ganttBarInner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 16px;
+}
+
+.ganttBarProgress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #1c4a7e;
+  border-radius: 0;
+}
+
+.ganttBarProgressComplete {
+  border-right: none;
+}
+
+.ganttBarProgressPartial {
+  border-right: 1px solid #102a47;
+}
+
+.ganttBarLabel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 .ganttBarLow {
@@ -363,6 +523,9 @@
   color: #475569;
   font-size: 12px;
   line-height: 1.35;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -452,11 +615,20 @@
   transform: translateX(-50%);
 }
 
+.todayPin {
+  position: sticky;
+  top: 56px;
+  z-index: 24;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
 .todayLabel {
   position: absolute;
   top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 8px;
+  transform: none;
   background: #16a34a;
   color: #fff;
   font-size: 10px;
@@ -465,4 +637,77 @@
   border-radius: 4px;
   white-space: nowrap;
   pointer-events: none;
+}
+
+/* Custom Tooltip */
+.tooltipContainer {
+  position: relative;
+}
+
+.customTooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  background: #1e293b;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+  text-align: left;
+}
+
+.customTooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: #1e293b transparent transparent transparent;
+}
+
+/* For elements that don't use tooltipContainer but have hover state */
+.ganttBar:hover .customTooltip,
+.tooltipContainer:hover .customTooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Scrollbar Styles */
+.ganttContainer::-webkit-scrollbar,
+.ganttLeftPane::-webkit-scrollbar,
+.ganttRightPane::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.ganttContainer::-webkit-scrollbar-track,
+.ganttLeftPane::-webkit-scrollbar-track,
+.ganttRightPane::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 8px;
+}
+
+.ganttContainer::-webkit-scrollbar-thumb,
+.ganttLeftPane::-webkit-scrollbar-thumb,
+.ganttRightPane::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+  border: 3px solid #f1f5f9;
+}
+
+.ganttContainer::-webkit-scrollbar-thumb:hover,
+.ganttLeftPane::-webkit-scrollbar-thumb:hover,
+.ganttRightPane::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }

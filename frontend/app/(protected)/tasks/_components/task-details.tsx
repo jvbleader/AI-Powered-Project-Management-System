@@ -1,11 +1,13 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Surface, StatusPill, StatCard } from "@/components/ui";
-import { formatHours, taskPriorityLabel, taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
+import { formatAssigneeNames, formatHours, taskPriorityLabel, taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
 import type { EnrichedTask } from "@/types";
 import { LogworkModal } from "./logwork-modal";
 import { useRouter } from "next/navigation";
 import { taskApi } from "@/services/api";
+
+import { ConfirmModal } from "@/components/confirm-modal";
 
 interface TaskDetailsProps {
   task: EnrichedTask;
@@ -15,6 +17,7 @@ interface TaskDetailsProps {
 export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
   const router = useRouter();
   const [isLogworkModalOpen, setIsLogworkModalOpen] = useState(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
 
   return (
     <>
@@ -36,17 +39,7 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
               type="button"
               className="secondary-button"
               style={{ color: "var(--critical-fg)", borderColor: "var(--critical-border)" }}
-              onClick={async () => {
-                if (confirm("Bạn có chắc chắn muốn xoá task này không?")) {
-                  try {
-                    await taskApi.remove(task.id);
-                    router.push("/tasks");
-                    router.refresh();
-                  } catch (e) {
-                    alert("Lỗi khi xoá task");
-                  }
-                }
-              }}
+              onClick={() => setIsConfirmDeleteOpen(true)}
             >
               Xoá task
             </button>
@@ -75,8 +68,8 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
           />
           <StatCard
             label="Người thực hiện"
-            value={task.assignee?.name || "Chưa phân công"}
-            note={task.assignee?.title || ""}
+            value={formatAssigneeNames(task, "Chưa phân công")}
+            note={task.assignees?.length > 1 ? `${task.assignees.length} người` : task.assignee?.title || ""}
             tone="critical"
           />
         </section>
@@ -96,6 +89,24 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
         onClose={() => setIsLogworkModalOpen(false)}
         taskId={task.id}
         userId={viewerId}
+      />
+
+      <ConfirmModal
+        isOpen={isConfirmDeleteOpen}
+        onClose={() => setIsConfirmDeleteOpen(false)}
+        onConfirm={async () => {
+          try {
+            await taskApi.remove(task.id);
+            setIsConfirmDeleteOpen(false);
+            router.push("/tasks");
+            router.refresh();
+          } catch (e) {
+            alert("Lỗi khi xoá task");
+          }
+        }}
+        title="Xoá task"
+        message="Bạn có chắc chắn muốn xoá task này không? Hành động này không thể hoàn tác."
+        confirmText="Xoá"
       />
     </>
   );

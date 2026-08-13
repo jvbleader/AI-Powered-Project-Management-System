@@ -54,10 +54,6 @@ async def stream_chat_sse(
     SSE stream dùng SessionLocal riêng — không dùng session từ Depends(get_db).
     FastAPI đóng request DB khi StreamingResponse bắt đầu gửi, gây 'read of closed file'.
     """
-    if not session_id.isdigit():
-        yield f"data: {json.dumps({'error': 'Invalid session ID'})}\n\n"
-        return
-
     db = SessionLocal()
     try:
         current_user = (
@@ -70,13 +66,17 @@ async def stream_chat_sse(
             yield f"data: {json.dumps({'error': 'User not found'})}\n\n"
             return
 
-        db_session_id = int(session_id)
-
-        session = ai_repository.get_session_by_id_and_user(db, db_session_id, current_user.id)
-        if not session:
+        if not session_id.isdigit():
             session = ai_repository.create_session(db, current_user.id, "Đoạn chat mới")
             db_session_id = session.id
             yield f"data: {json.dumps({'new_session_id': str(db_session_id)})}\n\n"
+        else:
+            db_session_id = int(session_id)
+            session = ai_repository.get_session_by_id_and_user(db, db_session_id, current_user.id)
+            if not session:
+                session = ai_repository.create_session(db, current_user.id, "Đoạn chat mới")
+                db_session_id = session.id
+                yield f"data: {json.dumps({'new_session_id': str(db_session_id)})}\n\n"
 
         ai_repository.create_message(db, db_session_id, "user", message)
 
@@ -92,6 +92,7 @@ async def stream_chat_sse(
                 "thread_id": thread_id,
                 "db": db,
                 "project_id": project_id,
+                "conversation_project_id": getattr(session, "project_id", None),
                 "current_user": current_user,
             }
         }

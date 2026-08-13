@@ -1,9 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Surface, StatusPill } from "@/components/ui";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { UserAvatar } from "@/components/user-avatar";
 import { FilterSelect } from "@/components/filter-select";
 import { projectApi, userApi } from "@/services/api";
-import { projectRoleLabel, getRoleTone, isManagerRole, isLeaderRole } from "@/lib/utils/format";
+import { useAutoPageSize } from "@/hooks/use-auto-page-size";
+import { projectRoleLabel, getRoleTone, isManagerRole, isLeaderRole, expandRoleDisplayLabels, comparePersonnelByRank } from "@/lib/utils/format";
 import styles from "../../team/styles/team.module.css";
 import type { Department, UserProfile } from "@/types";
 import type { Project } from "@/types/project";
@@ -30,9 +33,21 @@ interface ProjectMembersProps {
   canManage: boolean;
   accessibleUsers: UserProfile[];
   project?: Project;
+  isAdding?: boolean;
+  onAddingChange?: (open: boolean) => void;
+  onCanManageChange?: (canManage: boolean) => void;
 }
 
-export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers, project }: ProjectMembersProps) {
+export function ProjectMembers({
+  projectId,
+  viewerId,
+  canManage,
+  accessibleUsers,
+  project,
+  isAdding: isAddingProp,
+  onAddingChange,
+  onCanManageChange,
+}: ProjectMembersProps) {
   const [members, setMembers] = useState<ProjectMemberItem[]>([]);
   const [roles, setRoles] = useState<ProjectRoleItem[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -40,19 +55,36 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
   const [error, setError] = useState<string | null>(null);
 
   const [page, setPage] = useState(1);
-  const MEMBERS_PER_PAGE = 10;
+  const tableAnchorRef = useRef<HTMLDivElement>(null);
+  const pageSize = useAutoPageSize({
+    anchorRef: tableAnchorRef,
+    rowHeight: 60,
+    headerHeight: 48,
+    footerHeight: 80,
+    min: 4,
+    max: 40,
+    remeasureKey: members.length,
+  });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
-  const [isAdding, setIsAdding] = useState(false);
+  const [isAddingInternal, setIsAddingInternal] = useState(false);
+  const isAdding = isAddingProp ?? isAddingInternal;
+  const setIsAdding = (open: boolean) => {
+    if (isAddingProp === undefined) {
+      setIsAddingInternal(open);
+    }
+    onAddingChange?.(open);
+  };
   const [newDepartment, setNewDepartment] = useState<string>("");
   const [newUserId, setNewUserId] = useState<string>("");
   const [newUserRoleId, setNewUserRoleId] = useState<number>(0);
   const [candidateUsers, setCandidateUsers] = useState<UserProfile[]>([]);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [candidateError, setCandidateError] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<ProjectMemberItem | null>(null);
 
   const extractErrorMessage = (error: unknown, fallback: string) => {
     return error instanceof Error ? error.message : fallback;
@@ -78,6 +110,11 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
 
   const canManageMembers = canManage || !!isProjectPMOrLeader;
   const projectDepartmentName = project?.departmentName?.trim() || "";
+  const hideInlineAddButton = typeof onAddingChange === "function";
+
+  useEffect(() => {
+    onCanManageChange?.(canManageMembers);
+  }, [canManageMembers, onCanManageChange]);
 
   useEffect(() => {
     async function loadData() {
@@ -154,6 +191,15 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
     setIsAdding(true);
   };
 
+  useEffect(() => {
+    if (!isAddingProp) return;
+    setNewDepartment(projectDepartmentName || departments[0]?.name || "");
+    setNewUserId("");
+    setNewUserRoleId(0);
+    // Chỉ khởi tạo form khi mở từ header; không reset theo departments đang load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAddingProp]);
+
   const handleAddMember = async () => {
     if (!newUserId) return;
     try {
@@ -176,8 +222,10 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
     }
   };
 
-  const handleRemoveMember = async (memberId: number) => {
-    if (!confirm("Bạn có chắc muốn tạm dừng thành viên này khỏi dự án?")) return;
+  const handleRemoveMember = async () => {
+    if (!memberToRemove) return;
+    const memberId = memberToRemove.id;
+    setMemberToRemove(null);
     try {
       await projectApi.removeMember(projectId, memberId);
       await reloadMembers();
@@ -211,242 +259,300 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
 
   const activePMCount = members.filter(m => m.isActive && m.roleName === "PROJECT_MANAGER").length;
 
-  const filteredMembers = members.filter(m => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (
-      normalizedQuery &&
-      !m.userName.toLowerCase().includes(normalizedQuery) &&
-      !m.userEmail.toLowerCase().includes(normalizedQuery)
-    ) {
-      return false;
-    }
-    if (roleFilter !== "ALL" && m.roleId.toString() !== roleFilter) return false;
-    if (statusFilter !== "ALL") {
-      const isStatusActive = statusFilter === "ACTIVE";
-      if (m.isActive !== isStatusActive) return false;
-    }
-    return true;
-  });
+  const filteredMembers = members
+    .filter((m) => {
+      const normalizedQuery = searchQuery.trim().toLowerCase();
+      if (
+        normalizedQuery &&
+        !m.userName.toLowerCase().includes(normalizedQuery) &&
+        !m.userEmail.toLowerCase().includes(normalizedQuery)
+      ) {
+        return false;
+      }
+      if (roleFilter !== "ALL" && m.roleId.toString() !== roleFilter) return false;
+      if (statusFilter !== "ALL") {
+        const isStatusActive = statusFilter === "ACTIVE";
+        if (m.isActive !== isStatusActive) return false;
+      }
+      return true;
+    })
+    .sort((left, right) => {
+      const leftUser = accessibleUsers.find(
+        (user) => user.id === `usr-${left.userId}` || user.id.replace("usr-", "") === String(left.userId),
+      );
+      const rightUser = accessibleUsers.find(
+        (user) => user.id === `usr-${right.userId}` || user.id.replace("usr-", "") === String(right.userId),
+      );
+      return comparePersonnelByRank(
+        {
+          role: left.roleName || leftUser?.role,
+          department: leftUser?.department,
+          name: left.userName,
+        },
+        {
+          role: right.roleName || rightUser?.role,
+          department: rightUser?.department,
+          name: right.userName,
+        },
+      );
+    });
 
-  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / pageSize));
   const validPage = Math.min(page, totalPages);
 
   const paginatedMembers = filteredMembers.slice(
-    (validPage - 1) * MEMBERS_PER_PAGE,
-    validPage * MEMBERS_PER_PAGE,
+    (validPage - 1) * pageSize,
+    validPage * pageSize,
   );
 
   const userLookup = new Map(
     accessibleUsers.map((user) => [user.id, user]),
   );
 
+  const handleCloseAddForm = () => {
+    setIsAdding(false);
+    setNewUserId("");
+    setNewUserRoleId(0);
+    setNewDepartment(projectDepartmentName);
+    setCandidateUsers([]);
+  };
+
   return (
+    <>
     <Surface title="Danh sách thành viên">
-      {canManageMembers && (
-        <div style={{ marginBottom: "1.5rem" }}>
-          {!isAdding ? (
-            <button type="button" className="primary-button" onClick={handleOpenAddForm}>
-              + Thêm thành viên
-            </button>
-          ) : (
+      {canManageMembers && !hideInlineAddButton ? (
+        <div style={{ marginBottom: "1.25rem" }}>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={handleOpenAddForm}
+            style={{
+              fontWeight: 600,
+              fontSize: "0.875rem",
+              padding: "0.45rem 0.85rem",
+            }}
+          >
+            + Thêm thành viên
+          </button>
+        </div>
+      ) : null}
+
+      {canManageMembers && isAdding && typeof document !== "undefined"
+        ? createPortal(
             <div
-              className="project-members-add-row"
+              role="presentation"
+              onMouseDown={handleCloseAddForm}
               style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(160px, 0.9fr) minmax(0, 1.35fr) minmax(160px, 0.85fr) auto",
-                gap: "0.85rem",
-                alignItems: "end",
-                background: "rgba(248, 250, 252, 0.95)",
-                padding: "1.15rem 1.25rem",
-                borderRadius: "16px",
-                border: "1px solid rgba(148, 163, 184, 0.2)",
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(0,0,0,0.5)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1000,
+                padding: "1.25rem",
               }}
             >
-              <label style={{ display: "flex", flexDirection: "column", gap: "0.45rem", minWidth: 0 }}>
-                <span className="task-detail-field-label" style={{ marginBottom: 0 }}>
-                  Phòng ban
-                </span>
-                <FilterSelect
-                  value={newDepartment}
-                  onChange={(dept) => {
-                    setNewDepartment(dept);
-                    setNewUserId("");
+              <section
+                className={`password-modal ${styles.addModal}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="add-project-member-title"
+                onMouseDown={(event) => event.stopPropagation()}
+                style={{ overflow: "hidden" }}
+              >
+                <div
+                  className="password-modal-header"
+                  style={{
+                    borderTopLeftRadius: "var(--modal-radius)",
+                    borderTopRightRadius: "var(--modal-radius)",
                   }}
-                  options={[
-                    { value: "", label: "Chọn phòng ban..." },
-                    ...departments.map((dept) => ({
-                      value: dept.name,
-                      label:
-                        projectDepartmentName && dept.name === projectDepartmentName
-                          ? `${dept.name} (phòng dự án)`
-                          : dept.name,
-                    })),
-                  ]}
-                  placeholder="Chọn phòng ban..."
-                  searchable
-                  searchPlaceholder="Tìm phòng ban..."
-                  size="lg"
-                />
-              </label>
+                >
+                  <div>
+                    <span className="eyebrow">Thành viên dự án</span>
+                    <h2 id="add-project-member-title">Thêm thành viên</h2>
+                    <p>Chọn phòng ban, người dùng và vai trò để thêm vào dự án.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={handleCloseAddForm}
+                    aria-label="Đóng"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m6 6 12 12M18 6 6 18" />
+                    </svg>
+                  </button>
+                </div>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: "0.45rem", minWidth: 0 }}>
-                <span className="task-detail-field-label" style={{ marginBottom: 0 }}>
-                  Người dùng
-                </span>
-                <FilterSelect
-                  value={newUserId}
-                  onChange={(selectedUserId) => {
-                    setNewUserId(selectedUserId);
-                    if (selectedUserId) {
-                      const user = availableUsersToAdd.find((u) => u.id === selectedUserId);
-                      if (user?.role) {
-                        const matchedRole = roles.find((r) => r.name === user.role);
-                        if (matchedRole) {
-                          setNewUserRoleId(matchedRole.id);
+                <form
+                  className={styles.addForm}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleAddMember();
+                  }}
+                >
+                  <label className={styles.filterField}>
+                    <span>Phòng ban</span>
+                    <FilterSelect
+                      value={newDepartment}
+                      onChange={(dept) => {
+                        setNewDepartment(dept);
+                        setNewUserId("");
+                      }}
+                      options={[
+                        { value: "", label: "Chọn phòng ban..." },
+                        ...departments.map((dept) => ({
+                          value: dept.name,
+                          label:
+                            projectDepartmentName && dept.name === projectDepartmentName
+                              ? `${dept.name} (phòng dự án)`
+                              : dept.name,
+                        })),
+                      ]}
+                      placeholder="Chọn phòng ban..."
+                      searchable
+                      searchPlaceholder="Tìm phòng ban..."
+                      size="lg"
+                    />
+                  </label>
+
+                  <label className={styles.filterField}>
+                    <span>Người dùng</span>
+                    <FilterSelect
+                      value={newUserId}
+                      onChange={(selectedUserId) => {
+                        setNewUserId(selectedUserId);
+                        if (selectedUserId) {
+                          const user = availableUsersToAdd.find((u) => u.id === selectedUserId);
+                          if (user?.role) {
+                            const matchedRole = roles.find((r) => r.name === user.role);
+                            if (matchedRole) {
+                              setNewUserRoleId(matchedRole.id);
+                            }
+                          }
                         }
-                      }
-                    }
-                  }}
-                  options={[
-                    {
-                      value: "",
-                      label: isLoadingCandidates
-                        ? "Đang tải người dùng..."
-                        : newDepartment
-                          ? "Chọn người dùng..."
-                          : "Chọn phòng ban trước...",
-                    },
-                    ...availableUsersToAdd.map((u) => ({
-                      value: u.id,
-                      label: `${u.name} · ${u.email}`,
-                    })),
-                  ]}
-                  placeholder="Chọn người dùng..."
-                  searchable
-                  searchPlaceholder="Tìm theo tên hoặc email..."
-                  size="lg"
-                  disabled={!newDepartment || isLoadingCandidates}
-                />
-                {candidateError ? (
-                  <span style={{ color: "var(--status-critical)", fontSize: "0.8rem" }}>
-                    {candidateError}
-                  </span>
-                ) : null}
-                {!candidateError &&
-                newDepartment &&
-                !isLoadingCandidates &&
-                availableUsersToAdd.length === 0 ? (
-                  <span style={{ color: "var(--foreground-muted)", fontSize: "0.8rem" }}>
-                    Không còn người dùng khả dụng trong phòng ban này.
-                  </span>
-                ) : null}
-              </label>
+                      }}
+                      options={[
+                        {
+                          value: "",
+                          label: isLoadingCandidates
+                            ? "Đang tải người dùng..."
+                            : newDepartment
+                              ? "Chọn người dùng..."
+                              : "Chọn phòng ban trước...",
+                        },
+                        ...availableUsersToAdd.map((u) => ({
+                          value: u.id,
+                          label: `${u.name} · ${u.email}`,
+                        })),
+                      ]}
+                      placeholder="Chọn người dùng..."
+                      searchable
+                      searchPlaceholder="Tìm theo tên hoặc email..."
+                      size="lg"
+                      disabled={!newDepartment || isLoadingCandidates}
+                    />
+                    {candidateError ? (
+                      <span style={{ color: "var(--status-critical)", fontSize: "0.8rem" }}>
+                        {candidateError}
+                      </span>
+                    ) : null}
+                    {!candidateError &&
+                    newDepartment &&
+                    !isLoadingCandidates &&
+                    availableUsersToAdd.length === 0 ? (
+                      <span style={{ color: "var(--foreground-muted)", fontSize: "0.8rem" }}>
+                        Không còn người dùng khả dụng trong phòng ban này.
+                      </span>
+                    ) : null}
+                  </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: "0.45rem", minWidth: 0 }}>
-                <span className="task-detail-field-label" style={{ marginBottom: 0 }}>
-                  Vai trò
-                </span>
-                <FilterSelect
-                  value={String(newUserRoleId)}
-                  onChange={(val) => {
-                    setNewUserRoleId(Number(val));
-                    setNewUserId("");
-                  }}
-                  options={[
-                    { value: "0", label: "Tất cả vai trò" },
-                    ...filteredRoles.map((r) => ({
-                      value: String(r.id),
-                      label: projectRoleLabel(r.name),
-                    })),
-                  ]}
-                  placeholder="Chọn vai trò"
-                  size="lg"
-                />
-              </label>
+                  <label className={styles.filterField}>
+                    <span>Vai trò</span>
+                    <FilterSelect
+                      value={String(newUserRoleId)}
+                      onChange={(val) => {
+                        setNewUserRoleId(Number(val));
+                        setNewUserId("");
+                      }}
+                      options={[
+                        { value: "0", label: "Tất cả vai trò" },
+                        ...filteredRoles.map((r) => ({
+                          value: String(r.id),
+                          label: projectRoleLabel(r.name),
+                        })),
+                      ]}
+                      placeholder="Chọn vai trò"
+                      size="lg"
+                    />
+                  </label>
 
-              <div style={{ display: "flex", gap: "0.55rem", flexShrink: 0, paddingBottom: "0.1rem" }}>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={handleAddMember}
-                  disabled={!newUserId}
-                  style={{
-                    borderRadius: "999px",
-                    padding: "0.8rem 1.25rem",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Thêm
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => {
-                    setIsAdding(false);
-                    setNewUserId("");
-                    setNewUserRoleId(0);
-                    setNewDepartment(projectDepartmentName);
-                    setCandidateUsers([]);
-                  }}
-                  style={{
-                    borderRadius: "999px",
-                    padding: "0.8rem 1.1rem",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Hủy
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+                  <div className={styles.addActions}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handleCloseAddForm}
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      className="primary-button"
+                      disabled={!newUserId}
+                    >
+                      Thêm
+                    </button>
+                  </div>
+                </form>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "1rem",
-          marginBottom: "1rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", flex: "1 1 280px" }}>
-          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Tìm kiếm thành viên
-          </span>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Nhập tên hoặc email người dùng..."
-            style={{
-              padding: "0.75rem 1rem",
-              borderRadius: "999px",
-              border: "1px solid var(--border)",
-              background: "var(--surface)",
-              color: "var(--foreground)",
-            }}
-          />
-        </label>
-        <div style={{ color: "var(--foreground-muted)", fontSize: "0.9rem" }}>
-          {filteredMembers.length} thành viên phù hợp
-        </div>
+      <div style={{ marginBottom: "1rem" }}>
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setPage(1);
+          }}
+          placeholder="Nhập tên hoặc email người dùng..."
+          aria-label="Tìm kiếm thành viên"
+          style={{
+            width: "100%",
+            maxWidth: "420px",
+            padding: "0.7rem 1rem",
+            borderRadius: "10px",
+            border: "1.5px solid rgba(15, 23, 42, 0.18)",
+            background: "var(--surface-strong)",
+            color: "var(--ink)",
+            outline: "none",
+            boxShadow: "none",
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = "rgba(37, 99, 235, 0.45)";
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = "rgba(15, 23, 42, 0.18)";
+          }}
+        />
       </div>
 
-      <div className={styles.tableWrap}>
+      <div className={styles.tableWrap} ref={tableAnchorRef}>
         <table className={styles.table}>
           <thead>
             <tr>
               <th>Thành viên</th>
               <th>Email</th>
               <th>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}>
-                  Vai trò
+                <div className={styles.headerFilter}>
+                  <span>Vai trò</span>
                   <div style={{ position: "relative", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--foreground-muted)" }}>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ position: "absolute", pointerEvents: "none" }}>
                       <path d="M7 10l5 5 5-5z" />
@@ -465,25 +571,7 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
                 </div>
               </th>
               <th>Ngày tham gia</th>
-              <th>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}>
-                  Trạng thái
-                  <div style={{ position: "relative", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--foreground-muted)" }}>
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ position: "absolute", pointerEvents: "none" }}>
-                      <path d="M7 10l5 5 5-5z" />
-                    </svg>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", appearance: "none" }}
-                    >
-                      <option value="ALL">Tất cả</option>
-                      <option value="ACTIVE">Hoạt động</option>
-                      <option value="INACTIVE">Tạm dừng</option>
-                    </select>
-                  </div>
-                </div>
-              </th>
+
               {canManageMembers && <th />}
             </tr>
           </thead>
@@ -509,44 +597,74 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
                       </div>
                     </td>
                     <td>{member.userEmail}</td>
-                    <td style={{ textAlign: "center" }}>
-                      <StatusPill
-                        label={projectRoleLabel(member.roleName)}
-                        tone={getRoleTone(member.roleName)}
-                      />
+                    <td>
+                      <div className={styles.roleStack} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.25rem" }}>
+                        {expandRoleDisplayLabels(member.roleName).map((rolePart, idx) => (
+                          <StatusPill
+                            key={idx}
+                            label={rolePart}
+                            tone={getRoleTone(rolePart as any)}
+                            style={{ borderRadius: "10px", padding: "0.3rem 0.6rem", fontSize: "0.75rem" }}
+                          />
+                        ))}
+                      </div>
                     </td>
                     <td>{new Date(member.joinedAt).toLocaleDateString("vi-VN")}</td>
-                    <td style={{ textAlign: "center" }}>
-                      <StatusPill
-                        label={member.isActive ? "Hoạt động" : "Tạm dừng"}
-                        tone={member.isActive ? "on-track" : "critical"}
-                      />
-                    </td>
+
                     {canManageMembers && (
                       <td>
                         {member.userId.toString() !== viewerId.replace("usr-", "") && (
                           member.isActive ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              style={{
-                                color: "var(--status-critical)",
-                                borderColor: "var(--status-critical)",
-                                background: "transparent",
-                                opacity: (member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) ? 0.5 : 1,
-                                cursor: (member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) ? "not-allowed" : "pointer"
-                              }}
-                              disabled={(member.roleName === "PROJECT_MANAGER" && activePMCount <= 1) || !canManageMembers}
-                              title={member.roleName === "PROJECT_MANAGER" && activePMCount <= 1 ? "Không thể gỡ Quản lý dự án duy nhất" : ""}
-                              onClick={() => handleRemoveMember(member.id)}
-                            >
-                              Gỡ bỏ
-                            </button>
+                            !(isManagerRole(member.roleName) || member.roleName.includes("Manager") || member.roleName.includes("PM")) && (
+                              <button
+                                type="button"
+                                aria-label="Gỡ bỏ thành viên"
+                                disabled={!canManageMembers}
+                                title="Gỡ bỏ"
+                                onClick={() => setMemberToRemove(member)}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: 32,
+                                  height: 32,
+                                  padding: 0,
+                                  border: "none",
+                                  borderRadius: 8,
+                                  background: "transparent",
+                                  color: "var(--critical)",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden
+                                >
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  <line x1="10" y1="11" x2="10" y2="17" />
+                                  <line x1="14" y1="11" x2="14" y2="17" />
+                                </svg>
+                              </button>
+                            )
                           ) : (
                             <button
                               type="button"
                               className="secondary-button"
-                              style={{ color: "var(--primary-base)", borderColor: "var(--primary-base)", background: "transparent" }}
+                              style={{
+                                color: "var(--primary-base)",
+                                borderColor: "var(--primary-base)",
+                                background: "transparent",
+                                padding: "0.35rem 0.7rem",
+                                fontSize: "0.8rem",
+                              }}
                               onClick={() => handleRestoreMember(member)}
                             >
                               Thêm lại
@@ -573,8 +691,8 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
       {totalPages > 1 && (
         <div className={styles.paginationBar} style={{ marginTop: "1rem" }}>
           <p>
-            Hiển thị {(validPage - 1) * MEMBERS_PER_PAGE + 1} -{" "}
-            {Math.min(validPage * MEMBERS_PER_PAGE, filteredMembers.length)} / {filteredMembers.length} thành viên.
+            Hiển thị {(validPage - 1) * pageSize + 1} -{" "}
+            {Math.min(validPage * pageSize, filteredMembers.length)} / {filteredMembers.length} thành viên.
           </p>
           <div className={styles.paginationActions}>
             <button
@@ -597,5 +715,20 @@ export function ProjectMembers({ projectId, viewerId, canManage, accessibleUsers
         </div>
       )}
     </Surface>
+    <ConfirmModal
+      isOpen={Boolean(memberToRemove)}
+      onClose={() => setMemberToRemove(null)}
+      onConfirm={() => void handleRemoveMember()}
+      title="Gỡ thành viên khỏi dự án"
+      message={
+        memberToRemove
+          ? `Bạn có chắc muốn tạm dừng “${memberToRemove.userName}” khỏi dự án? Thành viên này sẽ không còn truy cập dự án cho đến khi được khôi phục.`
+          : ""
+      }
+      confirmText="Gỡ thành viên"
+      cancelText="Hủy"
+      isDanger
+    />
+    </>
   );
 }

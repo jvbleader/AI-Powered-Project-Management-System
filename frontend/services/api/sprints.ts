@@ -1,18 +1,62 @@
 import { Sprint, SprintFilters, UserProfile } from "@/types";
-import { apiEndpoints, requestApi, respond } from "./core";
+import { apiEndpoints, requestApi, wrapBackendResponse } from "./core";
+
+type BackendSprint = {
+  id: number | string;
+  project_id: number | string;
+  name: string;
+  goal?: string | null;
+  status?: string | null;
+  start_date: string;
+  end_date: string;
+};
+
+type BackendSprintUpdate = Partial<
+  Pick<BackendSprint, "name" | "goal" | "status" | "start_date" | "end_date">
+>;
+
+function toSprintStatus(status?: string | null): Sprint["status"] {
+  const normalized = status?.trim().toUpperCase();
+  if (normalized === "ACTIVE" || normalized === "REVIEW" || normalized === "CLOSED") {
+    return normalized;
+  }
+  return "PLANNED";
+}
+
+export function toFrontendSprint(sprint: BackendSprint): Sprint {
+  return {
+    id: String(sprint.id),
+    projectId: String(sprint.project_id),
+    name: sprint.name,
+    goal: sprint.goal ?? "",
+    status: toSprintStatus(sprint.status),
+    progress: 0,
+    committedPoints: 0,
+    completedPoints: 0,
+    plannedStart: sprint.start_date,
+    plannedEnd: sprint.end_date,
+    health: "on-track",
+    focusAreas: [],
+  };
+}
 
 export const sprintApi = {
   async list(filters?: SprintFilters, viewer?: UserProfile | null) {
+    void viewer;
     if (filters?.projectId) {
       const endpoint = apiEndpoints.sprints.list(filters.projectId);
-      return requestApi<Sprint[]>(endpoint, undefined);
+      const response = await requestApi<BackendSprint[]>(endpoint, undefined);
+      return wrapBackendResponse(response.data.map(toFrontendSprint));
     }
     const endpoint = { method: "GET" as const, path: "/api/sprints" };
-    return requestApi<Sprint[]>(endpoint, undefined);
+    const response = await requestApi<BackendSprint[]>(endpoint, undefined);
+    return wrapBackendResponse(response.data.map(toFrontendSprint));
   },
 
   async get(sprintId: string, viewer?: UserProfile | null) {
-    return requestApi<Sprint>(apiEndpoints.sprints.detail(sprintId));
+    void viewer;
+    const response = await requestApi<BackendSprint>(apiEndpoints.sprints.detail(sprintId));
+    return wrapBackendResponse(toFrontendSprint(response.data));
   },
 
   async create(projectId: string, payload: Omit<Sprint, "id" | "projectId">) {
@@ -23,22 +67,24 @@ export const sprintApi = {
       end_date: payload.plannedEnd,
       status: payload.status?.toLowerCase(),
     };
-    return requestApi<Sprint>(apiEndpoints.sprints.create(projectId), {
+    const response = await requestApi<BackendSprint>(apiEndpoints.sprints.create(projectId), {
       body: JSON.stringify(backendPayload),
     });
+    return wrapBackendResponse(toFrontendSprint(response.data));
   },
 
   async update(sprintId: string, payload: Partial<Sprint>) {
-    const backendPayload: any = {};
+    const backendPayload: BackendSprintUpdate = {};
     if (payload.name !== undefined) backendPayload.name = payload.name;
     if (payload.goal !== undefined) backendPayload.goal = payload.goal;
     if (payload.plannedStart !== undefined) backendPayload.start_date = payload.plannedStart;
     if (payload.plannedEnd !== undefined) backendPayload.end_date = payload.plannedEnd;
     if (payload.status !== undefined) backendPayload.status = payload.status.toLowerCase();
     
-    return requestApi<Sprint>(apiEndpoints.sprints.update(sprintId), {
+    const response = await requestApi<BackendSprint>(apiEndpoints.sprints.update(sprintId), {
       body: JSON.stringify(backendPayload),
     });
+    return wrapBackendResponse(toFrontendSprint(response.data));
   },
 };
 

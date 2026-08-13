@@ -1,16 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { formatDate, formatDateTime, formatHours } from "@/lib/utils/format";
+import { formatDate, formatDateTime, formatHours, logworkStatusClassName, logworkStatusLabel } from "@/lib/utils/format";
 import type { TaskLogworkEntry } from "@/types";
 import modalStyles from "../../projects/_components/create-project-modal.module.css";
 import styles from "./logwork-entry-detail-modal.module.css";
-
-function logworkStatusLabel(status: TaskLogworkEntry["status"]) {
-  if (status === "APPROVED") return "Đã duyệt";
-  if (status === "REJECTED") return "Từ chối";
-  return "Chờ duyệt";
-}
 
 interface LogworkEntryDetailModalProps {
   entry: TaskLogworkEntry | null;
@@ -79,7 +73,7 @@ export function LogworkEntryDetailModal({
               <div className={styles.metaItem}>
                 <dt>Trạng thái</dt>
                 <dd>
-                  <span className={`${styles.statusBadge} ${styles[`status_${entry.status}`]}`}>
+                  <span className={`logwork-status-pill ${logworkStatusClassName(entry.status)}`}>
                     {logworkStatusLabel(entry.status)}
                   </span>
                 </dd>

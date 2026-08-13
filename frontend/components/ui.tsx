@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import type { ReactNode, CSSProperties } from "react";
 import { UserAvatar } from "@/components/user-avatar";
+export * from "./ui/table";
 
 type Tone = "accent" | "on-track" | "watch" | "critical" | "neutral" | "todo" | "progress" | "done";
 
@@ -15,7 +16,7 @@ export function Surface({
   style,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   kicker?: string;
   aside?: ReactNode;
   className?: string;
@@ -46,8 +47,8 @@ export function Surface({
   );
 }
 
-export function StatusPill({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
-  return <span className={classNames("pill", `pill-${tone}`)}>{label}</span>;
+export function StatusPill({ label, tone = "neutral", style }: { label: ReactNode; tone?: Tone; style?: CSSProperties }) {
+  return <span className={classNames("pill", `pill-${tone}`)} style={style}>{label}</span>;
 }
 
 export function ProgressBar({ value, label }: { value: number; label?: string }) {

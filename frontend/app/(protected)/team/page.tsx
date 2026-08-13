@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { taskApi, userApi, workspaceApi } from "@/services/api";
+import { taskApi, userApi, workspaceApi, roleApi } from "@/services/api";
 import { updateSessionCurrentUser } from "@/services/auth/session";
 import { useAuthSession } from "@/hooks/use-session";
+import { useAutoPageSize } from "@/hooks/use-auto-page-size";
 import {
   canAccessTeamDirectoryRole,
   canManageUsers as canManageUsersByRole,
@@ -24,10 +25,10 @@ import type {
   UserStatus,
   WorkspaceShellData,
   Department,
+  SystemRole,
 } from "@/types";
 
 import styles from "./styles/team.module.css";
-import { TeamFilter } from "./_components/team-filter";
 import { UserTable } from "./_components/user-table";
 import { UserDetailModal } from "./_components/user-detail-modal";
 import { AddUserModal } from "./_components/add-user-modal";
@@ -36,7 +37,7 @@ const EMPTY_DIRECTORY: PaginatedUsers = {
   items: [],
   total: 0,
   page: 1,
-  pageSize: 10,
+  pageSize: 8,
   totalPages: 1,
 };
 
@@ -62,11 +63,21 @@ export default function TeamPage() {
   const [roleFilter, setRoleFilter] = useState<UserDirectoryFilters["role"]>("ALL");
   const [departmentFilter, setDepartmentFilter] =
     useState<UserDirectoryFilters["department"]>("ALL");
-  const [pageSize] = useState(15);
+  const tableAnchorRef = useRef<HTMLDivElement>(null);
+  const pageSize = useAutoPageSize({
+    anchorRef: tableAnchorRef,
+    rowHeight: 58,
+    headerHeight: 48,
+    footerHeight: 56,
+    bottomGutter: 72,
+    min: 4,
+    max: 20,
+    fallbackTop: 280,
+    remeasureKey: directory.items.length,
+  });
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSavingStatus, setIsSavingStatus] = useState(false);
-  const [isSavingRoles, setIsSavingRoles] = useState(false);
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusDraft, setStatusDraft] = useState<UserStatus>("ACTIVE");
@@ -83,6 +94,7 @@ export default function TeamPage() {
   const [addPassword, setAddPassword] = useState("123456");
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [systemRoles, setSystemRoles] = useState<SystemRole[]>([]);
   const [canAccessTeamPage, setCanAccessTeamPage] = useState<boolean | null>(
     canAccessTeamDirectoryRole(currentActor.role, currentActor.department) ? true : null,
   );
@@ -118,11 +130,13 @@ export default function TeamPage() {
           { data: nextUsers },
           { data: nextTasks },
           { data: nextDepartments },
+          rolesResult,
         ] = await Promise.all([
           workspaceApi.getShellData(currentActor),
           userApi.list(currentActor),
           taskApi.getEnrichedBoard(undefined, currentActor),
           userApi.getDepartments(),
+          roleApi.list().catch(() => ({ data: [] as SystemRole[] })),
         ]);
 
         if (isCancelled) return;
@@ -130,6 +144,7 @@ export default function TeamPage() {
         setAllUsers(nextUsers);
         setTaskBoard(nextTasks);
         setDepartments(nextDepartments);
+        setSystemRoles(rolesResult.data);
       } catch (loadError) {
         if (!isCancelled)
           setError(
@@ -183,11 +198,18 @@ export default function TeamPage() {
   const taskSummaryByUserId = useMemo(() => {
     return taskBoard.reduce<Record<string, { total: number; open: number; inProgress: number }>>(
       (summary, task) => {
-        const entry = summary[task.assigneeId] ?? { total: 0, open: 0, inProgress: 0 };
-        entry.total += 1;
-        if (task.status !== "DONE") entry.open += 1;
-        if (task.status === "IN_PROGRESS") entry.inProgress += 1;
-        summary[task.assigneeId] = entry;
+        const assigneeIds = task.assigneeIds?.length
+          ? task.assigneeIds
+          : task.assigneeId
+            ? [task.assigneeId]
+            : [];
+        for (const assigneeId of assigneeIds) {
+          const entry = summary[assigneeId] ?? { total: 0, open: 0, inProgress: 0 };
+          entry.total += 1;
+          if (task.status !== "DONE") entry.open += 1;
+          if (task.status === "IN_PROGRESS") entry.inProgress += 1;
+          summary[assigneeId] = entry;
+        }
         return summary;
       },
       {},
@@ -223,47 +245,36 @@ export default function TeamPage() {
     }
   }
 
-  async function handleSaveStatus() {
+  async function handleSaveDetails(statusDirty: boolean, rolesDirty: boolean) {
     if (!selectedUser) return;
     setError(null);
     setNotice(null);
-    setIsSavingStatus(true);
+    setIsSavingDetails(true);
+    let currentUserData = selectedUser;
+    
     try {
-      const { data: updatedUser } = await userApi.updateStatus(
-        { userId: selectedUser.id, status: statusDraft },
-        currentActor,
-      );
-      patchUser(updatedUser);
+      if (statusDirty) {
+        const { data } = await userApi.updateStatus(
+          { userId: selectedUser.id, status: statusDraft },
+          currentActor,
+        );
+        currentUserData = data;
+      }
+      if (rolesDirty) {
+        const { data } = await userApi.updateRoles(
+          { userId: selectedUser.id, roles: roleDraft, department: departmentDraft },
+          currentActor,
+        );
+        currentUserData = data;
+      }
+      patchUser(currentUserData);
       setReloadKey((c) => c + 1);
-      setNotice(`Đã cập nhật trạng thái của ${updatedUser.name} thành công.`);
+      setNotice(`Đã cập nhật thông tin của ${currentUserData.name} thành công.`);
       setSelectedUserId(null);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Không thể cập nhật trạng thái.");
+      setError(saveError instanceof Error ? saveError.message : "Không thể cập nhật thông tin.");
     } finally {
-      setIsSavingStatus(false);
-    }
-  }
-
-  async function handleSaveRoles() {
-    if (!selectedUser) return;
-    setError(null);
-    setNotice(null);
-    setIsSavingRoles(true);
-    try {
-      const { data: updatedUser } = await userApi.updateRoles(
-        { userId: selectedUser.id, roles: roleDraft, department: departmentDraft },
-        currentActor,
-      );
-      patchUser(updatedUser);
-      setReloadKey((c) => c + 1);
-      setNotice(`Đã cập nhật chức danh của ${updatedUser.name} thành công.`);
-      setSelectedUserId(null);
-    } catch (saveError) {
-      setError(
-        saveError instanceof Error ? saveError.message : "Không thể cập nhật quyền truy cập.",
-      );
-    } finally {
-      setIsSavingRoles(false);
+      setIsSavingDetails(false);
     }
   }
 
@@ -318,65 +329,67 @@ export default function TeamPage() {
     }
   }
 
+  const roleNames = systemRoles.map((role) => role.name);
+
   return (
     <WorkspaceShell
       shellData={shellData}
-      heading="Danh sách người dùng"
+      heading="Quản lí nhân sự"
       subheading="Giao diện bảng hỗ trợ tìm kiếm nhanh, phân trang và thao tác quản trị tài khoản theo đúng luồng vận hành."
       highlightLabel="Users"
       highlightValue={`${directory.total}`}
     >
       <div className={styles.pageStack}>
-        <TeamFilter
-          search={search}
-          onSearchChange={(v) => {
-            setSearch(v);
-            setPage(1);
-          }}
-          statusFilter={statusFilter}
-          onStatusFilterChange={(v) => {
-            setStatusFilter(v);
-            setPage(1);
-          }}
-          roleFilter={roleFilter}
-          onRoleFilterChange={(v) => {
-            setRoleFilter(v);
-            setPage(1);
-          }}
-          departmentFilter={departmentFilter}
-          onDepartmentFilterChange={(v) => {
-            setDepartmentFilter(v);
-            setPage(1);
-          }}
-          departments={directoryDepartments}
-          canFilterDepartment={canFilterDepartment}
-          currentDepartment={currentActor.department || ""}
-          hideDirectorRoles={isHeadOfDevViewer}
-        />
-
         <UserTable
-          directory={directory}
-          taskSummaryByUserId={taskSummaryByUserId}
-          isLoading={isLoading}
-          canManageUsers={canManageUsers}
-          page={page}
-          onPageChange={setPage}
-          onAddUserClick={() => setIsAddModalOpen(true)}
-          onUserSelect={(user) => {
-            setSelectedUserId(user.id);
-            setStatusDraft(user.status ?? "ACTIVE");
-            setRoleDraft(user.roles?.length ? user.roles : [user.role]);
-            setDepartmentDraft(user.department ?? "");
-            setNotice(null);
-            setError(null);
-          }}
-        />
+            directory={directory}
+            taskSummaryByUserId={taskSummaryByUserId}
+            isLoading={isLoading}
+            canManageUsers={canManageUsers}
+            page={page}
+            onPageChange={setPage}
+            tableAnchorRef={tableAnchorRef}
+            onAddUserClick={() => setIsAddModalOpen(true)}
+            onUserSelect={(user) => {
+              setSelectedUserId(user.id);
+              setStatusDraft(user.status ?? "ACTIVE");
+              setRoleDraft(user.roles?.length ? user.roles : [user.role]);
+              setDepartmentDraft(user.department ?? "");
+              setNotice(null);
+              setError(null);
+            }}
+            search={search}
+            onSearchChange={(v) => {
+              setSearch(v);
+              setPage(1);
+            }}
+            statusFilter={statusFilter}
+            onStatusFilterChange={(v) => {
+              setStatusFilter(v);
+              setPage(1);
+            }}
+            roleFilter={roleFilter}
+            onRoleFilterChange={(v) => {
+              setRoleFilter(v);
+              setPage(1);
+            }}
+            departmentFilter={departmentFilter}
+            onDepartmentFilterChange={(v) => {
+              setDepartmentFilter(v);
+              setPage(1);
+            }}
+            departments={directoryDepartments}
+            roles={roleNames}
+            canFilterDepartment={canFilterDepartment}
+            currentDepartment={currentActor.department || ""}
+            hideDirectorRoles={isHeadOfDevViewer}
+          />
       </div>
 
       {selectedUser && (
         <UserDetailModal
           user={selectedUser}
           departments={departments}
+          roles={systemRoles}
           taskSummary={selectedUserTaskSummary}
           canManageUsers={canManageUsers}
           onClose={() => setSelectedUserId(null)}
@@ -386,10 +399,8 @@ export default function TeamPage() {
           onRoleDraftChange={setRoleDraft}
           departmentDraft={departmentDraft}
           onDepartmentDraftChange={setDepartmentDraft}
-          isSavingStatus={isSavingStatus}
-          onSaveStatus={handleSaveStatus}
-          isSavingRoles={isSavingRoles}
-          onSaveRoles={handleSaveRoles}
+          isSaving={isSavingDetails}
+          onSave={handleSaveDetails}
           isResettingPassword={isResettingPassword}
           onResetPassword={handleResetPassword}
           error={error}
@@ -400,6 +411,7 @@ export default function TeamPage() {
       <AddUserModal
         isOpen={isAddModalOpen}
         departments={departments}
+        roles={systemRoles}
         onClose={() => setIsAddModalOpen(false)}
         addName={addName}
         onAddNameChange={setAddName}

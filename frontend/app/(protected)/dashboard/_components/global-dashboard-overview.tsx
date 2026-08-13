@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type WheelEvent } from "react";
 import Link from "next/link";
 
 import type {
@@ -12,10 +12,11 @@ import type {
 import { Surface, DonutChart, ColumnChart, type ColumnChartTone } from "@/components/ui";
 import { logworkApi } from "@/services/api/logworks";
 import { FilterSelect } from "@/components/filter-select";
-import { formatDate } from "@/lib/utils/format";
+import { formatDate, logworkStatusClassName, logworkStatusLabel } from "@/lib/utils/format";
 
 type GlobalDashboardOverviewProps = {
   overview: GlobalDashboardOverviewType | null;
+  canViewRecentLogworks?: boolean;
 };
 
 const kpiBaseStyle: CSSProperties = {
@@ -37,6 +38,72 @@ const surfaceCardStyle: CSSProperties = {
   boxShadow: "0 2px 10px -6px rgba(15, 23, 42, 0.1)",
   border: "1px solid rgba(148, 163, 184, 0.14)",
 };
+
+const ATTENTION_LIST_MAX_HEIGHT = 200;
+
+function ScrollChainBox({
+  children,
+  maxHeight = ATTENTION_LIST_MAX_HEIGHT,
+  style,
+}: {
+  children: ReactNode;
+  maxHeight?: number;
+  style?: CSSProperties;
+}) {
+  const scrollParent = (start: HTMLElement | null, deltaY: number) => {
+    let node = start;
+    while (node) {
+      const { overflowY } = window.getComputedStyle(node);
+      if (overflowY === "auto" || overflowY === "scroll") {
+        if (node.scrollHeight > node.clientHeight + 1) {
+          node.scrollTop += deltaY;
+          return;
+        }
+      }
+      node = node.parentElement;
+    }
+    window.scrollBy({ top: deltaY });
+  };
+
+  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    const { deltaY } = event;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const canScrollUp = scrollTop > 0;
+    const canScrollDown = scrollTop + clientHeight < scrollHeight - 1;
+
+    if (scrollHeight <= clientHeight + 1) {
+      event.preventDefault();
+      scrollParent(el.parentElement, deltaY);
+      return;
+    }
+
+    if ((deltaY < 0 && !canScrollUp) || (deltaY > 0 && !canScrollDown)) {
+      event.preventDefault();
+      scrollParent(el.parentElement, deltaY);
+    }
+  };
+
+  return (
+    <div
+      className="dashboard-scroll-panel"
+      onWheel={onWheel}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        marginTop: "0.1rem",
+        maxHeight,
+        minHeight: 0,
+        overflowY: "auto",
+        overscrollBehavior: "auto",
+        paddingRight: "0.1rem",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 const HEALTH_RANK = { critical: 0, watch: 1, "on-track": 2 } as const;
 
@@ -376,33 +443,6 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
     }
   };
 
-  const logworkStatusLabel = (status?: string) => {
-    const normalized = (status || "").toUpperCase();
-    if (normalized === "APPROVED") return "Đã duyệt";
-    if (normalized === "REJECTED") return "Từ chối";
-    return "Chờ duyệt";
-  };
-
-  const logworkStatusTone = (status?: string) => {
-    const normalized = (status || "").toUpperCase();
-    if (normalized === "APPROVED") {
-      return {
-        background: "rgba(34, 197, 94, 0.15)",
-        color: "#15803d",
-      };
-    }
-    if (normalized === "REJECTED") {
-      return {
-        background: "rgba(239, 68, 68, 0.15)",
-        color: "#b91c1c",
-      };
-    }
-    return {
-      background: "rgba(234, 179, 8, 0.15)",
-      color: "#b45309",
-    };
-  };
-
   return (
     <div className="global-dash" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
       {/* Row 1 — KPI */}
@@ -420,13 +460,13 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           onKeyDown={(e) => e.key === "Enter" && setIsTotalProjectsModalOpen(true)}
           style={{
             ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
-            border: "1px solid rgba(37, 99, 235, 0.12)",
+            background: "var(--surface)",
+            border: "1px solid var(--surface-border)",
           }}
         >
           <div
             style={{
-              color: "#1e3a8a",
+              color: "var(--foreground-muted)",
               fontSize: "0.68rem",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -435,14 +475,14 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           >
             Dự án
           </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#1d4ed8", lineHeight: 1.05 }}>
+          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "var(--ink)", lineHeight: 1.05 }}>
             {activeProjects}
-            <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#3b82f6" }}>
+            <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--foreground-muted)" }}>
               {" "}
               / {totalProjects}
             </span>
           </div>
-          <div style={{ fontSize: "0.75rem", color: "#3b82f6" }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--foreground-muted)" }}>
             Đang chạy · {completedProjects} hoàn thành
           </div>
         </div>
@@ -454,13 +494,13 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           onKeyDown={(e) => e.key === "Enter" && setIsCompletedTasksModalOpen(true)}
           style={{
             ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
-            border: "1px solid rgba(217, 119, 6, 0.18)",
+            background: "var(--surface)",
+            border: "1px solid var(--surface-border)",
           }}
         >
           <div
             style={{
-              color: "#92400e",
+              color: "var(--foreground-muted)",
               fontSize: "0.68rem",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -469,10 +509,10 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           >
             Việc đang mở
           </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#78350f", lineHeight: 1.05 }}>
+          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "var(--ink)", lineHeight: 1.05 }}>
             {openTasks}
           </div>
-          <div style={{ fontSize: "0.75rem", color: "#b45309" }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--foreground-muted)" }}>
             trên {totalTasks} tasks toàn hệ thống
           </div>
         </div>
@@ -484,13 +524,13 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           onKeyDown={(e) => e.key === "Enter" && setIsOverdueTasksModalOpen(true)}
           style={{
             ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
-            border: "1px solid rgba(220, 38, 38, 0.12)",
+            background: "var(--surface)",
+            border: "1px solid var(--surface-border)",
           }}
         >
           <div
             style={{
-              color: "#7f1d1d",
+              color: "var(--foreground-muted)",
               fontSize: "0.68rem",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -499,10 +539,10 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           >
             Quá hạn
           </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#b91c1c", lineHeight: 1.05 }}>
+          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "var(--ink)", lineHeight: 1.05 }}>
             {taskSummary.overdue}
           </div>
-          <div style={{ fontSize: "0.75rem", color: "#dc2626" }}>Cần xử lý gấp →</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--foreground-muted)" }}>Cần xử lý gấp →</div>
         </div>
       </div>
 
@@ -518,6 +558,133 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
         }}
       >
         <Surface
+          title={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+              <span>Task quá hạn</span>
+              <CountBadge value={filteredOverdueTasks.length} tone="red" />
+            </div>
+          }
+          style={{
+            ...surfaceCardStyle,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+          aside={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+              <div style={{ minWidth: "140px", maxWidth: "180px", width: "min(180px, 26vw)" }}>
+                <FilterSelect
+                  value={overdueProjectFilter}
+                  onChange={setOverdueProjectFilter}
+                  options={riskProjectOptions}
+                  placeholder="Tất cả dự án"
+                  searchable
+                  searchPlaceholder="Tìm tên dự án..."
+                  size="sm"
+                  variant="combobox"
+                />
+              </div>
+            </div>
+          }
+        >
+          <ScrollChainBox>
+            {filteredOverdueTasks.length > 0 ? (
+              filteredOverdueTasks.map((task) => (
+                <TaskLinkRow
+                  key={task.id}
+                  task={task}
+                  accent="red"
+                  highlightColor="red"
+                />
+              ))
+            ) : (
+              <div
+                style={{
+                  padding: "1rem 0.5rem",
+                  textAlign: "center",
+                  color: "var(--foreground-muted)",
+                  fontSize: "0.78rem",
+                }}
+              >
+                Không có nhiệm vụ quá hạn
+                {overdueProjectFilter ? " cho dự án đã chọn" : ""}
+              </div>
+            )}
+          </ScrollChainBox>
+        </Surface>
+
+        <Surface
+          title={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+              <span>Task sắp tới hạn</span>
+              <CountBadge value={filteredUpcomingDeadlines.length} tone="blue" />
+            </div>
+          }
+          style={{
+            ...surfaceCardStyle,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+          aside={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+              <div style={{ minWidth: "140px", maxWidth: "180px", width: "min(180px, 26vw)" }}>
+                <FilterSelect
+                  value={upcomingProjectFilter}
+                  onChange={setUpcomingProjectFilter}
+                  options={riskProjectOptions}
+                  placeholder="Tất cả dự án"
+                  searchable
+                  searchPlaceholder="Tìm tên dự án..."
+                  size="sm"
+                  variant="combobox"
+                />
+              </div>
+            </div>
+          }
+        >
+          <ScrollChainBox>
+            {filteredUpcomingDeadlines.length > 0 ? (
+              filteredUpcomingDeadlines.map((task) => (
+                <TaskLinkRow
+                  key={task.id}
+                  task={task}
+                  accent="blue"
+                  highlightColor="blue"
+                />
+              ))
+            ) : (
+              <div
+                style={{
+                  padding: "1rem 0.5rem",
+                  textAlign: "center",
+                  color: "var(--foreground-muted)",
+                  fontSize: "0.78rem",
+                }}
+              >
+                Không có nhiệm vụ sắp tới hạn trong 7 ngày
+                {upcomingProjectFilter ? " cho dự án đã chọn" : ""}
+              </div>
+            )}
+          </ScrollChainBox>
+        </Surface>
+      </div>
+
+      {/* Row 3 — Overdue + upcoming + activity */}
+      <div
+        ref={riskSectionRef}
+        className="global-dash-risk"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
+          gridTemplateRows: "minmax(0, 1fr) minmax(0, 1fr)",
+          height: 680,
+          gap: "0.75rem",
+          minWidth: 0,
+          alignItems: "stretch",
+        }}
+      >
+        <Surface
           title="Phân bổ nhiệm vụ"
           style={{
             ...surfaceCardStyle,
@@ -525,6 +692,8 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
             display: "flex",
             flexDirection: "column",
             minHeight: 330,
+            gridColumn: 1,
+            gridRow: 1,
           }}
         >
           <div
@@ -645,12 +814,9 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
             display: "flex",
             flexDirection: "column",
             minHeight: 330,
+            gridColumn: 1,
+            gridRow: 2,
           }}
-          aside={
-            <span style={{ fontSize: "0.68rem", color: "var(--foreground-muted)" }}>
-              Cuộn ngang · màu theo trạng thái
-            </span>
-          }
         >
           <div
             style={{
@@ -663,151 +829,6 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
             }}
           >
             <ColumnChart height="100%" items={portfolioItems} />
-          </div>
-        </Surface>
-      </div>
-
-      {/* Row 3 — Overdue + upcoming + activity */}
-      <div
-        ref={riskSectionRef}
-        className="global-dash-risk"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
-          gridTemplateRows: "minmax(0, 1fr) minmax(0, 1fr)",
-          height: 680,
-          gap: "0.75rem",
-          minWidth: 0,
-          alignItems: "stretch",
-        }}
-      >
-        <Surface
-          title="Task quá hạn"
-          style={{
-            ...surfaceCardStyle,
-            height: "100%",
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-            overflow: "hidden",
-            gridColumn: 1,
-            gridRow: 1,
-          }}
-          aside={
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-              <CountBadge value={filteredOverdueTasks.length} tone="red" />
-              <div style={{ minWidth: "150px", maxWidth: "200px", width: "min(200px, 26vw)" }}>
-                <FilterSelect
-                  value={overdueProjectFilter}
-                  onChange={setOverdueProjectFilter}
-                  options={riskProjectOptions}
-                  placeholder="Tất cả dự án"
-                  searchable
-                  searchPlaceholder="Tìm tên dự án..."
-                />
-              </div>
-            </div>
-          }
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              marginTop: "0.1rem",
-              flex: 1,
-              minHeight: 0,
-              overflowY: "auto",
-              paddingRight: "0.1rem",
-              overscrollBehavior: "contain",
-            }}
-          >
-            {filteredOverdueTasks.length > 0 ? (
-              filteredOverdueTasks.map((task) => (
-                <TaskLinkRow
-                  key={task.id}
-                  task={task}
-                  accent="red"
-                  highlightColor="red"
-                />
-              ))
-            ) : (
-              <div
-                style={{
-                  padding: "1rem 0.5rem",
-                  textAlign: "center",
-                  color: "var(--foreground-muted)",
-                  fontSize: "0.78rem",
-                }}
-              >
-                Không có nhiệm vụ quá hạn
-                {overdueProjectFilter ? " cho dự án đã chọn" : ""}
-              </div>
-            )}
-          </div>
-        </Surface>
-
-        <Surface
-          title="Task sắp tới hạn"
-          style={{
-            ...surfaceCardStyle,
-            height: "100%",
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-            overflow: "hidden",
-            gridColumn: 1,
-            gridRow: 2,
-          }}
-          aside={
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-              <CountBadge value={filteredUpcomingDeadlines.length} tone="blue" />
-              <div style={{ minWidth: "150px", maxWidth: "200px", width: "min(200px, 26vw)" }}>
-                <FilterSelect
-                  value={upcomingProjectFilter}
-                  onChange={setUpcomingProjectFilter}
-                  options={riskProjectOptions}
-                  placeholder="Tất cả dự án"
-                  searchable
-                  searchPlaceholder="Tìm tên dự án..."
-                />
-              </div>
-            </div>
-          }
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              marginTop: "0.1rem",
-              flex: 1,
-              minHeight: 0,
-              overflowY: "auto",
-              paddingRight: "0.1rem",
-              overscrollBehavior: "contain",
-            }}
-          >
-            {filteredUpcomingDeadlines.length > 0 ? (
-              filteredUpcomingDeadlines.map((task) => (
-                <TaskLinkRow
-                  key={task.id}
-                  task={task}
-                  accent="blue"
-                  highlightColor="blue"
-                />
-              ))
-            ) : (
-              <div
-                style={{
-                  padding: "1rem 0.5rem",
-                  textAlign: "center",
-                  color: "var(--foreground-muted)",
-                  fontSize: "0.78rem",
-                }}
-              >
-                Không có nhiệm vụ sắp tới hạn trong 7 ngày
-                {upcomingProjectFilter ? " cho dự án đã chọn" : ""}
-              </div>
-            )}
           </div>
         </Surface>
 
@@ -1493,15 +1514,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
                     }}
                   >
                     <strong style={{ fontSize: "1.15rem" }}>{selectedLogwork.hours}h</strong>
-                    <span
-                      style={{
-                        fontSize: "0.78rem",
-                        fontWeight: 600,
-                        padding: "0.2rem 0.6rem",
-                        borderRadius: "999px",
-                        ...logworkStatusTone(selectedLogwork.status),
-                      }}
-                    >
+                    <span className={`logwork-status-pill ${logworkStatusClassName(selectedLogwork.status)}`}>
                       {logworkStatusLabel(selectedLogwork.status)}
                     </span>
                   </div>

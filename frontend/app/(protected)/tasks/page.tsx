@@ -88,11 +88,11 @@ function TasksPageContent() {
       alertCount: 0,
     } satisfies WorkspaceShellData);
 
-  // Lọc chỉ các task ĐƯỢC GÁN cho viewer và chưa hoàn thành
-  const myTasks = taskState?.tasks?.filter(t => t.assigneeId === viewer.id && t.status !== "DONE") ?? [];
+  // Thành viên dự án xem toàn bộ task của các dự án mình tham gia
+  const projectTasks = taskState?.tasks ?? [];
   const filteredTasks = selectedProjectId === "ALL"
-    ? myTasks
-    : myTasks.filter((task) => task.projectId === selectedProjectId);
+    ? projectTasks
+    : projectTasks.filter((task) => task.projectId === selectedProjectId);
   const canManageSelectedTask = Boolean(
     selectedTask &&
       (hasCompanywideProjectAccess(viewer.role, viewer.department) ||
@@ -102,8 +102,8 @@ function TasksPageContent() {
   return (
     <WorkspaceShell
       shellData={shellData}
-      heading="Tiến độ cá nhân"
-      subheading="Danh sách nhiệm vụ được giao cho bạn trên tất cả dự án."
+      heading="Nhiệm vụ dự án"
+      subheading="Danh sách toàn bộ nhiệm vụ trên các dự án bạn đang tham gia."
       highlightLabel="Task đang mở"
       highlightValue={`${filteredTasks.filter((task) => task.status !== "DONE").length}`}
     >
@@ -136,7 +136,7 @@ function TasksPageContent() {
               description={
                 isBoardLoading
                   ? "Hệ thống đang đồng bộ danh sách nhiệm vụ của bạn."
-                  : "Bạn chưa có bất kỳ nhiệm vụ nào."
+                  : "Các dự án bạn tham gia chưa có nhiệm vụ nào."
               }
             />
           </Surface>
@@ -156,7 +156,7 @@ function TasksPageContent() {
             const nextState = {
               ...current,
               tasks: current.tasks.map(t => t.id === updatedTask.id ? { ...t, ...updatedTask } : t)
-            };
+            } as unknown as TaskPageState;
             setTasksPageCache(viewer.id, nextState);
             return nextState;
           });

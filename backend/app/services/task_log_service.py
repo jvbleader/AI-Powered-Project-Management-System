@@ -243,6 +243,50 @@ def notify_task_assignee_changed(
     return notifications
 
 
+def notify_logwork_on_task(
+    db: Session,
+    *,
+    task: Task,
+    actor_user_id: int,
+    actor_name: str | None,
+    hours_spent: float,
+) -> list[Notification]:
+    """Thông báo realtime cho người được giao task khi người khác logwork."""
+    assignee_user_ids: set[int] = set()
+    assignees = db.query(TaskAssignees).filter(TaskAssignees.task_id == task.id).all()
+    for assignee in assignees:
+        member = (
+            db.query(ProjectMember).filter(ProjectMember.id == assignee.project_member_id).first()
+        )
+        if member:
+            assignee_user_ids.add(member.user_id)
+
+    assignee_user_ids.discard(actor_user_id)
+    if not assignee_user_ids:
+        return []
+
+    hours_label = f"{hours_spent:g}h"
+    actor = actor_name or "Một thành viên"
+    notifications: list[Notification] = []
+    for uid in assignee_user_ids:
+        notification = Notification(
+            user_id=uid,
+            type="LOGWORK_ON_TASK",
+            title="Có người logwork trên task của bạn",
+            content=f'{actor} đã ghi {hours_label} trên công việc "{task.title}".',
+            link=f"/tasks?taskId={task.id}",
+        )
+        db.add(notification)
+        notifications.append(notification)
+
+    if notifications:
+        db.commit()
+        for notification in notifications:
+            db.refresh(notification)
+
+    return notifications
+
+
 def create_task_notifications(
     db: Session,
     task: Task,

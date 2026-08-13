@@ -6,6 +6,7 @@ import { WorkspaceShell } from "@/components/workspace-shell";
 import { useAuthSession } from "@/hooks/use-session";
 import {
   canManageProjectsByRole,
+  canViewGlobalDashboardTeamActivity,
   hasCompanywideProjectAccess,
   isAdminRole,
 } from "@/lib/utils/format";
@@ -54,6 +55,9 @@ export default function DashboardPage() {
   const isAdminViewer = isAdminRole(viewer.role);
   const hasCompanywideAccess = hasCompanywideProjectAccess(viewer.role, viewer.department);
   const canManageScope = canManageProjectsByRole(viewer.role, viewer.department);
+  const canViewTeamActivity =
+    overview?.canViewRecentLogworks ??
+    canViewGlobalDashboardTeamActivity(viewer.role, viewer.department);
 
   const shellData: WorkspaceShellData = {
     currentUser: viewer,
@@ -78,9 +82,11 @@ export default function DashboardPage() {
               ? "Dự án quản lý"
               : "Cá nhân"
       }
-      assistantProjectId={null}
     >
-      <GlobalDashboardOverview overview={overview} />
+      <GlobalDashboardOverview
+        overview={overview}
+        canViewRecentLogworks={canViewTeamActivity}
+      />
     </WorkspaceShell>
   );
 }

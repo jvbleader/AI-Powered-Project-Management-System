@@ -4,6 +4,7 @@ export * from "./sprints";
 export * from "./tasks";
 export * from "./logwork";
 export * from "./users";
+export * from "./roles";
 export * from "./dashboard";
 export * from "./workspace";
 export * from "./ai";

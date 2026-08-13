@@ -41,6 +41,22 @@ export function NavIcon({ icon }: { icon: string }) {
     );
   }
 
+  if (icon === "building") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 21V5l8-3 8 3v16H4Zm2-2h3v-3H6Zm5 0h3v-3h-3Zm5 0h3v-3h-3ZM6 13h3V10H6Zm5 0h3V10h-3Zm5 0h3V10h-3ZM6 8h3V5.7L6 6.8Zm5 0h3V5h-3Zm5 0h3V6.8L15 5.7Z" />
+      </svg>
+    );
+  }
+
+  if (icon === "badge") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 2 8 6H4v4l-2 4 2 4v4h4l4 4 4-4h4v-4l2-4-2-4V6h-4L12 2Zm0 5.2A4.8 4.8 0 1 1 7.2 12 4.8 4.8 0 0 1 12 7.2Zm-2.1 3.3 1.5 1.5 3.4-3.4 1.1 1.1-4.5 4.5-2.6-2.6 1.1-1.1Z" />
+      </svg>
+    );
+  }
+
   if (icon === "spark") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">

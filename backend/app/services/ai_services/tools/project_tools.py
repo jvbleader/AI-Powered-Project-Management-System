@@ -4,6 +4,7 @@ from langchain_core.tools import tool
 from sqlalchemy import func, select
 
 from app.models.project_model import Project
+from app.models.sprint_model import Sprint
 from app.models.task_model import Task
 from app.models.user_model import User
 from app.services.ai_services.tools.access import (
@@ -81,10 +82,12 @@ def query_projects(
 @tool
 def get_project_overview(project_id: int, config: ToolConfig = None) -> Dict[str, Any]:
     """
-    Lấy thông tin chi tiết tổng quan của một dự án (thời gian, người quản lý, số lượng task).
+    Lấy nội dung và tiến độ hiện tại của một dự án: mô tả, lịch, số task theo trạng thái,
+    danh sách việc chưa xong, và sprint (nếu Agile).
+    BẮT BUỘC gọi tool này TRƯỚC khi lập bản nháp sprint / task / cây task.
 
     Args:
-        project_id: ID của dự án. (BẮT BUỘC - Nếu thiếu, PHẢI HỎI LẠI người dùng).
+        project_id: ID của dự án. (BẮT BUỘC)
     """
     with tool_db_session() as db:
         user = load_current_user(db, config)
@@ -99,14 +102,21 @@ def get_project_overview(project_id: int, config: ToolConfig = None) -> Dict[str
             if not project:
                 return {"error": "Project not found"}
 
-            total_tasks = db.execute(
-                select(func.count(Task.id)).where(Task.project_id == project_id)
-            ).scalar()
-            done_tasks = db.execute(
-                select(func.count(Task.id)).where(
-                    Task.project_id == project_id, Task.status == "done"
-                )
-            ).scalar()
+            status_rows = db.execute(
+                select(Task.status, func.count(Task.id))
+                .where(Task.project_id == project_id)
+                .group_by(Task.status)
+            ).all()
+            task_status_counts = {row[0]: int(row[1]) for row in status_rows}
+            total_tasks = sum(task_status_counts.values())
+            done_tasks = task_status_counts.get("done", 0)
+
+            open_tasks = db.execute(
+                select(Task)
+                .where(Task.project_id == project_id, Task.status != "done")
+                .order_by(Task.id.asc())
+                .limit(40)
+            ).scalars().all()
 
             manager_name = None
             if project.manager_id:
@@ -116,16 +126,50 @@ def get_project_overview(project_id: int, config: ToolConfig = None) -> Dict[str
                 if manager:
                     manager_name = manager.full_name or manager.email
 
-            return {
+            overview: Dict[str, Any] = {
                 "project_id": project.id,
                 "name": project.name,
                 "status": project.status,
                 "project_type": project.project_type,
+                "description": project.description or "",
                 "manager_name": manager_name,
                 "start_date": project.start_date.isoformat() if project.start_date else None,
                 "end_date": project.end_date.isoformat() if project.end_date else None,
                 "total_tasks": total_tasks,
                 "completed_tasks": done_tasks,
+                "task_status_counts": task_status_counts,
+                "open_tasks": [
+                    {
+                        "task_id": t.id,
+                        "title": t.title,
+                        "status": t.status,
+                        "priority": t.priority,
+                        "parent_task_id": t.parent_task_id,
+                        "sprint_id": t.sprint_id,
+                        "deadline": t.deadline.isoformat() if t.deadline else None,
+                    }
+                    for t in open_tasks
+                ],
             }
+
+            if (project.project_type or "").lower() == "agile":
+                sprints = db.execute(
+                    select(Sprint)
+                    .where(Sprint.project_id == project_id)
+                    .order_by(Sprint.start_date.asc(), Sprint.id.asc())
+                ).scalars().all()
+                overview["sprints"] = [
+                    {
+                        "sprint_id": s.id,
+                        "name": s.name,
+                        "status": s.status,
+                        "start_date": s.start_date.isoformat() if s.start_date else None,
+                        "end_date": s.end_date.isoformat() if s.end_date else None,
+                        "goal": s.goal,
+                    }
+                    for s in sprints
+                ]
+
+            return overview
         except Exception as e:
             return {"error": str(e)}

@@ -3,7 +3,7 @@ import { useSearchParams } from "next/navigation";
 import { taskApi, sprintApi } from "@/services/api";
 import { EnrichedTask, Sprint } from "@/types";
 import { StatusPill } from "@/components/ui";
-import { UserAvatar } from "@/components/user-avatar";
+import { AssigneeAvatars } from "@/components/assignee-avatars";
 import { FilterSelect, type FilterOption } from "@/components/filter-select";
 import { taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
 import styles from "./project-kanban-board.module.css";
@@ -18,6 +18,7 @@ interface ProjectKanbanBoardProps {
   onSelectedSprintIdChange?: (sprintId: string | null) => void;
   onSprintUpdated?: () => void;
   onEditSprint?: (sprintId: string) => void;
+  canManageSprints?: boolean;
 }
 
 const KANBAN_COLUMNS = [
@@ -41,6 +42,23 @@ const PRIORITY_WEIGHT: Record<string, number> = {
   "LOW": 1,
 };
 
+function sprintStartTime(sprint: Sprint) {
+  const raw =
+    sprint.plannedStart ||
+    (sprint as Sprint & { start_date?: string }).start_date ||
+    "";
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function sortSprintsNewestFirst(sprints: Sprint[]) {
+  return [...sprints].sort((a, b) => {
+    const startDiff = sprintStartTime(b) - sprintStartTime(a);
+    if (startDiff !== 0) return startDiff;
+    return Number(b.id) - Number(a.id);
+  });
+}
+
 function normalizeSprintStatus(status?: string) {
   const normalized = status?.trim().toUpperCase();
 
@@ -57,6 +75,36 @@ function normalizeSprintStatus(status?: string) {
   }
 
   return normalized ?? "";
+}
+
+function normalizeUserId(id?: string | null) {
+  return String(id || "").replace(/^usr-/, "");
+}
+
+function collectAssigneeIds(task: EnrichedTask): string[] {
+  if (task.assigneeIds?.length) return [...task.assigneeIds];
+  if (task.assigneeId) return [task.assigneeId];
+  return [];
+}
+
+function withDraggedViewer(task: EnrichedTask, viewerId: string) {
+  const currentIds = collectAssigneeIds(task);
+  const viewerKey = normalizeUserId(viewerId);
+  if (!viewerKey || task.hasChildren || currentIds.some((id) => normalizeUserId(id) === viewerKey)) {
+    return { task, assigneeIds: currentIds, changed: false };
+  }
+
+  const nextId = viewerId.startsWith("usr-") ? viewerId : `usr-${viewerId}`;
+  const assigneeIds = [...currentIds, nextId];
+  return {
+    changed: true,
+    assigneeIds,
+    task: {
+      ...task,
+      assigneeId: task.assigneeId || nextId,
+      assigneeIds,
+    },
+  };
 }
 
 function sortBacklogTasks(tasks: EnrichedTask[]): EnrichedTask[] {
@@ -122,6 +170,7 @@ export function ProjectKanbanBoard({
   onSelectedSprintIdChange,
   onSprintUpdated,
   onEditSprint,
+  canManageSprints = false,
 }: ProjectKanbanBoardProps) {
   const searchParams = useSearchParams();
   const highlightTaskId = searchParams.get("highlightTaskId");
@@ -143,6 +192,10 @@ export function ProjectKanbanBoard({
     });
     setLocalTasks(sortedTasks);
   }, [tasks]);
+  const orderedSprints = useMemo(
+    () => sortSprintsNewestFirst(sprints ?? []),
+    [sprints],
+  );
   const selectedSprintId = selectedSprintIdProp ?? null;
 
   useEffect(() => {
@@ -174,14 +227,14 @@ export function ProjectKanbanBoard({
   }, [highlightTaskId, localTasks, onSelectedSprintIdChange, selectedSprintId]);
 
   useEffect(() => {
-    if (!selectedSprintId && sprints && sprints.length > 0) {
-      const active = sprints.find((s) => normalizeSprintStatus(s.status) === "ACTIVE");
-      const nextSprintId = active ? String(active.id) : String(sprints[0].id);
+    if (!selectedSprintId && orderedSprints.length > 0) {
+      const active = orderedSprints.find((s) => normalizeSprintStatus(s.status) === "ACTIVE");
+      const nextSprintId = active ? String(active.id) : String(orderedSprints[0].id);
       onSelectedSprintIdChange?.(nextSprintId);
     }
-  }, [onSelectedSprintIdChange, selectedSprintId, sprints]);
+  }, [onSelectedSprintIdChange, selectedSprintId, orderedSprints]);
 
-  const selectedSprint = sprints?.find((s) => String(s.id) === selectedSprintId);
+  const selectedSprint = orderedSprints.find((s) => String(s.id) === selectedSprintId);
   const selectedSprintStatus = normalizeSprintStatus(selectedSprint?.status);
   
   const handleUpdateSprintStatus = async (status: "ACTIVE" | "CLOSED") => {
@@ -254,19 +307,21 @@ export function ProjectKanbanBoard({
     if (!task) return;
 
     try {
+      const dragged = withDraggedViewer(task, viewerId);
+      let nextTask = dragged.task;
+
       if (targetId === "BACKLOG") {
-        // Move to backlog
         if (task.sprintId) {
-          setLocalTasks(prev => {
-            const filtered = prev.filter(t => t.id !== task.id);
-            return [...filtered, { ...task, sprintId: null, status: "TODO", assigneeId: "" }];
+          nextTask = { ...nextTask, sprintId: null, status: "TODO" };
+          setLocalTasks((prev) => {
+            const filtered = prev.filter((item) => item.id !== task.id);
+            return [...filtered, nextTask];
           });
           await taskApi.update(task.id, { sprintId: null, status: "TODO" });
-          await taskApi.updateAssignee(task.id, "");
-          onTaskUpdated();
+        } else if (dragged.changed) {
+          setLocalTasks((prev) => prev.map((item) => (item.id === task.id ? nextTask : item)));
         }
       } else {
-        // Move to kanban column
         if (!selectedSprint) {
           setErrorMessage("Vui lòng chọn một Sprint trước khi kéo task vào Kanban board!");
           return;
@@ -275,40 +330,31 @@ export function ProjectKanbanBoard({
           setErrorMessage("Chỉ có thể kéo task vào Kanban board khi Sprint đang ở trạng thái Active!");
           return;
         }
-        
+
         const newStatus = targetId as EnrichedTask["status"];
-        if (String(task.sprintId) !== String(selectedSprint.id) || toWorkflowTaskStatus(task.status) !== targetId) {
-          setLocalTasks(prev => {
-            const filtered = prev.filter(t => t.id !== task.id);
-            const updatedTask = { ...task, sprintId: String(selectedSprint.id), status: newStatus };
-            if (viewerId) {
-              updatedTask.assigneeId = viewerId;
-              updatedTask.assignee = { 
-                ...(task.assignee || {}),
-                id: viewerId, 
-                name: task.assignee?.name || "Bạn",
-                email: task.assignee?.email || "",
-                role: task.assignee?.role || "MEMBER",
-                roles: task.assignee?.roles || ["MEMBER"],
-                title: task.assignee?.title || "",
-                initials: task.assignee?.initials || "B",
-                presence: task.assignee?.presence || "online",
-                capacityHours: task.assignee?.capacityHours || 40,
-                workloadHours: task.assignee?.workloadHours || 0,
-                focusScore: task.assignee?.focusScore || 100,
-                isActive: task.assignee?.isActive ?? true,
-                status: task.assignee?.status || "ACTIVE",
-              };
-            }
-            return [...filtered, updatedTask];
+        const moved =
+          String(task.sprintId) !== String(selectedSprint.id) || toWorkflowTaskStatus(task.status) !== targetId;
+        if (moved) {
+          nextTask = { ...nextTask, sprintId: String(selectedSprint.id), status: newStatus };
+          setLocalTasks((prev) => {
+            const filtered = prev.filter((item) => item.id !== task.id);
+            return [...filtered, nextTask];
           });
-          
           await taskApi.update(task.id, { sprintId: String(selectedSprint.id), status: newStatus });
-          if (viewerId) {
-            await taskApi.updateAssignee(task.id, viewerId);
-          }
-          onTaskUpdated();
+        } else if (dragged.changed) {
+          setLocalTasks((prev) => prev.map((item) => (item.id === task.id ? nextTask : item)));
         }
+      }
+
+      if (dragged.changed) {
+        await taskApi.updateAssignee(task.id, dragged.assigneeIds);
+      }
+      const didUpdate =
+        dragged.changed ||
+        String(nextTask.sprintId ?? "") !== String(task.sprintId ?? "") ||
+        nextTask.status !== task.status;
+      if (didUpdate) {
+        onTaskUpdated();
       }
     } catch (err: unknown) {
       setLocalTasks(tasks); // Revert on error
@@ -324,7 +370,7 @@ export function ProjectKanbanBoard({
       onDragStart={(e) => handleDragStart(e, task.id)}
       onDragEnd={handleDragEnd}
       onClick={() => onTaskClick(task.id)}
-      className={`${styles.kanbanCard} ${draggedTaskId === task.id ? styles.dragging : ""} ${highlightTaskId === String(task.id) ? (highlightColor === "red" ? styles.highlightFlashRed : styles.highlightFlash) : ""}`}
+      className={`${styles.kanbanCard} ${draggedTaskId === task.id ? styles.dragging : ""} ${highlightTaskId === String(task.id) ? (highlightColor === "red" ? styles.highlightFlashRed : highlightColor === "yellow" ? styles.highlightFlashYellow : styles.highlightFlash) : ""}`}
       style={{ backgroundColor: isBacklog ? "var(--surface-strong)" : getTaskBgColor(task.status) }}
     >
       <div className={styles.cardHeader}>
@@ -339,18 +385,12 @@ export function ProjectKanbanBoard({
       
       <div className={styles.cardFooter}>
         <div>
-          {!isBacklog && (task.assignee ? (
-            <UserAvatar
-              userId={task.assignee.id}
-              email={task.assignee.email}
-              name={task.assignee.name}
-              avatarUrl={task.assignee.avatarUrl}
+          {!isBacklog && (
+            <AssigneeAvatars
+              assignees={task.assignees?.length ? task.assignees : task.assignee ? [task.assignee] : []}
               size={28}
-              className={styles.assigneeAvatar}
             />
-          ) : (
-            <div className={styles.unassignedAvatar} title="Chưa phân công">?</div>
-          ))}
+          )}
         </div>
         {task.dueDate && (
           <div className={`${styles.dueDate} ${new Date(task.dueDate) < new Date() && task.status !== "DONE" ? styles.overdue : ""}`}>
@@ -373,13 +413,13 @@ export function ProjectKanbanBoard({
           <h2 className={styles.panelTitle}>
             Kanban Board
           </h2>
-          {sprints && sprints.length > 0 && (
+          {orderedSprints.length > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
               <div style={{ width: "220px" }}>
                 <FilterSelect
                   value={selectedSprintId || ""}
                   onChange={(val) => onSelectedSprintIdChange?.(val)}
-                  options={sprints.map((s): FilterOption => {
+                  options={orderedSprints.map((s): FilterOption => {
                     const status = normalizeSprintStatus(s.status);
                     return {
                       value: String(s.id),
@@ -387,12 +427,16 @@ export function ProjectKanbanBoard({
                     };
                   })}
                   placeholder="-- Chọn Sprint --"
-                  onEditClick={(val) => {
-                    if (onEditSprint) onEditSprint(val);
-                  }}
+                  onEditClick={
+                    canManageSprints && onEditSprint
+                      ? (val) => {
+                          onEditSprint(val);
+                        }
+                      : undefined
+                  }
                 />
               </div>
-              {selectedSprint && (
+              {selectedSprint && canManageSprints && (
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                   {selectedSprintStatus === "PLANNED" && (
                     <button 
@@ -424,7 +468,7 @@ export function ProjectKanbanBoard({
           )}
         </div>
 
-        {!selectedSprint && sprints !== undefined && sprints.length === 0 && (
+        {!selectedSprint && sprints !== undefined && orderedSprints.length === 0 && (
           <div className={styles.noSprintWarning}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -432,7 +476,11 @@ export function ProjectKanbanBoard({
                 <line x1="12" y1="8" x2="12" y2="12"></line>
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
               </svg>
-              <span>Dự án chưa có Sprint nào. Bạn có thể sử dụng nút Tạo Sprint mới ở góc phải để bắt đầu.</span>
+              <span>
+                {canManageSprints
+                  ? "Dự án chưa có Sprint nào. Bạn có thể sử dụng nút Tạo Sprint mới ở góc phải để bắt đầu."
+                  : "Dự án chưa có Sprint nào. Chỉ PM/PO/GM hoặc Leader của dự án mới được tạo sprint."}
+              </span>
             </div>
           </div>
         )}
@@ -488,22 +536,24 @@ export function ProjectKanbanBoard({
                     <span className={styles.columnCount}>{columnTasks.length}</span>
                   </div>
 
-                  {columnTasks.map((task) => renderTaskCard(task, false))}
-                  
-                  {columnTasks.length === 0 && (
-                    <div className={styles.emptyState}>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.5">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="17 8 12 3 7 8" />
-                        <line x1="12" y1="3" x2="12" y2="15" />
-                      </svg>
-                      <span>
-                        {(draggedTaskId && selectedSprintStatus !== "ACTIVE")
-                          ? (selectedSprintStatus === "CLOSED" ? "Sprint đã đóng" : "Sprint chưa bắt đầu")
-                          : "Kéo thả công việc vào đây"}
-                      </span>
-                    </div>
-                  )}
+                  <div className={styles.columnBody}>
+                    {columnTasks.map((task) => renderTaskCard(task, false))}
+
+                    {columnTasks.length === 0 && (
+                      <div className={styles.emptyState}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.5">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="17 8 12 3 7 8" />
+                          <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        <span>
+                          {(draggedTaskId && selectedSprintStatus !== "ACTIVE")
+                            ? (selectedSprintStatus === "CLOSED" ? "Sprint đã đóng" : "Sprint chưa bắt đầu")
+                            : "Kéo thả công việc vào đây"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

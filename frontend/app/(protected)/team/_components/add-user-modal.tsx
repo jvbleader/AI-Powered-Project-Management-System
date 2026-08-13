@@ -6,6 +6,7 @@ import styles from "../styles/team.module.css";
 interface AddUserModalProps {
   isOpen: boolean;
   departments: Department[];
+  roles?: { name: string }[];
   onClose: () => void;
   addName: string;
   onAddNameChange: (value: string) => void;
@@ -25,6 +26,7 @@ interface AddUserModalProps {
 export function AddUserModal({
   isOpen,
   departments,
+  roles,
   onClose,
   addName,
   onAddNameChange,
@@ -54,9 +56,7 @@ export function AddUserModal({
       >
         <div className="password-modal-header">
           <div>
-            <span className="eyebrow">Tài khoản mới</span>
             <h2 id="add-user-title">Thêm nhân sự</h2>
-            <p>Khởi tạo thông tin cơ bản cho nhân viên mới.</p>
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Đóng">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -136,7 +136,10 @@ export function AddUserModal({
               testId="user-role"
               value={addRole}
               onChange={(val) => onAddRoleChange(val as UserRole)}
-              options={SYSTEM_ROLE_OPTIONS.map((r) => ({ value: r, label: roleLabel(r) }))}
+              options={(roles?.length ? roles.map((role) => role.name) : [...SYSTEM_ROLE_OPTIONS]).map((r) => ({
+                value: r,
+                label: roleLabel(r),
+              }))}
             />
           </label>
 

@@ -1,6 +1,8 @@
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.project_model import Project
 from app.repositories import sprint_repository
 from app.schemas.sprint_schema import SprintCreate, SprintUpdate
 from app.services.task_service import (
@@ -12,7 +14,7 @@ from app.utils.project_helpers import (
     has_companywide_project_access,
     list_accessible_project_ids,
     list_managed_project_ids,
-    user_can_manage_project,
+    user_can_manage_sprints,
 )
 
 
@@ -30,8 +32,23 @@ def _normalize_sprint_status(value: str | None) -> str | None:
     return normalized
 
 
+def _require_agile_project(db: Session, project_id: int) -> Project:
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if (project.project_type or "").strip().lower() != "agile":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sprint chỉ được sử dụng trong dự án Agile.",
+        )
+    return project
+
+
 def list_sprints(db: Session, project_id: int, current_user_id: int):
     _require_project_access(db, project_id, current_user_id)
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project or (project.project_type or "").strip().lower() != "agile":
+        return []
     return sprint_repository.list_sprints(db, project_id=project_id)
 
 
@@ -44,30 +61,45 @@ def list_accessible_sprints(db: Session, current_user_id: int, project_id: int |
     if not accessible_project_ids:
         return []
 
+    agile_project_ids = [
+        project_id
+        for (project_id,) in (
+            db.query(Project.id)
+            .filter(
+                Project.id.in_(accessible_project_ids),
+                func.lower(Project.project_type) == "agile",
+            )
+            .all()
+        )
+    ]
+    if not agile_project_ids:
+        return []
+
     if has_companywide_project_access(user):
         return sprint_repository.list_sprints(
             db,
-            project_ids_subquery=accessible_project_ids,
+            project_ids_subquery=agile_project_ids,
         )
 
     managed_project_ids = set(list_managed_project_ids(db, user))
     if not managed_project_ids:
         return sprint_repository.list_sprints(
             db,
-            project_ids_subquery=accessible_project_ids,
+            project_ids_subquery=agile_project_ids,
         )
     return sprint_repository.list_sprints(
         db,
-        project_ids_subquery=accessible_project_ids,
+        project_ids_subquery=agile_project_ids,
     )
 
 
 def create_sprint(db: Session, project_id: int, current_user_id: int, sprint_in: SprintCreate):
     current_user = _require_project_access(db, project_id, current_user_id)
-    if not user_can_manage_project(db, project_id, current_user):
+    _require_agile_project(db, project_id)
+    if not user_can_manage_sprints(db, project_id, current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn không có quyền tạo sprint trong dự án này.",
+            detail="Chỉ PM/PO/GM hoặc Leader của dự án này mới được tạo sprint.",
         )
     actor_member = _get_or_create_actor_member(db, project_id, current_user_id)
 
@@ -96,11 +128,12 @@ def update_sprint(db: Session, sprint_id: int, current_user_id: int, sprint_in: 
     if not sprint:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
 
+    _require_agile_project(db, sprint.project_id)
     current_user = _require_project_access(db, sprint.project_id, current_user_id)
-    if not user_can_manage_project(db, sprint.project_id, current_user):
+    if not user_can_manage_sprints(db, sprint.project_id, current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn không có quyền cập nhật sprint trong dự án này.",
+            detail="Chỉ PM/PO/GM hoặc Leader của dự án này mới được cập nhật sprint.",
         )
 
     update_data = sprint_in.model_dump(exclude_unset=True)
@@ -121,7 +154,6 @@ def update_sprint(db: Session, sprint_id: int, current_user_id: int, sprint_in: 
 
     if update_data.get("status") == "closed":
         from app.models.task_model import Task
-        from sqlalchemy import func
 
         # Move all unfinished tasks in this sprint back to the backlog
         db.query(Task).filter(

@@ -73,19 +73,13 @@ def update_message_content(db: Session, message: AiMessage, new_content: str) ->
 def confirm_draft_message(
     db: Session, user_id: int, message_id: int, fence: str = "json_task_draft"
 ) -> bool:
-    message = get_message_by_id(db, message_id)
-    if not message:
+    from app.services.ai_services.draft_confirm import get_owned_message, set_draft_message_status
+
+    try:
+        message = get_owned_message(db, user_id, message_id)
+    except ValueError:
         return False
-    session = get_session_by_id_and_user(db, message.conversation_id, user_id)
-    if not session:
-        return False
-    marker = f"```{fence}\n"
-    confirmed = f"```{fence}_confirmed\n"
-    if marker in message.content:
-        message.content = message.content.replace(marker, confirmed)
-        db.commit()
-        return True
-    return False
+    return set_draft_message_status(db, message, fence, "confirmed")
 
 
 def confirm_latest_draft_message(db: Session, user_id: int):
@@ -94,17 +88,17 @@ def confirm_latest_draft_message(db: Session, user_id: int):
         .join(AiConversation, AiMessage.conversation_id == AiConversation.id)
         .filter(AiConversation.user_id == user_id)
         .filter(AiMessage.sender == "assistant")
-        .filter(AiMessage.content.like("%```json_task_draft\n%"))
+        .filter(AiMessage.content.like("%```json_task_draft%"))
+        .filter(~AiMessage.content.like("%```json_task_draft_confirmed%"))
+        .filter(~AiMessage.content.like("%```json_task_draft_rejected%"))
         .order_by(AiMessage.created_at.desc())
         .first()
     )
-    if latest_message:
-        latest_message.content = latest_message.content.replace(
-            "```json_task_draft\n", "```json_task_draft_confirmed\n"
-        )
-        db.commit()
-        return True
-    return False
+    if not latest_message:
+        return False
+    from app.services.ai_services.draft_confirm import set_draft_message_status
+
+    return set_draft_message_status(db, latest_message, "json_task_draft", "confirmed")
 
 
 def delete_messages_by_session(db: Session, session_id: int) -> None:
