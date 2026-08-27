@@ -15,8 +15,9 @@ import {
   respond,
   toInitials,
   wrapBackendResponse,
+  cleanProjectId,
+  cleanTaskId,
 } from "./core";
-import { resolveAvatarUrl } from "@/lib/utils/avatar";
 import { projectApi } from "./projects";
 import { userApi } from "./users";
 type BoardContext = {
@@ -64,12 +65,12 @@ function normalizeTaskStatus(status: unknown): Task["status"] {
 function mapBackendTask(data: any): Task {
   const assigneePreviews = Array.isArray(data.assignees)
     ? data.assignees
-        .map((assignee: any) => ({
-          id: toFrontendUserId(assignee?.user_id),
-          name: assignee?.name || "",
-          email: assignee?.email || "",
-        }))
-        .filter((assignee: { id: string }) => Boolean(assignee.id))
+      .map((assignee: any) => ({
+        id: toFrontendUserId(assignee?.user_id),
+        name: assignee?.name || "",
+        email: assignee?.email || "",
+      }))
+      .filter((assignee: { id: string }) => Boolean(assignee.id))
     : [];
   const primaryAssignee = assigneePreviews[0];
 
@@ -120,11 +121,8 @@ function buildSyntheticAssignee(task: Task): UserProfile | null {
     focusScore: 0,
     isActive: true,
     status: "ACTIVE",
-    avatarUrl: resolveAvatarUrl({
-      userId: task.assigneeId,
-      email: task.assigneeEmail,
-      name: task.assigneeName,
-    }),
+    // Fallback avatar is resolved by UserAvatar from this stable user ID.
+    avatarUrl: undefined,
   };
 }
 
@@ -165,12 +163,12 @@ export const taskApi = {
   async list(filters?: TaskFilters, viewer?: UserProfile | null): Promise<ApiResponse<Task[]>> {
     const params = new URLSearchParams();
     if (filters?.sprintId) {
-      params.append("sprint_id", filters.sprintId);
+      params.append("sprint_id", cleanTaskId(filters.sprintId));
     }
 
     const query = params.toString();
     const path = filters?.projectId
-      ? `/api/projects/${filters.projectId}/tasks${query ? `?${query}` : ""}`
+      ? `/api/projects/${cleanProjectId(filters.projectId)}/tasks${query ? `?${query}` : ""}`
       : `/api/tasks${query ? `?${query}` : ""}`;
     const endpoint = {
       method: "GET" as const,
@@ -191,7 +189,7 @@ export const taskApi = {
   async getLogs(taskId: string): Promise<ApiResponse<TaskLog[]>> {
     const endpoint = {
       method: "GET" as const,
-      path: `/api/tasks/${taskId}/logs`,
+      path: `/api/tasks/${cleanTaskId(taskId)}/logs`,
     };
     const response = await requestApi<TaskLog[]>(endpoint);
     return response;
@@ -200,7 +198,7 @@ export const taskApi = {
   async create(payload: Omit<Task, "id"> & { projectId: string }): Promise<ApiResponse<Task>> {
     const endpoint = {
       method: "POST" as const,
-      path: `/api/projects/${payload.projectId}/tasks`,
+      path: `/api/projects/${cleanProjectId(payload.projectId)}/tasks`,
     };
 
     const backendPayload = {
@@ -348,8 +346,8 @@ export const taskApi = {
       this.list(filters, viewer),
       context?.projects?.length
         ? Promise.resolve({
-            data: context.projects.find((project) => project.id === filters.projectId) ?? null,
-          } as ApiResponse<Project | null>)
+          data: context.projects.find((project) => project.id === filters.projectId) ?? null,
+        } as ApiResponse<Project | null>)
         : projectApi.get(filters.projectId),
       context?.users?.length
         ? Promise.resolve({ data: context.users } as ApiResponse<UserProfile[]>)

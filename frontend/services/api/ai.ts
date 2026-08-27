@@ -44,14 +44,14 @@ export const aiApi = {
   },
 
   async confirmTasks(
-    messageId: number,
+    draftId: number,
     options: { projectId?: number | null; rejectedPaths?: string[] } = {}
   ) {
     const response = await requestApi<any>(
       { path: "/api/ai/confirm-tasks", method: "POST" },
       {
         body: JSON.stringify({
-          message_id: messageId,
+          draft_id: draftId,
           project_id: options.projectId ?? null,
           rejected_paths: options.rejectedPaths ?? [],
         }),
@@ -60,12 +60,12 @@ export const aiApi = {
     return response.data;
   },
 
-  async confirmSprints(messageId: number, projectId?: number | null) {
+  async confirmSprints(draftId: number, projectId?: number | null) {
     const response = await requestApi<any>(
       { path: "/api/ai/confirm-sprints", method: "POST" },
       {
         body: JSON.stringify({
-          message_id: messageId,
+          draft_id: draftId,
           project_id: projectId ?? null,
         }),
       }
@@ -73,12 +73,12 @@ export const aiApi = {
     return response.data;
   },
 
-  async confirmSprintStatus(messageId: number) {
+  async confirmSprintStatus(draftId: number) {
     const response = await requestApi<any>(
       { path: "/api/ai/confirm-sprint-status", method: "POST" },
       {
         body: JSON.stringify({
-          message_id: messageId,
+          draft_id: draftId,
         }),
       }
     );
@@ -86,15 +86,13 @@ export const aiApi = {
   },
 
   async rejectDraft(
-    messageId: number,
-    fence: "json_task_draft" | "json_sprint_draft" | "json_sprint_status_draft"
+    draftId: number,
   ) {
     const response = await requestApi<any>(
       { path: "/api/ai/reject-draft", method: "POST" },
       {
         body: JSON.stringify({
-          message_id: messageId,
-          fence,
+          draft_id: draftId,
         }),
       }
     );
@@ -102,8 +100,7 @@ export const aiApi = {
   },
 
   async updateDraft(
-    messageId: number,
-    fence: "json_task_draft" | "json_sprint_draft",
+    draftId: number,
     payload: object[]
   ) {
     const response = await requestApi<{
@@ -113,8 +110,7 @@ export const aiApi = {
       { path: "/api/ai/draft", method: "PUT" },
       {
         body: JSON.stringify({
-          message_id: messageId,
-          fence,
+          draft_id: draftId,
           payload,
         }),
       }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Surface, StatusPill } from "@/components/ui";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -6,7 +6,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { FilterSelect } from "@/components/filter-select";
 import { projectApi, userApi } from "@/services/api";
 import { useAutoPageSize } from "@/hooks/use-auto-page-size";
-import { projectRoleLabel, getRoleTone, isManagerRole, isLeaderRole, expandRoleDisplayLabels, comparePersonnelByRank } from "@/lib/utils/format";
+import { projectRoleLabel, getRoleTone, isManagerRole, isLeaderRole, expandRoleDisplayLabels, comparePersonnelByRank, formatEmployeeCode } from "@/lib/utils/format";
 import styles from "../../team/styles/team.module.css";
 import type { Department, UserProfile } from "@/types";
 import type { Project } from "@/types/project";
@@ -69,6 +69,53 @@ export function ProjectMembers({
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const [roleMenuPos, setRoleMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const roleDropdownRef = useRef<HTMLDivElement>(null);
+  const roleButtonRef = useRef<HTMLButtonElement>(null);
+
+  const availableRolesInProject = useMemo(() => {
+    const presentRoleIds = new Set<string>();
+    const presentRoleNames = new Set<string>();
+    members.forEach((m) => {
+      if (m.roleId) presentRoleIds.add(m.roleId.toString());
+      if (m.roleName) presentRoleNames.add(m.roleName);
+    });
+
+    return roles.filter(
+      (r) => presentRoleIds.has(r.id.toString()) || presentRoleNames.has(r.name),
+    );
+  }, [members, roles]);
+
+  const toggleRoleDropdown = () => {
+    if (roleDropdownOpen) {
+      setRoleDropdownOpen(false);
+      setRoleMenuPos(null);
+    } else {
+      if (roleButtonRef.current) {
+        const rect = roleButtonRef.current.getBoundingClientRect();
+        setRoleMenuPos({ top: rect.bottom + 4, left: Math.max(8, rect.left - 80) });
+      }
+      setRoleDropdownOpen(true);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        roleDropdownRef.current &&
+        !roleDropdownRef.current.contains(event.target as Node)
+      ) {
+        const menuEl = document.querySelector(`[data-project-member-role-menu]`);
+        if (menuEl && menuEl.contains(event.target as Node)) return;
+        setRoleDropdownOpen(false);
+        setRoleMenuPos(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const [isAddingInternal, setIsAddingInternal] = useState(false);
   const isAdding = isAddingProp ?? isAddingInternal;
@@ -252,7 +299,6 @@ export function ProjectMembers({
     availableRoleNames.length > 0
       ? roles.filter((r) => availableRoleNames.includes(r.name))
       : roles;
-
   const availableUsersToAdd = poolUsers.filter(
     (u) => !members.some((m) => m.isActive && m.userId.toString() === u.id.replace("usr-", "")),
   );
@@ -297,13 +343,7 @@ export function ProjectMembers({
       );
     });
 
-  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / pageSize));
-  const validPage = Math.min(page, totalPages);
-
-  const paginatedMembers = filteredMembers.slice(
-    (validPage - 1) * pageSize,
-    validPage * pageSize,
-  );
+  const paginatedMembers = filteredMembers;
 
   const userLookup = new Map(
     accessibleUsers.map((user) => [user.id, user]),
@@ -544,29 +584,91 @@ export function ProjectMembers({
         />
       </div>
 
-      <div className={styles.tableWrap} ref={tableAnchorRef}>
+      <div className={styles.tableWrap} style={{ margin: "1rem 0" }}>
         <table className={styles.table}>
           <thead>
             <tr>
+              <th>Mã NV</th>
               <th>Thành viên</th>
               <th>Email</th>
               <th>
                 <div className={styles.headerFilter}>
                   <span>Vai trò</span>
-                  <div style={{ position: "relative", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--foreground-muted)" }}>
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ position: "absolute", pointerEvents: "none" }}>
-                      <path d="M7 10l5 5 5-5z" />
-                    </svg>
-                    <select
-                      value={roleFilter}
-                      onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
-                      style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", appearance: "none" }}
+                  <div className={styles.filterTriggerWrap} ref={roleDropdownRef}>
+                    <button
+                      type="button"
+                      ref={roleButtonRef}
+                      className={`${styles.filterIconButton} ${roleFilter !== "ALL" ? styles.filterIconButtonActive : ""}`}
+                      onClick={toggleRoleDropdown}
+                      aria-label="Lọc theo vai trò"
                     >
-                      <option value="ALL">Tất cả</option>
-                      {roles.map(r => (
-                        <option key={r.id} value={r.id.toString()}>{projectRoleLabel(r.name)}</option>
-                      ))}
-                    </select>
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={roleFilter !== "ALL" ? styles.filterIconActive : styles.filterIcon}
+                      >
+                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                      </svg>
+                    </button>
+                    {roleDropdownOpen && roleMenuPos && typeof document !== "undefined"
+                      ? createPortal(
+                          <div
+                            className={styles.dropdownMenu}
+                            data-project-member-role-menu
+                            style={{ top: roleMenuPos.top, left: roleMenuPos.left }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className={styles.dropdownList}>
+                              <div
+                                className={`${styles.dropdownItem} ${roleFilter === "ALL" ? styles.dropdownItemActive : ""}`}
+                                onClick={() => {
+                                  setRoleFilter("ALL");
+                                  setRoleDropdownOpen(false);
+                                  setRoleMenuPos(null);
+                                  setPage(1);
+                                }}
+                              >
+                                {roleFilter === "ALL" ? (
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                ) : (
+                                  <div className={styles.dropdownSpacer} />
+                                )}
+                                Tất cả
+                              </div>
+                              {availableRolesInProject.map((r) => (
+                                <div
+                                  key={r.id}
+                                  className={`${styles.dropdownItem} ${roleFilter === r.id.toString() ? styles.dropdownItemActive : ""}`}
+                                  onClick={() => {
+                                    setRoleFilter(r.id.toString());
+                                    setRoleDropdownOpen(false);
+                                    setRoleMenuPos(null);
+                                    setPage(1);
+                                  }}
+                                >
+                                  {roleFilter === r.id.toString() ? (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                  ) : (
+                                    <div className={styles.dropdownSpacer} />
+                                  )}
+                                  {projectRoleLabel(r.name)}
+                                </div>
+                              ))}
+                            </div>
+                          </div>,
+                          document.body,
+                        )
+                      : null}
                   </div>
                 </div>
               </th>
@@ -582,6 +684,7 @@ export function ProjectMembers({
 
                 return (
                   <tr key={member.id}>
+                    <td>{memberUser?.employeeCode ?? formatEmployeeCode(`usr-${member.userId}`)}</td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                         <UserAvatar
@@ -598,7 +701,7 @@ export function ProjectMembers({
                     </td>
                     <td>{member.userEmail}</td>
                     <td>
-                      <div className={styles.roleStack} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.25rem" }}>
+                      <div className={styles.roleStack} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.25rem" }}>
                         {expandRoleDisplayLabels(member.roleName).map((rolePart, idx) => (
                           <StatusPill
                             key={idx}
@@ -688,32 +791,7 @@ export function ProjectMembers({
         </table>
       </div>
 
-      {totalPages > 1 && (
-        <div className={styles.paginationBar} style={{ marginTop: "1rem" }}>
-          <p>
-            Hiển thị {(validPage - 1) * pageSize + 1} -{" "}
-            {Math.min(validPage * pageSize, filteredMembers.length)} / {filteredMembers.length} thành viên.
-          </p>
-          <div className={styles.paginationActions}>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => setPage(Math.max(1, validPage - 1))}
-              disabled={validPage <= 1}
-            >
-              Trang trước
-            </button>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => setPage(Math.min(totalPages, validPage + 1))}
-              disabled={validPage >= totalPages}
-            >
-              Trang sau
-            </button>
-          </div>
-        </div>
-      )}
+
     </Surface>
     <ConfirmModal
       isOpen={Boolean(memberToRemove)}

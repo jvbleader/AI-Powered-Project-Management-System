@@ -6,7 +6,7 @@ import { WorkspaceShell } from "@/components/workspace-shell";
 import { taskApi, userApi, workspaceApi, roleApi } from "@/services/api";
 import { updateSessionCurrentUser } from "@/services/auth/session";
 import { useAuthSession } from "@/hooks/use-session";
-import { useAutoPageSize } from "@/hooks/use-auto-page-size";
+
 import {
   canAccessTeamDirectoryRole,
   canManageUsers as canManageUsersByRole,
@@ -64,17 +64,7 @@ export default function TeamPage() {
   const [departmentFilter, setDepartmentFilter] =
     useState<UserDirectoryFilters["department"]>("ALL");
   const tableAnchorRef = useRef<HTMLDivElement>(null);
-  const pageSize = useAutoPageSize({
-    anchorRef: tableAnchorRef,
-    rowHeight: 58,
-    headerHeight: 48,
-    footerHeight: 56,
-    bottomGutter: 72,
-    min: 4,
-    max: 20,
-    fallbackTop: 280,
-    remeasureKey: directory.items.length,
-  });
+  const pageSize = 1000;
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
@@ -96,9 +86,9 @@ export default function TeamPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [systemRoles, setSystemRoles] = useState<SystemRole[]>([]);
   const [canAccessTeamPage, setCanAccessTeamPage] = useState<boolean | null>(
-    canAccessTeamDirectoryRole(currentActor.role, currentActor.department) ? true : null,
+    canAccessTeamDirectoryRole(currentActor.role, currentActor.department, currentActor.isAdmin) ? true : null,
   );
-  const canManageUsers = canManageUsersByRole(currentActor.role);
+  const canManageUsers = canManageUsersByRole(currentActor.role, currentActor.isAdmin);
   const canFilterDepartment = hasCompanywideProjectAccess(currentActor.role, currentActor.department) || canManageUsers;
   const isHeadOfDevViewer =
     isHeadOfDevDepartment(currentActor.department) && !isAdminRole(currentActor.role);
@@ -108,7 +98,7 @@ export default function TeamPage() {
   const router = useRouter();
 
   useEffect(() => {
-    setCanAccessTeamPage(canAccessTeamDirectoryRole(currentActor.role, currentActor.department));
+    setCanAccessTeamPage(canAccessTeamDirectoryRole(currentActor.role, currentActor.department, currentActor.isAdmin));
   }, [currentActor]);
 
   useEffect(() => {

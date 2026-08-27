@@ -18,12 +18,21 @@ router = APIRouter(tags=["Auth"])
 def login(user: UserLogin, db: Session = Depends(get_db), response: Response = None):
     auth_data = auth_service.authenticate_user(db, user)
 
+    # remember_me = True  → persistent cookie (max_age = token lifetime)
+    #   → User vẫn đăng nhập sau khi tắt/mở lại browser, đến khi token hết hạn.
+    # remember_me = False → session cookie (max_age = None)
+    #   → Cookie tự xóa khi browser đóng. Mở lại → signout (đúng yêu cầu).
+    #
+    # Note: Các bug "signout khi đang dùng" (access token hết hạn, SSR không
+    # forward Set-Cookie, double-refresh) đã được fix ở middleware.ts và auth.ts —
+    # không liên quan đến remember_me.
     if user.remember_me:
         access_max_age = ACCESS_TOKEN_EXPIRE_MINUTES * 60
         refresh_max_age = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     else:
-        access_max_age = None
-        refresh_max_age = None
+        access_max_age = None   # session cookie
+        refresh_max_age = None  # session cookie → mất khi browser đóng
+
 
     response.set_cookie(
         key="access_token",
@@ -42,6 +51,7 @@ def login(user: UserLogin, db: Session = Depends(get_db), response: Response = N
     )
 
     return {"message": "Đăng nhập thành công", "user_id": auth_data["user_id"]}
+
 
 
 @router.post("/logout")

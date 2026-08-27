@@ -1,8 +1,11 @@
+import logging
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
-from typing import List
 
 from app.core.connection import get_db
 from app.core.dependencies import get_current_user
@@ -13,10 +16,10 @@ from app.schemas.ai_schema import (
     AiMessageResponse,
     AiSessionResponse,
     ClassifyIntentResponse,
-    ConfirmSprintStatusRequest,
-    ConfirmSprintStatusResponse,
     ConfirmSprintsRequest,
     ConfirmSprintsResponse,
+    ConfirmSprintStatusRequest,
+    ConfirmSprintStatusResponse,
     ConfirmTasksRequest,
     ConfirmTasksResponse,
     CreateAiSessionRequest,
@@ -34,6 +37,7 @@ from app.services.ai_services.draft_confirm import (
 )
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
+logger = logging.getLogger(__name__)
 
 
 class ChatMessageRequest(BaseModel):
@@ -128,13 +132,21 @@ async def clear_chat_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if session_id.isdigit():
-        ai_service.delete_user_session(db, current_user, int(session_id))
+    if not session_id.isdigit() or not ai_service.delete_user_session(
+        db, current_user, int(session_id)
+    ):
+        raise HTTPException(status_code=404, detail="Session not found")
 
-    pattern = f"checkpoint*{session_id}*"
-    keys = redis_client.keys(pattern)
-    if keys:
-        redis_client.delete(*keys)
+    # Redis only stores resumable stream state. The durable session was already
+    # deleted from DB, so a transient Redis outage must not turn this operation
+    # into a false 500 result for the user.
+    try:
+        pattern = f"checkpoint*{session_id}*"
+        keys = redis_client.keys(pattern)
+        if keys:
+            redis_client.delete(*keys)
+    except RedisError:
+        logger.warning("Unable to clear AI checkpoints for session %s", session_id, exc_info=True)
     return {"status": "ok", "message": "Session cleared"}
 
 
@@ -157,7 +169,7 @@ def confirm_tasks(
         created_task_ids = confirm_tasks_from_message(
             db=db,
             current_user=current_user,
-            message_id=payload.message_id,
+            draft_id=payload.draft_id,
             project_id=payload.project_id,
             rejected_paths=payload.rejected_paths,
         )
@@ -180,7 +192,7 @@ def confirm_sprints(
         created_sprint_ids = confirm_sprints_from_message(
             db=db,
             current_user=current_user,
-            message_id=payload.message_id,
+            draft_id=payload.draft_id,
             project_id=payload.project_id,
         )
     except ValueError as exc:
@@ -199,9 +211,7 @@ def confirm_sprint_status(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        updated = confirm_sprint_status_from_message(
-            db, current_user, payload.message_id
-        )
+        updated = confirm_sprint_status_from_message(db, current_user, payload.draft_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -218,7 +228,7 @@ def reject_draft(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        reject_draft_from_message(db, current_user, payload.message_id, payload.fence)
+        reject_draft_from_message(db, current_user, payload.draft_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "ok", "message": "Đã từ chối bản nháp."}
@@ -234,8 +244,7 @@ def update_draft(
         saved_payload = update_draft_payload(
             db,
             current_user,
-            payload.message_id,
-            payload.fence,
+            payload.draft_id,
             payload.payload,
         )
     except ValueError as exc:

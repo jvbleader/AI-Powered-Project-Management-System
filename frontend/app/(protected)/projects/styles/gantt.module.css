@@ -21,24 +21,26 @@
   min-height: 100%;
 }
 
-.ganttLeftPane,
-.ganttRightPane {
-  flex: 1 1 50%;
-  width: 50%;
+.ganttLeftPane {
+  flex: 0 0 auto;
+  max-width: 65%;
   min-width: 0;
-  overflow-x: scroll;
+  overflow-x: auto;
   overflow-y: auto;
   scrollbar-gutter: stable;
   background: #ffffff;
-}
-
-.ganttLeftPane {
   border-right: 1px solid #d0d7e2;
   box-shadow: 6px 0 16px rgba(15, 23, 42, 0.06);
   z-index: 2;
 }
 
 .ganttRightPane {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: #ffffff;
   z-index: 1;
 }
 
@@ -172,150 +174,267 @@
   z-index: 35;
 }
 
-@keyframes flashHighlightBlueAnim {
-  0% { background-color: rgba(59, 130, 246, 0.4); }
-  80% { background-color: rgba(59, 130, 246, 0.4); }
-  100% { background-color: transparent; }
+/* ==========================================================================
+   Full Row Highlight Animations for Gantt Chart (5s fade-out)
+   ========================================================================== */
+
+/* ==========================================================================
+   Full Row Highlight Animations for Gantt Chart (5s fade-out)
+   ========================================================================== */
+
+/* Yellow (Default) - Rich Gold */
+@keyframes flashGanttRowBgYellow {
+  0% {
+    background: #fde047 !important;
+    background-color: #fde047 !important;
+    background-image: none !important;
+  }
+
+  40% {
+    background: #fde047 !important;
+    background-color: #fde047 !important;
+    background-image: none !important;
+  }
+
+  75% {
+    background: #fef08a !important;
+    background-color: #fef08a !important;
+    background-image: none !important;
+  }
+
+  100% {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
 }
 
-@keyframes flashStickyBlueAnim {
-  0% { background-color: rgb(191, 219, 254); }
-  80% { background-color: rgb(191, 219, 254); }
-  100% { background-color: #ffffff; }
+@keyframes flashGanttRowBorderYellow {
+  0% {
+    border-top: 2px solid #ca8a04 !important;
+    border-bottom: 2px solid #ca8a04 !important;
+    box-shadow: 0 0 12px rgba(202, 138, 4, 0.4) !important;
+  }
+
+  75% {
+    border-top: 2px solid #ca8a04 !important;
+    border-bottom: 2px solid #ca8a04 !important;
+    box-shadow: 0 0 6px rgba(202, 138, 4, 0.2) !important;
+  }
+
+  100% {
+    border-top: 1px solid #eeeeee !important;
+    border-bottom: 1px solid #eeeeee !important;
+    box-shadow: none !important;
+  }
 }
 
-.flashHighlightBlue::after {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  z-index: 10;
-  animation: flashHighlightBlueAnim 5s ease-out forwards;
+.flashHighlightYellow {
+  position: relative;
+  z-index: 15;
+  animation: flashGanttRowBorderYellow 5s ease-out forwards !important;
 }
 
-.flashHighlightBlue > .stickyCol {
-  animation: flashStickyBlueAnim 5s ease-out forwards;
+.flashHighlightYellow,
+.flashHighlightYellow>.ganttLeftCol,
+.flashHighlightYellow>.ganttRightCell,
+.flashHighlightYellow .stickyCol {
+  animation: flashGanttRowBgYellow 5s ease-out forwards !important;
+  background: #fde047 !important;
+  background-color: #fde047 !important;
+  background-image: none !important;
 }
 
-@keyframes flashHighlightYellowAnim {
-  0% { background-color: rgba(245, 158, 11, 0.42); }
-  80% { background-color: rgba(245, 158, 11, 0.42); }
-  100% { background-color: transparent; }
+/* Blue - Rich Sky/Blue */
+@keyframes flashGanttRowBgBlue {
+  0% {
+    background: #93c5fd !important;
+    background-color: #93c5fd !important;
+    background-image: none !important;
+  }
+
+  40% {
+    background: #93c5fd !important;
+    background-color: #93c5fd !important;
+    background-image: none !important;
+  }
+
+  75% {
+    background: #bfdbfe !important;
+    background-color: #bfdbfe !important;
+    background-image: none !important;
+  }
+
+  100% {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
 }
 
-@keyframes flashStickyYellowAnim {
-  0% { background-color: rgb(253, 230, 138); }
-  80% { background-color: rgb(253, 230, 138); }
-  100% { background-color: #ffffff; }
+@keyframes flashGanttRowBorderBlue {
+  0% {
+    border-top: 2px solid #2563eb !important;
+    border-bottom: 2px solid #2563eb !important;
+    box-shadow: 0 0 12px rgba(37, 99, 235, 0.4) !important;
+  }
+
+  75% {
+    border-top: 2px solid #2563eb !important;
+    border-bottom: 2px solid #2563eb !important;
+    box-shadow: 0 0 6px rgba(37, 99, 235, 0.2) !important;
+  }
+
+  100% {
+    border-top: 1px solid #eeeeee !important;
+    border-bottom: 1px solid #eeeeee !important;
+    box-shadow: none !important;
+  }
 }
 
-.flashHighlightYellow::after {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  z-index: 10;
-  animation: flashHighlightYellowAnim 5s ease-out forwards;
+.flashHighlightBlue {
+  position: relative;
+  z-index: 15;
+  animation: flashGanttRowBorderBlue 5s ease-out forwards !important;
 }
 
-.flashHighlightYellow > .stickyCol {
-  animation: flashStickyYellowAnim 5s ease-out forwards;
+.flashHighlightBlue,
+.flashHighlightBlue>.ganttLeftCol,
+.flashHighlightBlue>.ganttRightCell,
+.flashHighlightBlue .stickyCol {
+  animation: flashGanttRowBgBlue 5s ease-out forwards !important;
+  background: #93c5fd !important;
+  background-color: #93c5fd !important;
+  background-image: none !important;
 }
 
-@keyframes flashHighlightRedAnim {
-  0% { background-color: rgba(220, 38, 38, 0.4); }
-  80% { background-color: rgba(220, 38, 38, 0.4); }
-  100% { background-color: transparent; }
+/* Green - Rich Emerald */
+@keyframes flashGanttRowBgGreen {
+  0% {
+    background: #86efac !important;
+    background-color: #86efac !important;
+    background-image: none !important;
+  }
+
+  40% {
+    background: #86efac !important;
+    background-color: #86efac !important;
+    background-image: none !important;
+  }
+
+  75% {
+    background: #bbf7d0 !important;
+    background-color: #bbf7d0 !important;
+    background-image: none !important;
+  }
+
+  100% {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
 }
 
-@keyframes flashStickyRedAnim {
-  0% { background-color: rgb(252, 165, 165); }
-  80% { background-color: rgb(252, 165, 165); }
-  100% { background-color: #ffffff; }
+@keyframes flashGanttRowBorderGreen {
+  0% {
+    border-top: 2px solid #16a34a !important;
+    border-bottom: 2px solid #16a34a !important;
+    box-shadow: 0 0 12px rgba(22, 163, 74, 0.4) !important;
+  }
+
+  75% {
+    border-top: 2px solid #16a34a !important;
+    border-bottom: 2px solid #16a34a !important;
+    box-shadow: 0 0 6px rgba(22, 163, 74, 0.2) !important;
+  }
+
+  100% {
+    border-top: 1px solid #eeeeee !important;
+    border-bottom: 1px solid #eeeeee !important;
+    box-shadow: none !important;
+  }
 }
 
-.flashHighlightRed::after {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  z-index: 10;
-  animation: flashHighlightRedAnim 5s ease-out forwards;
+.flashHighlightGreen {
+  position: relative;
+  z-index: 15;
+  animation: flashGanttRowBorderGreen 5s ease-out forwards !important;
 }
 
-.flashHighlightRed > .stickyCol {
-  animation: flashStickyRedAnim 5s ease-out forwards;
+.flashHighlightGreen,
+.flashHighlightGreen>.ganttLeftCol,
+.flashHighlightGreen>.ganttRightCell,
+.flashHighlightGreen .stickyCol {
+  animation: flashGanttRowBgGreen 5s ease-out forwards !important;
+  background: #86efac !important;
+  background-color: #86efac !important;
+  background-image: none !important;
 }
 
-@keyframes flashHighlightGreenAnim {
-  0% { background-color: rgba(22, 163, 74, 0.4); }
-  80% { background-color: rgba(22, 163, 74, 0.4); }
-  100% { background-color: transparent; }
+/* Red - Rich Rose */
+@keyframes flashGanttRowBgRed {
+  0% {
+    background: #fca5a5 !important;
+    background-color: #fca5a5 !important;
+    background-image: none !important;
+  }
+
+  40% {
+    background: #fca5a5 !important;
+    background-color: #fca5a5 !important;
+    background-image: none !important;
+  }
+
+  75% {
+    background: #fecaca !important;
+    background-color: #fecaca !important;
+    background-image: none !important;
+  }
+
+  100% {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
 }
 
-@keyframes flashStickyGreenAnim {
-  0% { background-color: rgb(187, 247, 208); }
-  80% { background-color: rgb(187, 247, 208); }
-  100% { background-color: #ffffff; }
+@keyframes flashGanttRowBorderRed {
+  0% {
+    border-top: 2px solid #dc2626 !important;
+    border-bottom: 2px solid #dc2626 !important;
+    box-shadow: 0 0 12px rgba(220, 38, 38, 0.4) !important;
+  }
+
+  75% {
+    border-top: 2px solid #dc2626 !important;
+    border-bottom: 2px solid #dc2626 !important;
+    box-shadow: 0 0 6px rgba(220, 38, 38, 0.2) !important;
+  }
+
+  100% {
+    border-top: 1px solid #eeeeee !important;
+    border-bottom: 1px solid #eeeeee !important;
+    box-shadow: none !important;
+  }
 }
 
-.flashHighlightGreen::after {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  z-index: 10;
-  animation: flashHighlightGreenAnim 5s ease-out forwards;
+.flashHighlightRed {
+  position: relative;
+  z-index: 15;
+  animation: flashGanttRowBorderRed 5s ease-out forwards !important;
 }
 
-.flashHighlightGreen > .stickyCol {
-  animation: flashStickyGreenAnim 5s ease-out forwards;
-}
-
-.flashHighlightBlue::after,
-.flashHighlightYellow::after,
-.flashHighlightRed::after,
-.flashHighlightGreen::after {
-  display: none;
-}
-
-.flashHighlightBlue > .ganttLeftCol,
-.flashHighlightBlue > .ganttRightCell {
-  animation: flashStickyBlueAnim 5s ease-out forwards;
-}
-
-.flashHighlightYellow > .ganttLeftCol,
-.flashHighlightYellow > .ganttRightCell {
-  animation: flashStickyYellowAnim 5s ease-out forwards;
-}
-
-.flashHighlightRed > .ganttLeftCol,
-.flashHighlightRed > .ganttRightCell {
-  animation: flashStickyRedAnim 5s ease-out forwards;
-}
-
-.flashHighlightGreen > .ganttLeftCol,
-.flashHighlightGreen > .ganttRightCell {
-  animation: flashStickyGreenAnim 5s ease-out forwards;
-}
-
-.flashHighlightBlue > .ganttLeftCol,
-.flashHighlightBlue > .ganttRightCell,
-.flashHighlightYellow > .ganttLeftCol,
-.flashHighlightYellow > .ganttRightCell,
-.flashHighlightRed > .ganttLeftCol,
-.flashHighlightRed > .ganttRightCell,
-.flashHighlightGreen > .ganttLeftCol,
-.flashHighlightGreen > .ganttRightCell {
-  background-image: none;
+.flashHighlightRed,
+.flashHighlightRed>.ganttLeftCol,
+.flashHighlightRed>.ganttRightCell,
+.flashHighlightRed .stickyCol {
+  animation: flashGanttRowBgRed 5s ease-out forwards !important;
+  background: #fca5a5 !important;
+  background-color: #fca5a5 !important;
+  background-image: none !important;
 }
 
 .ganttLeftCol:last-child {
   border-right: none;
 }
 
-.priorityCol {
-}
+.priorityCol {}
 
 .ganttRightCell {
   flex: 0 0 auto;
@@ -639,17 +758,11 @@
   pointer-events: none;
 }
 
-/* Custom Tooltip */
-.tooltipContainer {
-  position: relative;
-}
-
-.customTooltip {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 8px;
+/* Global Tooltip */
+.globalTooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  margin-top: -12px;
   background: #1e293b;
   color: #fff;
   padding: 8px 12px;
@@ -657,15 +770,13 @@
   font-size: 11px;
   line-height: 1.6;
   white-space: nowrap;
-  z-index: 100;
-  opacity: 0;
-  visibility: hidden;
+  z-index: 99999;
   pointer-events: none;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
   text-align: left;
 }
 
-.customTooltip::after {
+.globalTooltip::after {
   content: "";
   position: absolute;
   top: 100%;
@@ -674,13 +785,6 @@
   border-width: 5px;
   border-style: solid;
   border-color: #1e293b transparent transparent transparent;
-}
-
-/* For elements that don't use tooltipContainer but have hover state */
-.ganttBar:hover .customTooltip,
-.tooltipContainer:hover .customTooltip {
-  opacity: 1;
-  visibility: visible;
 }
 
 /* Scrollbar Styles */

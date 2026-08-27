@@ -20,17 +20,17 @@ export function getDraftStatusStorageKey(messageId: string) {
 }
 
 export function getStoredDraftStatus(messageId?: string) {
-  if (!messageId || typeof window === "undefined") return null;
+  if (!messageId || !isPersistedMessageId(messageId) || typeof window === "undefined") return null;
   return window.localStorage.getItem(getDraftStatusStorageKey(messageId));
 }
 
 export function setStoredDraftStatus(messageId: string, status: "confirmed" | "rejected") {
-  if (typeof window === "undefined") return;
+  if (!messageId || !isPersistedMessageId(messageId) || typeof window === "undefined") return;
   window.localStorage.setItem(getDraftStatusStorageKey(messageId), status);
 }
 
 export function clearStoredDraftStatus(messageId: string) {
-  if (typeof window === "undefined") return;
+  if (!messageId || !isPersistedMessageId(messageId) || typeof window === "undefined") return;
   window.localStorage.removeItem(getDraftStatusStorageKey(messageId));
 }
 

@@ -1,7 +1,7 @@
-from typing import List, Optional
 from datetime import date
+from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -34,7 +34,7 @@ def get_pending_logworks(
         pending_logworks = (
             db.query(LogWork)
             .filter(LogWork.status == "PENDING")
-            .order_by(LogWork.created_at.desc())
+            .order_by(LogWork.created_at.desc(), LogWork.work_date.desc(), LogWork.id.desc())
             .all()
         )
     else:
@@ -60,7 +60,7 @@ def get_pending_logworks(
             db.query(LogWork)
             .join(Task, LogWork.task_id == Task.id)
             .filter(LogWork.status == "PENDING", project_filter)
-            .order_by(LogWork.created_at.desc())
+            .order_by(LogWork.created_at.desc(), LogWork.work_date.desc(), LogWork.id.desc())
             .all()
         )
 
@@ -103,6 +103,12 @@ def approve_logwork(
     # Check permission
     if not user_can_manage_project(db, task.project_id, current_user):
         raise HTTPException(status_code=403, detail="Không có quyền duyệt logwork này")
+
+    if (logwork.status or "PENDING").upper() != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Logwork này đã được xử lý trước đó",
+        )
 
     logwork.status = "APPROVED"
     db.commit()
@@ -173,6 +179,12 @@ def reject_logwork(
     # Check permission
     if not user_can_manage_project(db, task.project_id, current_user):
         raise HTTPException(status_code=403, detail="Không có quyền duyệt logwork này")
+
+    if (logwork.status or "PENDING").upper() != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Logwork này đã được xử lý trước đó",
+        )
 
     logwork.status = "REJECTED"
     logwork.reject_reason = body.reason.strip() if body.reason else None

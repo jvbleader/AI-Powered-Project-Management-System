@@ -1,6 +1,6 @@
 import math
 
-from sqlalchemy import desc, or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.department_model import Department
@@ -22,7 +22,9 @@ def get_by_id(db: Session, user_id: int) -> User | None:
 
 
 def get_by_email(db: Session, email: str) -> User | None:
-    return _base_query(db).filter(User.email == email).first()
+    if not email:
+        return None
+    return _base_query(db).filter(func.lower(User.email) == email.strip().lower()).first()
 
 
 def get_users(

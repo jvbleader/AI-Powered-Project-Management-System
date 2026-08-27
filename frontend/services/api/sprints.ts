@@ -6,13 +6,14 @@ type BackendSprint = {
   project_id: number | string;
   name: string;
   goal?: string | null;
+  review_note?: string | null;
   status?: string | null;
   start_date: string;
   end_date: string;
 };
 
 type BackendSprintUpdate = Partial<
-  Pick<BackendSprint, "name" | "goal" | "status" | "start_date" | "end_date">
+  Pick<BackendSprint, "name" | "goal" | "review_note" | "status" | "start_date" | "end_date">
 >;
 
 function toSprintStatus(status?: string | null): Sprint["status"] {
@@ -29,6 +30,7 @@ export function toFrontendSprint(sprint: BackendSprint): Sprint {
     projectId: String(sprint.project_id),
     name: sprint.name,
     goal: sprint.goal ?? "",
+    reviewNote: sprint.review_note ?? "",
     status: toSprintStatus(sprint.status),
     progress: 0,
     committedPoints: 0,
@@ -63,6 +65,7 @@ export const sprintApi = {
     const backendPayload = {
       name: payload.name,
       goal: payload.goal,
+      review_note: payload.reviewNote,
       start_date: payload.plannedStart,
       end_date: payload.plannedEnd,
       status: payload.status?.toLowerCase(),
@@ -77,6 +80,7 @@ export const sprintApi = {
     const backendPayload: BackendSprintUpdate = {};
     if (payload.name !== undefined) backendPayload.name = payload.name;
     if (payload.goal !== undefined) backendPayload.goal = payload.goal;
+    if (payload.reviewNote !== undefined) backendPayload.review_note = payload.reviewNote;
     if (payload.plannedStart !== undefined) backendPayload.start_date = payload.plannedStart;
     if (payload.plannedEnd !== undefined) backendPayload.end_date = payload.plannedEnd;
     if (payload.status !== undefined) backendPayload.status = payload.status.toLowerCase();
@@ -87,4 +91,3 @@ export const sprintApi = {
     return wrapBackendResponse(toFrontendSprint(response.data));
   },
 };
-

@@ -1,15 +1,39 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import ai, auth, dashboard, logworks, notifications, projects, roles, sprints, tasks, users
+from app.api import (
+    ai,
+    auth,
+    dashboard,
+    logworks,
+    notifications,
+    projects,
+    roles,
+    sprints,
+    tasks,
+    users,
+)
 from app.core.config import get_settings
+from app.services.websocket_manager import manager
 
 settings = get_settings()
 cors_origin_regex = (
     r"^https?://[^/]+(?::\d+)?$" if settings.environment.strip().lower() == "development" else None
 )
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await manager.start()
+    try:
+        yield
+    finally:
+        await manager.stop()
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

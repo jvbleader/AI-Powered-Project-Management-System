@@ -250,17 +250,18 @@ export function hasCompanywideProjectAccess(
   return isDirectorRole(role) || isHeadOfDevDepartment(department);
 }
 
-export function canManageUsers(role: UserRole) {
-  return isAdminRole(role);
+export function canManageUsers(role: UserRole, isAdmin?: boolean) {
+  return isAdmin ?? isAdminRole(role);
 }
 
 export function canAccessTeamDirectoryRole(
   role: UserRole,
   _department?: string | null,
+  isAdmin?: boolean,
 ) {
   // Admin (quản trị TK) + PM/PO/GM + Giám đốc + Leader
   return (
-    canManageUsers(role) ||
+    canManageUsers(role, isAdmin) ||
     isDirectorRole(role) ||
     isManagerRole(role) ||
     isLeaderRole(role)
@@ -270,6 +271,20 @@ export function canAccessTeamDirectoryRole(
 export function canAccessLogworkApprovalsRole(role: UserRole) {
   // Chỉ PM/PO/GM + Giám đốc + Leader
   return isDirectorRole(role) || isManagerRole(role) || isLeaderRole(role);
+}
+
+export function canDeleteTaskRole(
+  role: UserRole | undefined,
+  department?: string | null,
+) {
+  if (!role) return false;
+  return (
+    isAdminRole(role) ||
+    isDirectorRole(role) ||
+    isHeadOfDevDepartment(department) ||
+    isManagerRole(role) ||
+    isLeaderRole(role)
+  );
 }
 
 export function canEditPendingLogwork(
@@ -319,10 +334,10 @@ export function canCreateProjects(
   role: UserRole,
   department?: string | null,
 ) {
-  // Chỉ PM/PO/GM hoặc mọi thành viên phòng Head of Dev.
+  // PM/PO/GM, Giám đốc, hoặc mọi thành viên phòng Head of Dev.
   return (
     !isAdminRole(role) &&
-    (isHeadOfDevDepartment(department) || isManagerRole(role))
+    (hasCompanywideProjectAccess(role, department) || isManagerRole(role))
   );
 }
 
@@ -562,4 +577,14 @@ export function generateDateRange(start: string, end: string) {
   }
 
   return dates;
+}
+
+export function formatEmployeeCode(codeOrId: string | undefined | null) {
+  if (!codeOrId) return "";
+  const str = String(codeOrId);
+  if (str.startsWith("usr-")) {
+    const numStr = str.replace("usr-", "");
+    return `APMS-${numStr.padStart(4, "0")}`;
+  }
+  return str;
 }

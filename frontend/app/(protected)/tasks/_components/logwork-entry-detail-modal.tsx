@@ -10,6 +10,7 @@ interface LogworkEntryDetailModalProps {
   entry: TaskLogworkEntry | null;
   isOpen: boolean;
   onClose: () => void;
+  onGoToApprovals?: () => void;
   canGoToApprovals?: boolean;
   canEdit?: boolean;
   onEdit?: () => void;
@@ -19,6 +20,7 @@ export function LogworkEntryDetailModal({
   entry,
   isOpen,
   onClose,
+  onGoToApprovals,
   canGoToApprovals = false,
   canEdit = false,
   onEdit,
@@ -29,6 +31,9 @@ export function LogworkEntryDetailModal({
 
   const handleGoToApprovals = () => {
     onClose();
+    if (onGoToApprovals) {
+      onGoToApprovals();
+    }
     router.push(`/logwork-approvals?highlightLogworkId=${encodeURIComponent(entry.id)}`);
   };
 

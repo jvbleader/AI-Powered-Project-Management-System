@@ -97,7 +97,9 @@ function CompareRows({
                     <span
                       className="compare-fill compare-fill-primary"
                       style={{
-                        width: `${Math.max(8, (item.primaryValue / maxValue) * 100)}%`,
+                        width: item.primaryValue === 0
+                          ? "0%"
+                          : `${Math.max(8, (item.primaryValue / maxValue) * 100)}%`,
                       }}
                     />
                   </div>
@@ -108,7 +110,9 @@ function CompareRows({
                     <span
                       className="compare-fill compare-fill-secondary"
                       style={{
-                        width: `${Math.max(8, (item.secondaryValue / maxValue) * 100)}%`,
+                        width: item.secondaryValue === 0
+                          ? "0%"
+                          : `${Math.max(8, (item.secondaryValue / maxValue) * 100)}%`,
                       }}
                     />
                   </div>
@@ -362,10 +366,12 @@ function RecentLogworkList({
   items,
   projectId,
   boardTab,
+  canViewLogwork = false,
 }: {
   items: DashboardOverview["recentLogwork"];
   projectId: string;
   boardTab: BoardTab;
+  canViewLogwork?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visibleLimit = 4;
@@ -386,31 +392,37 @@ function RecentLogworkList({
   return (
     <>
       <div className="project-logwork-list">
-        {itemsToShow.map((logwork) => (
-          <Link
-            key={logwork.id}
-            href={boardHref(projectId, boardTab, {
-              taskId: logwork.taskId,
-              color: "green",
-            })}
-            className="project-logwork-row"
-          >
-            <div className="project-logwork-row-head">
-              <div>
-                <strong>{logwork.userName}</strong>
-                <span>{logwork.taskKey}</span>
+        {itemsToShow.map((logwork) => {
+          const href = canViewLogwork
+            ? `/logwork-approvals?highlightLogworkId=${encodeURIComponent(logwork.id)}`
+            : boardHref(projectId, boardTab, {
+                taskId: logwork.taskId,
+                color: "green",
+              });
+
+          return (
+            <Link
+              key={logwork.id}
+              href={href}
+              className="project-logwork-row"
+            >
+              <div className="project-logwork-row-head">
+                <div>
+                  <strong>{logwork.userName}</strong>
+                  <span>{logwork.taskKey}</span>
+                </div>
+                <strong>{formatHours(logwork.hours)}</strong>
               </div>
-              <strong>{formatHours(logwork.hours)}</strong>
-            </div>
-            <p>{logwork.taskTitle}</p>
-            <div className="project-logwork-row-meta">
-              <span>{formatDate(logwork.workDate)}</span>
-              <span className={`logwork-status-pill ${logworkStatusClassName(logwork.status)}`}>
-                {logworkStatusLabel(logwork.status)}
-              </span>
-            </div>
-          </Link>
-        ))}
+              <p>{logwork.taskTitle}</p>
+              <div className="project-logwork-row-meta">
+                <span>{formatDate(logwork.workDate)}</span>
+                <span className={`logwork-status-pill ${logworkStatusClassName(logwork.status)}`}>
+                  {logworkStatusLabel(logwork.status)}
+                </span>
+              </div>
+            </Link>
+          );
+        })}
       </div>
       {hasMore ? (
         <ExpandToggle
@@ -469,15 +481,21 @@ export function ProjectDashboardOverview({
       attentionType: "upcoming" as const,
     })),
   ];
-  const workloadCompareItems: CompareRowItem[] = overview.workloadBoard.map((member) => ({
-    id: member.userId,
-    label: member.name,
-    primaryValue: member.loggedHours,
-    secondaryValue: member.estimatedHours,
-    meta: `${member.assignedTasks} task · ${member.doneTasks} hoàn thành`,
-    trailing: `${member.progress}%`,
-    href: personalScope ? undefined : membersUrl,
-  }));
+  const workloadCompareItems: CompareRowItem[] = overview.workloadBoard.map((member) => {
+    const atEtPercent =
+      member.estimatedHours > 0
+        ? Math.round((member.loggedHours / member.estimatedHours) * 100)
+        : 0;
+    return {
+      id: member.userId,
+      label: member.name,
+      primaryValue: member.loggedHours,
+      secondaryValue: member.estimatedHours,
+      meta: `${member.assignedTasks} task · ${member.doneTasks} hoàn thành`,
+      trailing: `${atEtPercent}%`,
+      href: personalScope ? undefined : membersUrl,
+    };
+  });
   const visibleWorkloadItems = workloadCompareItems.slice(0, 4);
 
   const taskSegments = [
@@ -570,29 +588,11 @@ export function ProjectDashboardOverview({
         </Surface>
       </section>
 
-      {!personalScope ? (
-      <section className="project-dashboard-secondary-grid">
-        <Surface
-          title="Khối lượng công việc"
-          kicker="Theo thành viên"
-          aside={
-            <Link href={membersUrl} className="dashboard-inline-action">
-              Xem thành viên →
-            </Link>
-          }
-        >
-          <WorkloadContent items={workloadCompareItems} />
-        </Surface>
-
-        {canViewLogwork ? (
+      {personalScope ? (
+        <section className="project-dashboard-secondary-grid" style={{ gridTemplateColumns: "1fr" }}>
           <Surface
-            title="Logwork gần đây"
-            kicker="Cập nhật"
-            aside={
-              <span className="project-logwork-coverage">
-                {overview.membersLoggedToday}/{overview.memberCount} hôm nay
-              </span>
-            }
+            title="Logwork của bạn"
+            kicker="Dự án này"
           >
             <RecentLogworkList
               items={overview.recentLogwork}
@@ -600,9 +600,41 @@ export function ProjectDashboardOverview({
               boardTab={boardTab}
             />
           </Surface>
-        ) : null}
-      </section>
-      ) : null}
+        </section>
+      ) : (
+        <section className="project-dashboard-secondary-grid">
+          <Surface
+            title="Khối lượng công việc"
+            kicker="Theo thành viên"
+            aside={
+              <Link href={membersUrl} className="dashboard-inline-action">
+                Xem thành viên →
+              </Link>
+            }
+          >
+            <WorkloadContent items={workloadCompareItems} />
+          </Surface>
+
+          {canViewLogwork ? (
+            <Surface
+              title="Logwork gần đây"
+              kicker="Cập nhật"
+              aside={
+                <span className="project-logwork-coverage">
+                  {overview.membersLoggedToday}/{overview.memberCount} hôm nay
+                </span>
+              }
+            >
+              <RecentLogworkList
+                items={overview.recentLogwork}
+                projectId={projectId}
+                boardTab={boardTab}
+                canViewLogwork={canViewLogwork}
+              />
+            </Surface>
+          ) : null}
+        </section>
+      )}
     </div>
   );
 }

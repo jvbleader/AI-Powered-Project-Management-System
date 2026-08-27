@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { aiApi } from "@/services/api";
-import { getStoredDraftStatus, isPersistedMessageId, setStoredDraftStatus } from "@/lib/assistant-storage";
+import { isPersistedMessageId } from "@/lib/assistant-storage";
 
 type SprintDraft = {
   name: string;
@@ -26,7 +26,7 @@ export function SprintDraftConfirm({
   initialStatus?: "pending" | "confirmed" | "rejected";
   onDraftResolved?: (messageId: string, status: "confirmed" | "rejected") => void;
 }) {
-  const persistedStatus = messageId ? getStoredDraftStatus(messageId) : null;
+  const persistedStatus = null;
   const resolvedInitialStatus =
     initialStatus !== "pending"
       ? initialStatus
@@ -51,6 +51,30 @@ export function SprintDraftConfirm({
     }
   });
 
+  useEffect(() => {
+    try {
+      const data = JSON.parse(draft);
+      if (data) {
+        setSprintsData(Array.isArray(data) ? data : [data]);
+      }
+    } catch {
+      // Ignore partial draft JSON during streaming
+    }
+  }, [draft]);
+
+  useEffect(() => {
+    if (resolvedInitialStatus === "confirmed") {
+      setIsSuccess(true);
+      setIsRejected(false);
+    } else if (resolvedInitialStatus === "rejected") {
+      setIsRejected(true);
+      setIsSuccess(false);
+    } else if (resolvedInitialStatus === "pending") {
+      setIsSuccess(false);
+      setIsRejected(false);
+    }
+  }, [resolvedInitialStatus]);
+
   const hasPersistedMessage = isPersistedMessageId(messageId);
 
   if (sprintsData.length === 0) {
@@ -70,7 +94,6 @@ export function SprintDraftConfirm({
 
   const markResolved = (status: "confirmed" | "rejected") => {
     if (!messageId) return;
-    setStoredDraftStatus(messageId, status);
     onDraftResolved?.(messageId, status);
   };
 
@@ -100,7 +123,6 @@ export function SprintDraftConfirm({
       );
       const response = await aiApi.updateDraft(
         Number(messageId),
-        "json_sprint_draft",
         nextSprints,
       );
       setSprintsData(response.payload as SprintDraft[]);
@@ -141,7 +163,7 @@ export function SprintDraftConfirm({
     }
     try {
       setIsSubmitting(true);
-      await aiApi.rejectDraft(Number(messageId), "json_sprint_draft");
+      await aiApi.rejectDraft(Number(messageId));
       setIsRejected(true);
       markResolved("rejected");
     } catch (e: any) {

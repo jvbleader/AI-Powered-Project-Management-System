@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session
 
 from app.models.logworks import LogWork
 from app.models.project_model import Project, ProjectMember, Role
@@ -204,6 +205,71 @@ def get_user_workload(
             return {"error": str(e)}
 
 
+def query_project_team_workload(db: Session, project_id: int) -> Dict[str, Any]:
+    members = db.execute(
+        select(ProjectMember, User, Role)
+        .join(User, ProjectMember.user_id == User.id)
+        .join(Role, User.role_id == Role.id)
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.is_active.is_(True),
+        )
+    ).all()
+
+    open_tasks = db.execute(
+        select(Task, ProjectMember.user_id)
+        .join(TaskAssignees, Task.id == TaskAssignees.task_id)
+        .join(ProjectMember, TaskAssignees.project_member_id == ProjectMember.id)
+        .where(
+            ProjectMember.project_id == project_id,
+            Task.status.in_(["todo", "in_progress"]),
+        )
+    ).all()
+
+    tasks_by_user: Dict[int, List[Task]] = {}
+    for task, uid in open_tasks:
+        tasks_by_user.setdefault(uid, []).append(task)
+
+    team = []
+    for _pm, member_user, role_obj in members:
+        member_tasks = tasks_by_user.get(member_user.id, [])
+        windows = [
+            {
+                "task_id": t.id,
+                "title": t.title,
+                "status": t.status,
+                "start_date": t.start_date.isoformat() if t.start_date else None,
+                "deadline": t.deadline.isoformat() if t.deadline else None,
+                "estimated_hours": float(t.estimated_hours) if t.estimated_hours else 0,
+            }
+            for t in member_tasks
+        ]
+        team.append(
+            {
+                "user_id": member_user.id,
+                "name": member_user.full_name or member_user.email,
+                "role": role_obj.name if role_obj else "unknown",
+                "active_tasks_count": len(member_tasks),
+                "open_estimated_hours": round(
+                    sum(float(t.estimated_hours or 0) for t in member_tasks), 1
+                ),
+                "busy_windows": windows,
+            }
+        )
+
+    team.sort(key=lambda row: (row["open_estimated_hours"], row["active_tasks_count"]))
+    return {
+        "project_id": project_id,
+        "member_count": len(team),
+        "team": team,
+        "overlap_rule": (
+            "Hai khoảng [start_date, deadline] chồng nhau khi "
+            "start_a <= deadline_b AND start_b <= deadline_a. "
+            "Không gán task mới cho người có busy_windows chồng với lịch task mới."
+        ),
+    }
+
+
 @tool
 def get_project_team_workload(project_id: int, config: ToolConfig = None) -> Dict[str, Any]:
     """
@@ -221,67 +287,6 @@ def get_project_team_workload(project_id: int, config: ToolConfig = None) -> Dic
             return denied
 
         try:
-            members = db.execute(
-                select(ProjectMember, User, Role)
-                .join(User, ProjectMember.user_id == User.id)
-                .join(Role, User.role_id == Role.id)
-                .where(
-                    ProjectMember.project_id == project_id,
-                    ProjectMember.is_active.is_(True),
-                )
-            ).all()
-
-            open_tasks = db.execute(
-                select(Task, ProjectMember.user_id)
-                .join(TaskAssignees, Task.id == TaskAssignees.task_id)
-                .join(ProjectMember, TaskAssignees.project_member_id == ProjectMember.id)
-                .where(
-                    ProjectMember.project_id == project_id,
-                    Task.status.in_(["todo", "in_progress"]),
-                )
-            ).all()
-
-            tasks_by_user: Dict[int, List[Task]] = {}
-            for task, uid in open_tasks:
-                tasks_by_user.setdefault(uid, []).append(task)
-
-            team = []
-            for pm, member_user, role_obj in members:
-                member_tasks = tasks_by_user.get(member_user.id, [])
-                windows = [
-                    {
-                        "task_id": t.id,
-                        "title": t.title,
-                        "status": t.status,
-                        "start_date": t.start_date.isoformat() if t.start_date else None,
-                        "deadline": t.deadline.isoformat() if t.deadline else None,
-                        "estimated_hours": float(t.estimated_hours) if t.estimated_hours else 0,
-                    }
-                    for t in member_tasks
-                ]
-                team.append(
-                    {
-                        "user_id": member_user.id,
-                        "name": member_user.full_name or member_user.email,
-                        "role": role_obj.name if role_obj else "unknown",
-                        "active_tasks_count": len(member_tasks),
-                        "open_estimated_hours": round(
-                            sum(float(t.estimated_hours or 0) for t in member_tasks), 1
-                        ),
-                        "busy_windows": windows,
-                    }
-                )
-
-            team.sort(key=lambda row: (row["open_estimated_hours"], row["active_tasks_count"]))
-            return {
-                "project_id": project_id,
-                "member_count": len(team),
-                "team": team,
-                "overlap_rule": (
-                    "Hai khoảng [start_date, deadline] chồng nhau khi "
-                    "start_a <= deadline_b AND start_b <= deadline_a. "
-                    "Không gán task mới cho người có busy_windows chồng với lịch task mới."
-                ),
-            }
+            return query_project_team_workload(db, project_id)
         except Exception as e:
             return {"error": str(e)}

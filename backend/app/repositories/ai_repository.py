@@ -2,7 +2,7 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-from app.models.ai_model import AiConversation, AiMessage
+from app.models.ai_model import AiConversation, AiDraft, AiMessage
 
 
 def get_sessions_by_user(db: Session, user_id: int) -> List[AiConversation]:
@@ -61,6 +61,27 @@ def create_message(db: Session, session_id: int, sender: str, content: str) -> A
 
 def get_message_by_id(db: Session, message_id: int) -> AiMessage | None:
     return db.query(AiMessage).filter(AiMessage.id == message_id).first()
+
+
+def get_drafts_by_message_ids(db: Session, message_ids: list[int]) -> dict[int, list[AiDraft]]:
+    if not message_ids:
+        return {}
+    drafts = (
+        db.query(AiDraft)
+        .filter(AiDraft.message_id.in_(message_ids))
+        .order_by(AiDraft.message_id, AiDraft.block_index)
+        .all()
+    )
+    grouped: dict[int, list[AiDraft]] = {}
+    for draft in drafts:
+        grouped.setdefault(draft.message_id, []).append(draft)
+    return grouped
+
+
+def get_draft_by_id(db: Session, draft_id: int) -> AiDraft | None:
+    # Confirmation/rejection must serialize concurrent requests for the same
+    # draft so a double-click cannot create tasks twice.
+    return db.query(AiDraft).filter(AiDraft.id == draft_id).with_for_update().first()
 
 
 def update_message_content(db: Session, message: AiMessage, new_content: str) -> AiMessage:

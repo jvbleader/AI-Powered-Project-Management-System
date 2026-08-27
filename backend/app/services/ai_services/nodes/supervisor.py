@@ -1,3 +1,5 @@
+import logging
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
@@ -7,10 +9,11 @@ from app.services.ai_services.intent_guards import (
     is_destructive_or_forbidden_write,
     is_task_creation_followup,
     latest_human_text,
+    looks_like_sprint_create,
+    looks_like_task_create,
     low_weight_summary_block,
 )
 from app.services.ai_services.state import AgentState
-import logging
 
 logger = logging.getLogger("AI_AGENT")
 logger.setLevel(logging.INFO)
@@ -54,6 +57,11 @@ def supervisor_node(state: AgentState) -> dict:
         logger.info(f"Tiếp tục luồng tạo task với câu trả lời: {latest[:200]}")
         return {"router_decision": "task"}
 
+    if looks_like_task_create(latest) or looks_like_sprint_create(latest):
+        logger.info("==== SUPERVISOR HARD ROUTE TASK ====")
+        logger.info(f"Phát hiện lệnh tạo/giao task hoặc sprint: {latest[:200]}")
+        return {"router_decision": "task"}
+
     summary = state.get("summary", "")
     summary_text = low_weight_summary_block(summary)
     history_block = build_low_weight_history_block(messages)
@@ -70,6 +78,7 @@ def supervisor_node(state: AgentState) -> dict:
         "   - Bao gồm các hành động: Tạo công việc mới, phân công lại người phụ trách, chia nhỏ dự án, tạo/đổi trạng thái sprint (qua bản nháp).\n"
         "   - Mục tiêu: Người dùng yêu cầu hệ thống sinh bản nháp task/sprint để xác nhận trên UI.\n"
         "   - Dấu hiệu nhận biết: Động từ mang tính sai khiến mạnh: 'tạo giúp tôi', 'giao việc này cho', 'chia nhỏ task này', 'lên kế hoạch cho'.\n"
+        "   - CHÚ Ý ĐẶC BIỆT: Yêu cầu 'tạo chức năng X', 'làm module Y', 'viết api Z' là yêu cầu TẠO TASK để làm phần mềm. Luôn trả về 'task', KHÔNG trả về 'out_of_scope'.\n"
         "   - TUYỆT ĐỐI KHÔNG xếp 'xóa task', 'xóa hết', 'DELETE', 'UPDATE ... SET' vào 'task'.\n\n"
         "3. NGOÀI PHẠM VI (Router trả về: 'out_of_scope')\n"
         "   - Câu hỏi không liên quan quản lý dự án (thời tiết, giải trí…).\n"

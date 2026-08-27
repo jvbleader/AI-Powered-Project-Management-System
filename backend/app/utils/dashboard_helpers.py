@@ -83,7 +83,8 @@ def calculate_progress_percent(
         weighted_progress += weight * (progress / 100.0)
 
     if total_weight <= 0:
-        return 0
+        done_count = sum(1 for task in leaf_tasks if normalize_task_status(task.status) == "done")
+        return round((done_count / len(leaf_tasks)) * 100)
 
     return round((weighted_progress / total_weight) * 100)
 

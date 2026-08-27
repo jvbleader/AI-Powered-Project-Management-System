@@ -154,8 +154,8 @@ def get_dashboard_overview(
     project_logworks = [row[0] for row in project_logwork_rows]
     task_progress_map = build_task_progress_map(project_logworks)
     leaf_tasks = list_leaf_tasks(project_tasks)
-    task_counts = count_task_statuses(project_tasks)
-    overdue_tasks_all = list_overdue_tasks(project_tasks, include_parent_tasks=True)
+    task_counts = count_task_statuses(leaf_tasks)
+    overdue_tasks_all = list_overdue_tasks(leaf_tasks)
     overdue_count = len(overdue_tasks_all)
     estimated_hours_total = sum_estimated_hours(project_tasks)
     estimated_hours_done = sum_estimated_hours(
@@ -325,31 +325,35 @@ def get_dashboard_overview(
     can_view_project_logwork = user_can_manage_project(
         db, selected_project.id, current_user
     )
-    recent_logwork = (
-        [
-            DashboardRecentLogworkResponse(
-                id=logwork.id,
-                taskId=task.id,
-                taskKey=f"TASK-{task.id}",
-                taskTitle=task.title,
-                userId=user.id,
-                userName=user.full_name,
-                workDate=logwork.work_date,
-                hours=decimal_to_float(logwork.hours_spent),
-                note=logwork.work_content,
-                progressPercent=decimal_to_float(logwork.progress_percent),
-                status=(logwork.status or "PENDING").upper(),
-                projectId=task.project_id,
-                projectName=selected_project_response.name
-                if selected_project_response
-                else None,
-                canApprove=False,
-            )
-            for logwork, task, _, user in project_logwork_rows[:6]
+    if can_view_project_logwork:
+        logwork_rows_for_recent = project_logwork_rows
+    else:
+        # Nhân viên (Member) chỉ xem logwork của chính mình trong dự án này
+        logwork_rows_for_recent = [
+            row for row in project_logwork_rows if row[3].id == current_user.id
         ]
-        if can_view_project_logwork
-        else []
-    )
+
+    recent_logwork = [
+        DashboardRecentLogworkResponse(
+            id=logwork.id,
+            taskId=task.id,
+            taskKey=f"TASK-{task.id}",
+            taskTitle=task.title,
+            userId=user.id,
+            userName=user.full_name,
+            workDate=logwork.work_date,
+            hours=decimal_to_float(logwork.hours_spent),
+            note=logwork.work_content,
+            progressPercent=decimal_to_float(logwork.progress_percent),
+            status=(logwork.status or "PENDING").upper(),
+            projectId=task.project_id,
+            projectName=selected_project_response.name
+            if selected_project_response
+            else None,
+            canApprove=False,
+        )
+        for logwork, task, _, user in logwork_rows_for_recent[:10]
+    ]
 
     critical_sprint_count = sum(
         1
@@ -509,35 +513,38 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
         global_overdue = len(global_overdue_tasks_list)
 
     recent_logworks = []
-    if can_view_team_activity:
-        global_logwork_rows = task_repository.list_project_logworks_with_context(
-            db, project_ids=project_ids
-        )
-        project_name_by_id = {p.id: p.name for p in accessible_projects}
+    global_logwork_rows = task_repository.list_project_logworks_with_context(
+        db, project_ids=project_ids
+    )
+    all_projects = db.query(Project.id, Project.name).all()
+    project_name_by_id = {p[0]: p[1] for p in all_projects}
 
-        for logwork, task, _, user in global_logwork_rows[:10]:
-            status = (logwork.status or "PENDING").upper()
-            can_approve = status == "PENDING" and user_can_manage_project(
-                db, task.project_id, current_user
+    if not can_view_team_activity:
+        global_logwork_rows = [row for row in global_logwork_rows if row[3].id == current_user.id]
+
+    for logwork, task, _, user in global_logwork_rows[:50]:
+        status = (logwork.status or "PENDING").upper()
+        can_approve = status == "PENDING" and user_can_manage_project(
+            db, task.project_id, current_user
+        )
+        recent_logworks.append(
+            DashboardRecentLogworkResponse(
+                id=logwork.id,
+                taskId=task.id,
+                taskKey=f"TASK-{task.id}",
+                taskTitle=task.title,
+                userId=user.id,
+                userName=user.full_name,
+                workDate=logwork.work_date,
+                hours=decimal_to_float(logwork.hours_spent),
+                note=logwork.work_content,
+                progressPercent=decimal_to_float(logwork.progress_percent),
+                status=status,
+                projectId=task.project_id,
+                projectName=project_name_by_id.get(task.project_id),
+                canApprove=can_approve,
             )
-            recent_logworks.append(
-                DashboardRecentLogworkResponse(
-                    id=logwork.id,
-                    taskId=task.id,
-                    taskKey=f"TASK-{task.id}",
-                    taskTitle=task.title,
-                    userId=user.id,
-                    userName=user.full_name,
-                    workDate=logwork.work_date,
-                    hours=decimal_to_float(logwork.hours_spent),
-                    note=logwork.work_content,
-                    progressPercent=decimal_to_float(logwork.progress_percent),
-                    status=status,
-                    projectId=task.project_id,
-                    projectName=project_name_by_id.get(task.project_id),
-                    canApprove=can_approve,
-                )
-            )
+        )
 
     upcoming_deadlines.sort(key=lambda item: item[0].deadline)
     top_upcoming = upcoming_deadlines[:10]
@@ -583,5 +590,5 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
             for t, p in top_completed
         ],
         recentLogworks=recent_logworks,
-        canViewRecentLogworks=can_view_team_activity,
+        canViewRecentLogworks=True,
     )

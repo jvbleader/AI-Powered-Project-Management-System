@@ -6,6 +6,7 @@ import { StatusPill } from "@/components/ui";
 import { AssigneeAvatars } from "@/components/assignee-avatars";
 import { FilterSelect, type FilterOption } from "@/components/filter-select";
 import { taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
+import { ConfirmModal } from "@/components/confirm-modal";
 import styles from "./project-kanban-board.module.css";
 
 interface ProjectKanbanBoardProps {
@@ -174,12 +175,37 @@ export function ProjectKanbanBoard({
 }: ProjectKanbanBoardProps) {
   const searchParams = useSearchParams();
   const highlightTaskId = searchParams.get("highlightTaskId");
-  const highlightColor = searchParams.get("highlightColor") || "green";
+  const highlightColor = searchParams.get("highlightColor") || "yellow";
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightTaskId);
+  const [activeHighlightColor, setActiveHighlightColor] = useState<string>(highlightColor || "yellow");
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [isConfirmingSprintClose, setIsConfirmingSprintClose] = useState(false);
 
   const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (highlightTaskId) {
+      setActiveHighlightId(highlightTaskId);
+      setActiveHighlightColor(highlightColor || "yellow");
+    }
+  }, [highlightTaskId, highlightColor]);
+
+  useEffect(() => {
+    const handleCustomHighlight = (
+      e: CustomEvent<{ taskId: string | number; projectId?: string | number }>,
+    ) => {
+      if (e.detail?.taskId) {
+        setActiveHighlightId(String(e.detail.taskId));
+        setActiveHighlightColor("yellow");
+      }
+    };
+    window.addEventListener("flowpilot-highlight-task", handleCustomHighlight as EventListener);
+    return () => {
+      window.removeEventListener("flowpilot-highlight-task", handleCustomHighlight as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     const sortedTasks = [...tasks].sort((a, b) => {
@@ -199,21 +225,35 @@ export function ProjectKanbanBoard({
   const selectedSprintId = selectedSprintIdProp ?? null;
 
   useEffect(() => {
-    if (!highlightTaskId || localTasks.length === 0) return;
+    if (!activeHighlightId || localTasks.length === 0) return;
 
-    const highlighted = localTasks.find((task) => String(task.id) === String(highlightTaskId));
+    const normalizedHighlightId = activeHighlightId.startsWith("task-")
+      ? activeHighlightId
+      : `task-${activeHighlightId}`;
+    const rawHighlightId = activeHighlightId.replace(/^task-/, "");
+
+    const highlighted = localTasks.find(
+      (task) =>
+        String(task.id) === String(activeHighlightId) ||
+        String(task.id) === normalizedHighlightId ||
+        String(task.id) === rawHighlightId,
+    );
     if (highlighted?.sprintId && selectedSprintId !== String(highlighted.sprintId)) {
       onSelectedSprintIdChange?.(String(highlighted.sprintId));
     }
 
     const scrollTimer = window.setTimeout(() => {
-      const el = document.getElementById(`kanban-task-${highlightTaskId}`);
+      const el =
+        document.getElementById(`kanban-task-${activeHighlightId}`) ||
+        document.getElementById(`kanban-task-${normalizedHighlightId}`) ||
+        document.getElementById(`kanban-task-${rawHighlightId}`);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-    }, 500);
+    }, 350);
 
     const clearTimer = window.setTimeout(() => {
+      setActiveHighlightId(null);
       const url = new URL(window.location.href);
       url.searchParams.delete("highlightTaskId");
       url.searchParams.delete("highlightColor");
@@ -224,7 +264,7 @@ export function ProjectKanbanBoard({
       window.clearTimeout(scrollTimer);
       window.clearTimeout(clearTimer);
     };
-  }, [highlightTaskId, localTasks, onSelectedSprintIdChange, selectedSprintId]);
+  }, [activeHighlightId, localTasks, onSelectedSprintIdChange, selectedSprintId]);
 
   useEffect(() => {
     if (!selectedSprintId && orderedSprints.length > 0) {
@@ -370,7 +410,18 @@ export function ProjectKanbanBoard({
       onDragStart={(e) => handleDragStart(e, task.id)}
       onDragEnd={handleDragEnd}
       onClick={() => onTaskClick(task.id)}
-      className={`${styles.kanbanCard} ${draggedTaskId === task.id ? styles.dragging : ""} ${highlightTaskId === String(task.id) ? (highlightColor === "red" ? styles.highlightFlashRed : highlightColor === "yellow" ? styles.highlightFlashYellow : styles.highlightFlash) : ""}`}
+      className={`${styles.kanbanCard} ${draggedTaskId === task.id ? styles.dragging : ""} ${
+        Boolean(activeHighlightId) &&
+        (String(task.id) === String(activeHighlightId) ||
+          `task-${task.id}` === String(activeHighlightId) ||
+          String(task.id).replace(/^task-/, "") === String(activeHighlightId).replace(/^task-/, ""))
+          ? activeHighlightColor === "red"
+            ? styles.highlightFlashRed
+            : activeHighlightColor === "yellow"
+              ? styles.highlightFlashYellow
+              : styles.highlightFlash
+          : ""
+      }`}
       style={{ backgroundColor: isBacklog ? "var(--surface-strong)" : getTaskBgColor(task.status) }}
     >
       <div className={styles.cardHeader}>
@@ -453,11 +504,7 @@ export function ProjectKanbanBoard({
                       type="button" 
                       className="secondary-button" 
                       style={{ padding: "0.6rem 1.25rem", fontSize: "0.875rem", borderColor: "var(--critical)", color: "var(--critical)" }}
-                      onClick={() => {
-                        if (window.confirm("Bạn có chắc muốn hoàn thành Sprint này?")) {
-                          handleUpdateSprintStatus("CLOSED");
-                        }
-                      }}
+                      onClick={() => setIsConfirmingSprintClose(true)}
                     >
                       Kết thúc Sprint
                     </button>
@@ -645,6 +692,19 @@ export function ProjectKanbanBoard({
           </div>
         </div>
       )}
+      <ConfirmModal
+        isOpen={isConfirmingSprintClose}
+        onClose={() => setIsConfirmingSprintClose(false)}
+        onConfirm={() => {
+          setIsConfirmingSprintClose(false);
+          void handleUpdateSprintStatus("CLOSED");
+        }}
+        title="Kết thúc Sprint"
+        message="Bạn có chắc muốn hoàn thành Sprint này? Các công việc chưa hoàn thành sẽ được giữ lại trong backlog."
+        confirmText="Hoàn thành"
+        cancelText="Hủy"
+        isDanger={false}
+      />
     </div>
   );
 }

@@ -11,7 +11,7 @@ type BackendRole = {
   user_count?: number;
 };
 
-export function toFrontendRole(raw: BackendRole): SystemRole {
+function toFrontendRole(raw: BackendRole): SystemRole {
   return {
     id: raw.id,
     name: raw.name,

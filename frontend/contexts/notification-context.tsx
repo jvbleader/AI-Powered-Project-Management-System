@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { useAuthSession } from "@/hooks/use-session";
 import { getApiBaseUrl } from "@/services/api/core";
 import {
@@ -43,6 +43,7 @@ const NotificationContext = createContext<NotificationContextValue | undefined>(
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const session = useAuthSession();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const notificationChannelRef = useRef<BroadcastChannel | null>(null);
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
 
   // Fetch initial notifications
@@ -58,6 +59,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       })
       .catch((err) => console.error("Failed to load notifications:", err));
   }, [session]);
+
+  // Keep read state consistent across tabs for the same signed-in user.
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel("apms-notifications");
+    notificationChannelRef.current = channel;
+    channel.onmessage = (event: MessageEvent<{ type?: string; id?: number }>) => {
+      if (event.data?.type === "read" && event.data.id != null) {
+        setNotifications((prev) => prev.map((n) => n.id === event.data.id ? { ...n, is_read: true } : n));
+      }
+      if (event.data?.type === "read-all") {
+        setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      }
+    };
+    return () => {
+      notificationChannelRef.current = null;
+      channel.close();
+    };
+  }, []);
 
   // WebSocket Connection
   useEffect(() => {
@@ -146,6 +166,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAsRead = async (id: number) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+    notificationChannelRef.current?.postMessage({ type: "read", id });
 
     if (session) {
       markNotificationAsRead(id).catch((err) => console.error("Failed to mark as read", err));
@@ -154,6 +175,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const markAllAsRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    notificationChannelRef.current?.postMessage({ type: "read-all" });
     if (session) {
       markAllNotificationsAsRead().catch((err) => console.error("Failed to mark all as read", err));
     }

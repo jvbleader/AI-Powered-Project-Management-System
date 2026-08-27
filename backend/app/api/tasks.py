@@ -96,10 +96,14 @@ def _hydrate_task_list_response(db: Session, tasks: List[TaskResponse]):
             0.0,
         )
         if task.start_date and task.estimated_hours and task.estimated_hours > 0:
-            days_required = max(1, math.ceil(float(task.estimated_hours) / 8.0))
-            calculated_deadline = task.start_date + timedelta(days=days_required - 1)
-            if not task.deadline or calculated_deadline > task.deadline:
-                task.deadline = calculated_deadline
+            try:
+                days_required = max(1, math.ceil(float(task.estimated_hours) / 8.0))
+                if days_required <= 36500:
+                    calculated_deadline = task.start_date + timedelta(days=days_required - 1)
+                    if not task.deadline or calculated_deadline > task.deadline:
+                        task.deadline = calculated_deadline
+            except (OverflowError, ValueError):
+                pass
 
         task.assignees = assignees_by_task_id.get(task.id, [])
         task.has_children = task.id in parent_ids_with_children
@@ -298,6 +302,7 @@ def add_assignee(
             task=task,
             previous_user_ids=assignee_change.previous_user_ids,
             current_user_ids=assignee_change.current_user_ids,
+            actor_user_id=current_user.id,
             actor_name=current_user.full_name,
         )
         _enqueue_notification_ws(background_tasks, notifications)

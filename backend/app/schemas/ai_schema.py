@@ -24,7 +24,7 @@ class ClassifyIntentResponse(BaseModel):
 
 
 class ConfirmTasksRequest(BaseModel):
-    message_id: int
+    draft_id: int
     project_id: Optional[int] = None
     rejected_paths: list[str] = Field(default_factory=list)
 
@@ -35,7 +35,7 @@ class ConfirmTasksResponse(BaseModel):
 
 
 class ConfirmSprintsRequest(BaseModel):
-    message_id: int
+    draft_id: int
     project_id: Optional[int] = None
 
 
@@ -45,7 +45,7 @@ class ConfirmSprintsResponse(BaseModel):
 
 
 class ConfirmSprintStatusRequest(BaseModel):
-    message_id: int
+    draft_id: int
 
 
 class ConfirmSprintStatusResponse(BaseModel):
@@ -54,13 +54,11 @@ class ConfirmSprintStatusResponse(BaseModel):
 
 
 class RejectDraftRequest(BaseModel):
-    message_id: int
-    fence: Literal["json_task_draft", "json_sprint_draft", "json_sprint_status_draft"]
+    draft_id: int
 
 
 class UpdateDraftRequest(BaseModel):
-    message_id: int
-    fence: Literal["json_task_draft", "json_sprint_draft"]
+    draft_id: int
     payload: list[dict]
 
 
@@ -69,6 +67,7 @@ class AiMessageResponse(BaseModel):
     sender: str
     content: str
     created_at: datetime
+    drafts: list[dict] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

@@ -75,6 +75,7 @@ export interface UserProfile {
   workloadHours: number;
   focusScore: number;
   isActive: boolean;
+  isAdmin?: boolean;
   status?: UserStatus;
   employeeCode?: string;
   phoneNumber?: string;

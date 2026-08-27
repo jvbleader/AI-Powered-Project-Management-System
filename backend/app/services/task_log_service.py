@@ -193,6 +193,7 @@ def notify_task_assignee_changed(
     task: Task,
     previous_user_ids: list[int] | tuple[int, ...],
     current_user_ids: list[int] | tuple[int, ...],
+    actor_user_id: int,
     actor_name: str | None = None,
 ) -> list[Notification]:
     """Thông báo chuyển giao cho cả người bị gỡ và người vừa được giao task."""
@@ -200,6 +201,8 @@ def notify_task_assignee_changed(
     current_ids = {int(uid) for uid in current_user_ids}
     removed_ids = previous_ids - current_ids
     added_ids = current_ids - previous_ids
+    removed_ids.discard(actor_user_id)
+    added_ids.discard(actor_user_id)
     actor_suffix = f" bởi {actor_name}" if actor_name else ""
     notifications: list[Notification] = []
 

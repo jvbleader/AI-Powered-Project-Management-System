@@ -12,7 +12,6 @@ from langchain_openai import ChatOpenAI
 from app.core.config import get_settings
 from app.core.connection import engine
 from app.services import project_service
-
 from app.services.ai_services.intent_guards import (
     build_low_weight_history_block,
     format_active_project_line,
@@ -24,6 +23,7 @@ from app.services.ai_services.intent_guards import (
     refuse_if_unauthorized_sprint_draft,
     remember_conversation_project,
     resolve_guard_project,
+    strip_inverted_waterfall_tree_claims,
     task_create_hard_guard_message,
 )
 from app.services.ai_services.state import AgentState
@@ -161,6 +161,7 @@ async def qna_node(state: AgentState, config: RunnableConfig) -> dict:
         summary=summary,
         conversation_project_id=conversation_project_id,
     )
+    effective_project_id = active_project.id if active_project else project_id
     remember_conversation_project(db_session, thread_id, current_user.id, active_project)
     logger.info(f"Active conversation project: {format_active_project_line(active_project)}")
     guard_kwargs = {
@@ -169,9 +170,10 @@ async def qna_node(state: AgentState, config: RunnableConfig) -> dict:
         "messages": messages,
         "summary": summary,
         "conversation_project_id": conversation_project_id,
+        "target_project": active_project,
     }
     guard_message = task_create_hard_guard_message(
-        latest_normalized, projects, project_id, **guard_kwargs
+        latest_normalized, projects, effective_project_id, **guard_kwargs
     )
     if guard_message:
         logger.info("QnA hard guard: blocked waterfall-sprint / methodology hallucination")
@@ -185,6 +187,7 @@ async def qna_node(state: AgentState, config: RunnableConfig) -> dict:
         
         "### [CONTEXT]\n"
         f"- Người dùng hiện tại (Current User ID): {current_user.id}\n"
+        f"- Họ và tên người dùng hiện tại: {current_user.full_name or current_user.email}\n"
         f"- Role hệ thống: {current_role_name}\n"
         f"- Là PM/PO/GM hoặc Leader (phạm vi quản lý = mọi dự án đang join): {'Có' if is_pm_scope else 'Không'}\n"
         f"- Dự án mặc định (đang xem trên màn hình): ID = {project_id if project_id else 'Không có'}\n"
@@ -217,11 +220,39 @@ async def qna_node(state: AgentState, config: RunnableConfig) -> dict:
         "     - Liệt kê ĐỦ mọi dự án trong danh sách; số mục phải khớp 'Số dự án đang join'.\n"
         "     - Với PM/PO/GM hoặc Leader: danh sách đó CHÍNH LÀ dự án họ quản lý (mọi dự án đang join).\n"
         "  2) 'dự án tôi tham gia' / 'được truy cập' → mọi dự án accessible.\n"
-        f"  3) 'task quá hạn của tôi' (nghĩa cá nhân được giao) → is_overdue=True + assignee_id={current_user.id} (Current User ID).\n"
-        "  4) 'task quá hạn trong dự án tôi quản lý' → is_overdue=True + managed_only=True (mọi dự án PM đang join).\n"
+        f"  3) 'hôm nay tôi có những task nào cần làm' / 'task cần làm' / 'việc tôi cần làm' / 'tôi đang phụ trách những task nào' / 'task được giao cho tôi':\n"
+        f"     - BẮT BUỘC gọi `query_tasks` với `assignee_id={current_user.id}` (Current User ID), `project_id` của dự án được hỏi (hoặc bỏ trống project_id nếu hỏi toàn bộ) và `exclude_done=True`.\n"
+        f"     - 🎯 TIÊU CHÍ LỌC BẮT BUỘC:\n"
+        f"       + Lấy TOÀN BỘ các task ở mọi cấp (cả Task gốc và Subtask) mà CÓ TÊN/PHÂN CÔNG cho chính người dùng hiện tại ({current_user.full_name or current_user.email}).\n"
+        f"       + `exclude_done=True`: LOẠI BỎ TẤT CẢ các task đã ở trạng thái hoàn thành (`done`), chỉ lấy các task chưa xong (`todo`, `in_progress`).\n"
+        f"       + TUYỆT ĐỐI KHÔNG lấy bất kỳ task nào chỉ được giao cho người khác (như Diệp Thanh Tú, Bùi Gia Khanh).\n"
+        f"     - ⛔ TUYỆT ĐỐI CẤM gọi `query_tasks` mà không truyền `assignee_id`, vì nếu không truyền sẽ lấy nhầm danh sách toàn bộ task của dự án và của người khác!\n"
+        f"     - 📊 BẮT BUỘC MỞ ĐẦU BẰNG PHẦN TÓM TẮT SỐ LƯỢNG TỔNG QUAN Ở TRÊN ĐẦU trước khi liệt kê chi tiết:\n"
+        f"       (LƯU Ý QUAN TRỌNG VỀ ĐẾM SỐ LƯỢNG: Đếm chính xác từ kết quả tool trả về: Tổng số = Đang thực hiện + Chưa bắt đầu. Tuyệt đối không tự bịa số hay cộng nhầm!)\n"
+        f"       Ví dụ:\n"
+        f"       ### 📊 Tổng quan nhiệm vụ cần làm của bạn ({current_user.full_name or current_user.email}) trong dự án <Tên dự án>:\n"
+        f"       - **Tổng số nhiệm vụ cần làm**: **N** nhiệm vụ\n"
+        f"       - **Đang thực hiện**: **Y** nhiệm vụ\n"
+        f"       - **Chưa bắt đầu**: **Z** nhiệm vụ\n"
+        f"       - **Nhiệm vụ quá hạn / khẩn cấp**: **K** nhiệm vụ *(nếu có)*\n\n"
+        f"     - 🎯 QUY TẮC 1-1 TUYỆT ĐỐI (1-to-1 Mapping):\n"
+        f"       + MỖI PHẦN TỬ trong mảng kết quả tool `query_tasks` trả về tương ứng với ĐÚNG 1 mục trong danh sách được đánh số.\n"
+        f"       + Nếu kết quả trả về N phần tử, danh sách bên dưới CHỈ CÓ ĐÚNG N MỤC (từ 1 đến N). BẮT BUỘC dùng đúng `task_id` của chính phần tử đó (`[ID: <task_id>] <title>`). CẤM TỰ Ý TẠO THÊM BẤT KỲ MỤC NÀO KHÁC.\n"
+        f"       + Tổng số ở khối Tóm tắt = đúng N nhiệm vụ (N = Đang thực hiện + Chưa bắt đầu).\n"
+        f"     - 🔒 NGUYÊN TẮC PHÂN CÔNG ĐỘC LẬP GIỮA TASK CHA VÀ TASK CON: Mỗi task và subtask trong cây đều có danh sách người phụ trách (`assignees`) riêng biệt. Task cha được giao cho Người A KHÔNG CÓ NGHĨA là các subtask con bên dưới cũng thuộc về Người A (subtask con có thể giao cho Người B, Người C...). Ngược lại, subtask con được giao cho Người A KHÔNG CÓ NGHĨA là task cha thuộc về Người A. AI BẮT BUỘC kiểm tra từng task một và CHỈ liệt kê những task/subtask mà CHÍNH NGƯỜI ĐÓ ĐƯỢC GIAO TRỰC TIẾP (có tên trong `assignees` của task đó). TUYỆT ĐỐI KHÔNG đưa task của người khác vào danh sách!\n"
+        f"     - ⛔ TUYỆT ĐỐI CẤM TỰ TẠO THÊM MỤC TỪ `tree_path`: Chuỗi `tree_path` chỉ đóng vai trò chỉ dẫn ngữ cảnh vị trí của task trong cây WBS. BẠN TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý tạo thêm một mục riêng trong danh sách cho task cha nếu task cha đó không nằm trong mảng kết quả của tool!\n"
+        f"     - Sử dụng tiêu đề: '### 📋 Danh sách chi tiết từng nhiệm vụ (N nhiệm vụ):' để hiển thị toàn bộ danh sách.\n"
+        f"  4) 'task quá hạn của tôi' (nghĩa cá nhân được giao) → is_overdue=True + assignee_id={current_user.id} (Current User ID).\n"
+        "  5) 'task quá hạn trong dự án tôi quản lý' → is_overdue=True + managed_only=True (mọi dự án PM đang join).\n"
         "- Khi câu hỏi vừa nhắc task quá hạn vừa nhắc dự án quản lý: BẮT BUỘC lọc theo dự án quản lý; mở đầu câu trả lời phải nói rõ đang liệt kê task quá hạn trong các dự án bạn quản lý (kèm số lượng dự án nếu biết).\n"
         "- Không được chỉ match từ khóa 'quá hạn' rồi bỏ phần 'dự án tôi quản lý'.\n"
-        "- Nếu vẫn mơ hồ giữa (3) và (4), ưu tiên hỏi lại ngắn 1 câu; hoặc nếu có cả hai cụm trong cùng message thì chọn (4).\n\n"
+        "- Nếu vẫn mơ hồ giữa (4) và (5), ưu tiên hỏi lại ngắn 1 câu; hoặc nếu có cả hai cụm trong cùng message thì chọn (5).\n"
+        "  6) 'tổng hợp logwork' / 'tôi đã log bao nhiêu giờ' / 'thống kê giờ làm việc':\n"
+        "     - Trình bày thông tin rõ ràng, mạch lạc, KHÔNG lồng ghép các danh sách quá sâu gây rối mắt.\n"
+        "     - Nên phân nhóm theo Ngày làm việc (ví dụ: `#### 📅 Ngày DD/MM/YYYY`) kèm tổng số giờ của ngày đó.\n"
+        "     - Bên dưới mỗi ngày, liệt kê từng đầu việc theo dạng gạch đầu dòng gọn gàng:\n"
+        "       `- **<Tên task>**: X giờ — <Ghi chú/trạng thái>`\n"
+        "     - Hoặc trình bày dạng Bảng Markdown để hiển thị trực quan nhất (Cột: Ngày | Tên Task | Thời lượng | Ghi chú/Trạng thái).\n\n"
         
         "THAM SỐ BẮT BUỘC & XỬ LÝ NGỮ CẢNH:\n"
         "- Mỗi câu hỏi MỚI phải được hiểu theo PHẠM VI của chính câu đó. TUYỆT ĐỐI KHÔNG trả lời chỉ dựa trên kết quả tool/câu trả lời trước đó nếu câu mới hỏi phạm vi khác hoặc rộng hơn.\n"
@@ -243,6 +274,8 @@ async def qna_node(state: AgentState, config: RunnableConfig) -> dict:
         "- ⛔ SPRINT CHỈ CHO AGILE: Nếu dự án là 'waterfall' mà người dùng yêu cầu tạo/xem/đổi trạng thái Sprint → TỪ CHỐI NGAY. "
         "KHÔNG hỏi thêm mục tiêu hay thời gian, KHÔNG xuất json_sprint_draft. "
         "Chỉ nói: dự án Waterfall không có khái niệm Sprint; Sprint chỉ dùng cho dự án Agile.\n"
+        "- ⛔ CÂY TASK / WBS CHỈ CHO WATERFALL. Agile không hỗ trợ cây. "
+        "CẤM nói dự án Waterfall không hỗ trợ cây task hay không hỗ trợ tạo task/giao task — điều đó là SAI HOÀN TOÀN. Waterfall hoàn toàn hỗ trợ tạo task, phân rã WBS và phân công nhân sự.\n"
         "\nLUẬT TẠO SPRINT (NẾU NGƯỜI DÙNG YÊU CẦU TẠO SPRINT):\n"
         "- Bước 0: Xác định Type dự án. Nếu waterfall → TỪ CHỐI NGAY.\n"
         "- CHỈ tạo sprint khi Type = agile VÀ user là PM/PO/GM hoặc Leader của đúng dự án đó. "
@@ -304,8 +337,55 @@ async def qna_node(state: AgentState, config: RunnableConfig) -> dict:
         "]\n"
         "```\n\n"
         
+        "### [DATABASE STATUSES & PROJECT IMPACT ANALYSIS RULES (QUY TẮC PHÂN TÍCH TIẾN ĐỘ & TÁC ĐỘNG DỰ ÁN)]\n"
+        "TẤT CẢ CÁC TRẠNG THÁI HIỆN CÓ TRONG HỆ THỐNG CƠ SỞ DỮ LIỆU:\n"
+        "1. Trạng thái Task (`Task.status`):\n"
+        "   - `todo`: Chưa bắt đầu / Cần làm (To Do)\n"
+        "   - `in_progress`: Đang tiến hành (In Progress)\n"
+        "   - `done`: Đã hoàn thành (Done)\n"
+        "   - (Trạng thái suy diễn: `is_overdue = True` khi deadline < hôm nay và status != 'done')\n"
+        "2. Mức độ Cấp thiết / Ưu tiên của Task (`Task.priority`):\n"
+        "   - `critical`: Khẩn cấp / Rất cấp thiết (Rủi ro cao nhất, ảnh hưởng nghiêm trọng nhất)\n"
+        "   - `high`: Cao (Cấp thiết, ảnh hưởng trực tiếp đến mốc tiến độ)\n"
+        "   - `medium`: Trung bình (Tiêu chuẩn)\n"
+        "   - `low`: Thấp (Linh hoạt)\n"
+        "3. Trạng thái Dự án (`Project.status`):\n"
+        "   - `active`: Đang hoạt động (ACTIVE)\n"
+        "   - `inactive`: Lập kế hoạch (PLANNING)\n"
+        "   - `completed`: Đã hoàn thành (COMPLETED)\n"
+        "   - `at_risk`: Nguy cơ rủi ro (AT_RISK)\n"
+        "   - `on_hold`: Tạm dừng (ON_HOLD)\n"
+        "4. Trạng thái Sprint (`Sprint.status`):\n"
+        "   - `planned` / `planning`: Lên kế hoạch\n"
+        "   - `active`: Đang diễn ra\n"
+        "   - `closed` / `completed`: Đã đóng / Hoàn thành\n"
+        "5. Trạng thái Logwork (`LogWork.status`):\n"
+        "   - `PENDING`: Chờ duyệt | `APPROVED`: Đã duyệt | `REJECTED`: Bị từ chối\n\n"
+        "🚨 QUY TẮC BẮT BUỘC VỀ TRẢ LỜI ĐÚNG TRỌNG TÂM & PHẠM VI DANH SÁCH TASK:\n"
+        "1. KHI NGƯỜI DÙNG HỎI VỀ TASK CỦA CÁ NHÂN HOẶC NHÂN SỰ CỤ THỂ (Ví dụ: 'Hôm nay tôi có những task nào cần làm', 'Liệt kê các task của Bạch Tuệ Lâm', 'Ai có nhiều task quá hạn nhất'):\n"
+        "   - BƯỚC 1 (TÓM TẮT SỐ LƯỢNG TỔNG QUAN Ở TRÊN ĐẦU): Mở đầu câu trả lời luôn luôn phải có khối tóm tắt tổng quan: Tổng số nhiệm vụ được giao là bao nhiêu, trong đó bao nhiêu nhiệm vụ đang thực hiện, bao nhiêu nhiệm vụ chưa bắt đầu, bao nhiêu nhiệm vụ quá hạn/khẩn cấp.\n"
+        "   - BƯỚC 2 (LIỆT KÊ TOÀN DIỆN 100% NHƯNG ĐỘC LẬP TỪNG TASK): CHỈ LIỆT KÊ CÁC TASK MÀ CHÍNH NGƯỜI ĐÓ ĐƯỢC GIAO TRỰC TIẾP TRONG `assignees`. Tuyệt đối không tự suy diễn 'Task cha có tên A thì task con cũng là của A' hay ngược lại. Task/subtask nào CÓ TÊN CỦA NGƯỜI ĐÓ thì mới in ra, và in đầy đủ 100% tất cả các task thỏa mãn ở mọi cấp cây WBS (không tự ý cắt ngắn hay chỉ in một vài task tiêu biểu)!\n\n"
+        "2. KHI NGƯỜI DÙNG HỎI TỔNG THỂ DỰ ÁN HOẶC YÊU CẦU BÁO CÁO TOÀN BỘ CÔNG VIỆC BÁO ĐỘNG (Ví dụ: 'Tiến độ dự án thế nào?', 'Dự án có những task nào báo động / quá hạn?'):\n"
+        "   - BẮT BUỘC liệt kê đầy đủ 100% tất cả các task báo động của toàn bộ dự án từ đầu đến cuối (không trích đoạn 2-3 task, không dừng lại giữa chừng).\n"
+        "   - Đặt tiêu đề rõ ràng: '### Danh sách toàn bộ các nhiệm vụ cần lưu ý & báo động (X nhiệm vụ):'.\n\n"
+        "3. 🌳 QUÉT VÀ LIỆT KÊ SÂU TOÀN BỘ CÁC CẤP TRONG CÂY (QUÉT CẢ GỐC LẪN TẤT CẢ SUBTASK ĐẾN TẬN LÁ): Bắt buộc quét và liệt kê đầy đủ 100% tất cả các task ở MỌI CẤP PHÂN CẤP trong cây WBS (từ Task gốc Level 0, Subtask cấp 1, Subtask cấp 2, Subtask cấp 3... đến tận các task lá dưới cùng). Tuyệt đối không được bỏ sót bất kỳ subtask nào được giao cho người dùng hoặc có trong phạm vi truy vấn. Đối với mỗi task, ghi rõ 'Phân cấp' (ví dụ: 'Task gốc (Hạng mục chính)', 'Subtask cấp 1', 'Subtask cấp 2'...) kèm 'Đường dẫn cây: <tree_path>' theo đúng kết quả trả về từ tool.\n\n"
+        "ĐỐI VỚI MỖI TASK ĐƯỢC LIỆT KÊ (DÙ LÀ CỦA CÁ NHÂN HAY TOÀN DỰ ÁN), BẮT BUỘC TRÌNH BÀY ĐẦY ĐỦ CÁC DÒNG THÔNG TIN CHI TIẾT SAU (DÙNG BULLET POINTS):\n"
+        "1. **[[ID: <task_id>] <Tên Task>](/projects/prj-<project_id>?highlightTaskId=task-<task_id>&highlightColor=yellow)**\n"
+        "   - **Phân cấp**: Task gốc (Hạng mục chính) HOẶC Subtask cấp X (Đường dẫn cây: `<tree_path>`)\n"
+        "   - **Mức độ cấp thiết**: 🔴 Khẩn cấp HOẶC 🟠 Cao HOẶC 🟡 Trung bình\n"
+        "   - **Trạng thái**: Chưa bắt đầu HOẶC Đang thực hiện HOẶC Đã hoàn thành\n"
+        "   - **Người phụ trách**: <Tên nhân sự được giao> (Nếu rỗng ghi rõ `⚠️ Chưa phân công`)\n"
+        "   - **Lịch trình & Thời lượng**: Từ `<start_date>` đến `<deadline>` (`<duration_days>` ngày)\n"
+        "   - **Cảnh báo thời hạn**: Nêu rõ số ngày quá hạn (ví dụ `🚨 ĐÃ QUÁ HẠN 32 NGÀY`) HOẶC số ngày còn lại (ví dụ `⚠️ SẮP ĐẾN HẠN: Còn 2 ngày mà CHƯA BẮT ĐẦU`)\n"
+        "   - **Tác động đến dự án**: Phân tích cụ thể task/subtask này nếu chậm sẽ làm nghẽn khâu nào (backend/frontend/testing), ảnh hưởng đến Sprint nào hay đe dọa trực tiếp ngày kết thúc toàn dự án.\n\n"
+        "KẾT LUẬN TỔNG THỂ & KHUYẾN NGHỊ HÀNH ĐỘNG:\n"
+        "- Đánh giá tiến độ tổng thể của toàn bộ dự án: Đúng tiến độ / Cảnh báo nguy cơ / Chậm tiến độ.\n"
+        "- Tổng kết số lượng task báo động ở mọi cấp độ và mức độ ảnh hưởng của chúng đến toàn bộ dự án.\n"
+        "- Đưa ra khuyến nghị ưu tiên xử lý cụ thể cho PM/Team (ví dụ: cần tập trung giải quyết subtask nào ngay hôm nay, điều phối thêm nhân sự cho task nào).\n\n"
         "### [OUTPUT FORMAT (ĐỊNH DẠNG ĐẦU RA)]\n"
-        "- Trình bày bằng Tiếng Việt thân thiện, rõ ràng.\n"
+        "- Trình bày bằng Tiếng Việt thân thiện, rõ ràng, tự nhiên, chuyên nghiệp.\n"
+        "- ⛔ TUYỆT ĐỐI KHÔNG MỞ NGOẶC TÊN MÃ DB như `(in_progress)`, `(todo)`, `(done)`, `(critical)`, `(high)`, `(active)`, `(waterfall)`. "
+        "BẮT BUỘC chỉ hiển thị tên Tiếng Việt thuần túy (ví dụ: 'Đang thực hiện', 'Chưa bắt đầu', 'Khẩn cấp', 'Cao', 'Đang hoạt động').\n"
         "- TUYỆT ĐỐI KHÔNG SỬ DỤNG BẢNG (TABLE). Bắt buộc phải dùng danh sách gạch đầu dòng (bullet points).\n"
         "- CHỈ trả lời đúng trọng tâm. Nếu người dùng hỏi lọc theo một điều kiện (ví dụ: 'ai đang ôm quá 5 task'), CHỈ liệt kê những người thỏa mãn điều kiện đó. TUYỆT ĐỐI KHÔNG liệt kê những người không thỏa mãn (như 0 task, 1 task) để tránh rác thông tin.\n"
     )
@@ -401,7 +481,7 @@ async def qna_node(state: AgentState, config: RunnableConfig) -> dict:
     logger.info("==== KẾT THÚC QNA NODE ====")
 
     forced = task_create_hard_guard_message(
-        latest_normalized, projects, project_id, **guard_kwargs
+        latest_normalized, projects, effective_project_id, **guard_kwargs
     )
     if forced:
         output = forced
@@ -410,11 +490,13 @@ async def qna_node(state: AgentState, config: RunnableConfig) -> dict:
             output,
             latest_normalized,
             projects,
-            project_id,
+            effective_project_id,
             **guard_kwargs,
         )
         if unauthorized:
             output = unauthorized
+
+    output = strip_inverted_waterfall_tree_claims(output)
 
     new_message = AIMessage(content=output)
     return {

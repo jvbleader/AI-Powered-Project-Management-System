@@ -7,6 +7,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, Surface } from "@/components/ui";
 import {
+  clearTasksPageCache,
   getTasksPageCache,
   primeTasksPageData,
   setTasksPageCache,
@@ -150,16 +151,17 @@ function TasksPageContent() {
         users={taskState?.users || []}
         viewerId={viewer.id}
         canManage={canManageSelectedTask}
-        onTaskUpdated={(updatedTask) => {
-          setTaskState((current) => {
-            if (!current) return null;
-            const nextState = {
-              ...current,
-              tasks: current.tasks.map(t => t.id === updatedTask.id ? { ...t, ...updatedTask } : t)
-            } as unknown as TaskPageState;
-            setTasksPageCache(viewer.id, nextState);
-            return nextState;
-          });
+        onTaskUpdated={async () => {
+          // A leaf status change can update every ancestor on the backend.
+          // Refresh the whole board instead of replacing only the edited leaf.
+          clearTasksPageCache(viewer.id);
+          setIsBoardLoading(true);
+          try {
+            const nextState = await primeTasksPageData(viewer);
+            setTaskState(nextState);
+          } finally {
+            setIsBoardLoading(false);
+          }
         }}
         onTaskDeleted={(deletedTaskId) => {
           setTaskOpenNotice(null);

@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from app.models.task_model import Task
 from app.models.user_model import User
 from app.repositories import project_repository, task_repository
+from app.schemas.sprint_schema import SprintUpdate
+from app.services import sprint_service
 from app.services.ai_services.task_title_rules import validate_meaningful_task_titles
 from app.services.task_service import _get_or_create_actor_member
 from app.utils.project_helpers import user_can_access_project, user_can_manage_sprints
@@ -120,13 +122,16 @@ def execute_create_tasks(
 
         task = task_repository.create_task(db, task_data)
 
-        # Agile luôn tạo task chưa phân công. Đây là hard guard cuối để draft cũ,
-        # payload chỉnh tay hoặc output LLM sai cũng không thể ghi assignee vào DB.
-        assignee_user_id = None if is_agile else td.get("assignee_id")
-        assignee_name = None if is_agile else td.get("assignee_name")
+        subtasks_data = td.get("subtasks")
+        has_subtasks = isinstance(subtasks_data, list) and len(subtasks_data) > 0
+
+        # Agile luôn tạo task chưa phân công. Task cha Waterfall cũng không gán trực tiếp:
+        # người phụ trách được lấy từ toàn bộ task lá sau khi tạo xong cây.
+        assignee_user_id = None if is_agile or has_subtasks else td.get("assignee_id")
+        assignee_name = None if is_agile or has_subtasks else td.get("assignee_name")
         raw_assignee_ids = (
             td.get("assignee_ids")
-            if not is_agile and isinstance(td.get("assignee_ids"), list)
+            if not is_agile and not has_subtasks and isinstance(td.get("assignee_ids"), list)
             else []
         )
 
@@ -195,8 +200,7 @@ def execute_create_tasks(
 
         created_tasks.append(task)
 
-        subtasks_data = td.get("subtasks")
-        if subtasks_data and isinstance(subtasks_data, list):
+        if has_subtasks:
             sub_created = execute_create_tasks(
                 db,
                 current_user,
@@ -206,6 +210,28 @@ def execute_create_tasks(
                 _is_recursive=True,
             )
             created_tasks.extend(sub_created)
+            from app.services.task_service import _sync_task_assignees_from_leaves
+
+            _sync_task_assignees_from_leaves(db, task, creator_member.id)
+            children = task_repository.get_tasks_by_parent_id(db, task.id)
+            if children:
+                total_hours = sum(float(c.estimated_hours or 0) for c in children)
+                starts = [c.start_date for c in children if c.start_date]
+                deadlines = [c.deadline for c in children if c.deadline]
+                update_fields = {}
+                if total_hours > 0:
+                    update_fields["estimated_hours"] = round(total_hours, 1)
+                if starts:
+                    update_fields["start_date"] = min(starts)
+                if deadlines:
+                    update_fields["deadline"] = max(deadlines)
+                if update_fields:
+                    task_repository.update_task(db, task, update_fields)
+
+        if task.parent_task_id:
+            from app.services.task_service import _sync_ancestor_rollups
+
+            _sync_ancestor_rollups(db, task, creator_member.id)
 
     if not _is_recursive:
         db.commit()
@@ -213,6 +239,8 @@ def execute_create_tasks(
 
         for task in created_tasks:
             db.refresh(task)
+            if task_repository.get_tasks_by_parent_id(db, task.id):
+                continue
             assignee_rows = task_repository.list_task_assignee_users(db, [task.id])
             assignee_user_ids = [user_id for _task_id, user_id, _name, _email in assignee_rows]
             if assignee_user_ids:
@@ -233,10 +261,9 @@ def execute_update_sprint_statuses(
     updates: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """Áp dụng đổi trạng thái sprint sau HITL confirm."""
-    from app.models.project_model import Project
     from app.models.sprint_model import Sprint
 
-    allowed = {"planning", "active", "closed"}
+    allowed = {"planned", "planning", "active", "closed"}
     results: List[Dict[str, Any]] = []
 
     for item in updates:
@@ -256,11 +283,14 @@ def execute_update_sprint_statuses(
                 f"Chỉ PM/PO/GM hoặc Leader của dự án {sprint.project_id} mới được cập nhật sprint."
             )
 
-        project = db.query(Project).filter(Project.id == sprint.project_id).first()
-        if not project or (project.project_type or "").lower() != "agile":
-            raise ValueError("Chỉ cập nhật được trạng thái Sprint trên dự án Agile.")
-
-        sprint.status = status
+        normalized_status = "planned" if status == "planning" else status
+        sprint = sprint_service.update_sprint(
+            db,
+            sprint.id,
+            current_user.id,
+            SprintUpdate(status=normalized_status),
+            commit=False,
+        )
         results.append(
             {
                 "sprint_id": sprint.id,

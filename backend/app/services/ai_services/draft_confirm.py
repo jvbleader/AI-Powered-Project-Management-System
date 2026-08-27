@@ -1,15 +1,16 @@
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.ai_model import AiMessage
+from app.models.ai_model import AiDraft, AiMessage
 from app.models.user_model import User
 from app.repositories import ai_repository
 from app.schemas.sprint_schema import SprintCreate
 from app.services import sprint_service
+from app.services.ai_services.task_draft_structure import sync_task_draft_rollups
 from app.services.ai_services.tools.action_tools import (
     execute_create_tasks,
     execute_update_sprint_statuses,
@@ -30,6 +31,35 @@ def get_owned_message(db: Session, user_id: int, message_id: int) -> AiMessage:
     if not session:
         raise ValueError("Bạn không sở hữu bản nháp này.")
     return message
+
+
+def get_owned_draft(db: Session, user_id: int, draft_id: int) -> AiDraft:
+    draft = ai_repository.get_draft_by_id(db, draft_id)
+    if not draft:
+        raise ValueError("Không tìm thấy bản nháp.")
+    get_owned_message(db, user_id, draft.message_id)
+    if draft.status != "pending":
+        raise ValueError("Bản nháp này đã được xử lý.")
+    return draft
+
+
+def draft_payload(draft: AiDraft) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(draft.payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Bản nháp không phải JSON hợp lệ.") from exc
+    if isinstance(data, dict):
+        data = data.get("tasks") or data.get("sprints") or [data]
+    if not isinstance(data, list):
+        raise ValueError("Bản nháp không đúng định dạng danh sách.")
+    return [item for item in data if isinstance(item, dict)]
+
+
+def resolve_draft(draft: AiDraft, status: str) -> None:
+    if draft.status != "pending":
+        raise ValueError("Bản nháp này đã được xử lý.")
+    draft.status = status
+    draft.resolved_at = datetime.now(timezone.utc)
 
 
 def extract_draft_payload(content: str, fence: str) -> list[dict[str, Any]]:
@@ -89,30 +119,21 @@ def set_draft_message_status(
 def update_draft_payload(
     db: Session,
     current_user: User,
-    message_id: int,
-    fence: str,
+    draft_id: int,
     payload: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    if fence not in {"json_task_draft", "json_sprint_draft"}:
+    draft = get_owned_draft(db, current_user.id, draft_id)
+    if draft.fence not in {"json_task_draft", "json_sprint_draft"}:
         raise ValueError("Loại bản nháp không hỗ trợ chỉnh sửa.")
     if not payload:
         raise ValueError("Bản nháp phải có ít nhất một mục.")
 
-    message = get_owned_message(db, current_user.id, message_id)
-    original = extract_draft_payload(message.content, fence)
-    normalized = _preserve_draft_project_ids(original, payload, fence)
+    original = draft_payload(draft)
+    normalized = _preserve_draft_project_ids(original, payload, draft.fence)
+    if draft.fence == "json_task_draft":
+        normalized = sync_task_draft_rollups(normalized)
     serialized = json.dumps(normalized, ensure_ascii=False, indent=2)
-    updated, count = re.subn(
-        rf"({_pending_fence_pattern(fence)}\s*).*?(\s*```)",
-        lambda match: f"{match.group(1)}{serialized}{match.group(2)}",
-        message.content,
-        count=1,
-        flags=re.DOTALL,
-    )
-    if count == 0:
-        raise ValueError("Không thể cập nhật bản nháp đã xác nhận hoặc bị từ chối.")
-
-    message.content = updated
+    draft.payload = serialized
     db.commit()
     return normalized
 
@@ -176,18 +197,21 @@ def filter_rejected_tasks(
 def confirm_tasks_from_message(
     db: Session,
     current_user: User,
-    message_id: int,
+    draft_id: int,
     project_id: int | None = None,
     rejected_paths: list[str] | None = None,
 ) -> list[int]:
-    message = get_owned_message(db, current_user.id, message_id)
-    tasks_data = extract_draft_payload(message.content, "json_task_draft")
+    draft = get_owned_draft(db, current_user.id, draft_id)
+    if draft.fence != "json_task_draft":
+        raise ValueError("Bản nháp này không phải task.")
+    tasks_data = draft_payload(draft)
     if rejected_paths:
         tasks_data = filter_rejected_tasks(tasks_data, set(rejected_paths))
+    tasks_data = sync_task_draft_rollups(tasks_data)
     if not tasks_data:
         raise ValueError("Không còn task nào trong bản nháp để tạo.")
 
-    set_draft_message_status(db, message, "json_task_draft", "confirmed", commit=False)
+    resolve_draft(draft, "confirmed")
     try:
         created_tasks = execute_create_tasks(
             db=db,
@@ -204,15 +228,17 @@ def confirm_tasks_from_message(
 def confirm_sprints_from_message(
     db: Session,
     current_user: User,
-    message_id: int,
+    draft_id: int,
     project_id: int | None = None,
 ) -> list[int]:
-    message = get_owned_message(db, current_user.id, message_id)
-    sprints_data = extract_draft_payload(message.content, "json_sprint_draft")
+    draft = get_owned_draft(db, current_user.id, draft_id)
+    if draft.fence != "json_sprint_draft":
+        raise ValueError("Bản nháp này không phải sprint.")
+    sprints_data = draft_payload(draft)
     if not sprints_data:
         raise ValueError("Không tìm thấy sprint trong bản nháp.")
 
-    set_draft_message_status(db, message, "json_sprint_draft", "confirmed", commit=False)
+    resolve_draft(draft, "confirmed")
     created_ids: list[int] = []
     try:
         for draft in sprints_data:
@@ -247,14 +273,16 @@ def confirm_sprints_from_message(
 def confirm_sprint_status_from_message(
     db: Session,
     current_user: User,
-    message_id: int,
+    draft_id: int,
 ) -> list[dict[str, Any]]:
-    message = get_owned_message(db, current_user.id, message_id)
-    updates = extract_draft_payload(message.content, "json_sprint_status_draft")
+    draft = get_owned_draft(db, current_user.id, draft_id)
+    if draft.fence != "json_sprint_status_draft":
+        raise ValueError("Bản nháp này không phải đề xuất đổi trạng thái sprint.")
+    updates = draft_payload(draft)
     if not updates:
         raise ValueError("Không tìm thấy đề xuất đổi trạng thái sprint.")
 
-    set_draft_message_status(db, message, "json_sprint_status_draft", "confirmed", commit=False)
+    resolve_draft(draft, "confirmed")
     try:
         return execute_update_sprint_statuses(db, current_user, updates)
     except Exception:
@@ -265,16 +293,11 @@ def confirm_sprint_status_from_message(
 def reject_draft_from_message(
     db: Session,
     current_user: User,
-    message_id: int,
-    fence: str,
+    draft_id: int,
 ) -> None:
-    allowed = {"json_task_draft", "json_sprint_draft", "json_sprint_status_draft"}
-    if fence not in allowed:
-        raise ValueError("Loại bản nháp không hợp lệ.")
-    message = get_owned_message(db, current_user.id, message_id)
-    extract_draft_payload(message.content, fence)
-    if not set_draft_message_status(db, message, fence, "rejected"):
-        raise ValueError("Không thể từ chối bản nháp này.")
+    draft = get_owned_draft(db, current_user.id, draft_id)
+    resolve_draft(draft, "rejected")
+    db.commit()
 
 
 def _parse_date(value: Any):

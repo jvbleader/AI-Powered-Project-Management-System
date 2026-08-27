@@ -4,8 +4,10 @@ Configuration for the API.
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote_plus
 
+import certifi
 from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -36,10 +38,16 @@ class Settings(BaseSettings):
     mysql_host: str
     mysql_host_port: int
     mysql_port: int
+    mysql_ssl_enabled: bool = False
+    mysql_ssl_ca: str | None = None
 
     # Redis topology
     redis_host: str
     redis_port: int
+    redis_password: str | None = None
+    redis_username: str | None = None
+    redis_ssl: bool = False
+    redis_db: int = 0
 
     # Secrets / integrations
     secret_key: str
@@ -70,6 +78,32 @@ class Settings(BaseSettings):
             f"mysql+pymysql://{self.mysql_user}:{password}"
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
         )
+
+    @property
+    def database_connect_args(self) -> dict[str, Any]:
+        """Optional SQLAlchemy connect_args for managed databases."""
+        if not self.mysql_ssl_enabled:
+            return {}
+        ca_path = self.mysql_ssl_ca.strip() if self.mysql_ssl_ca else certifi.where()
+        return {"ssl": {"ca": ca_path}}
+
+    @computed_field
+    @property
+    def redis_url(self) -> str:
+        """Build redis:// or rediss:// URL from settings."""
+        scheme = "rediss" if self.redis_ssl else "redis"
+        username = quote_plus(self.redis_username) if self.redis_username else ""
+        password = quote_plus(self.redis_password) if self.redis_password else ""
+
+        auth = ""
+        if username and password:
+            auth = f"{username}:{password}@"
+        elif password:
+            auth = f":{password}@"
+        elif username:
+            auth = f"{username}@"
+
+        return f"{scheme}://{auth}{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
     @field_validator(
         "environment",

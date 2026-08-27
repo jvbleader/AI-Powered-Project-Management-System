@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatEmployeeCode } from "@/lib/utils/format";
 import { UserAvatar } from "@/components/user-avatar";
 import type { UserProfile } from "@/types";
 
@@ -12,6 +13,7 @@ interface AssigneeSelectProps {
   title?: string;
   placeholder?: string;
   className?: string;
+  dropdownPlacement?: "top" | "bottom";
 }
 
 function normalizeIds(value: string | string[] | undefined | null) {
@@ -29,6 +31,7 @@ export function AssigneeSelect({
   title,
   placeholder = "-- Chưa phân công --",
   className = "task-detail-control",
+  dropdownPlacement = "bottom",
 }: AssigneeSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -62,6 +65,11 @@ export function AssigneeSelect({
     onChange([...selectedIds, userId]);
   }
 
+  const placementStyles: React.CSSProperties =
+    dropdownPlacement === "top"
+      ? { bottom: "100%", top: "auto", marginBottom: "4px" }
+      : { top: "100%", bottom: "auto", marginTop: "4px" };
+
   return (
     <div ref={ref} style={{ position: "relative", width: "100%" }} title={title}>
       <button
@@ -74,17 +82,40 @@ export function AssigneeSelect({
           justifyContent: "space-between",
           textAlign: "left",
           width: "100%",
-          overflow: "visible",
+          overflow: "hidden",
           cursor: disabled ? "not-allowed" : "pointer",
           gap: "8px",
         }}
         disabled={disabled}
       >
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
+        <div
+          className="assignee-select-scroll-container"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "nowrap",
+            gap: "4px",
+            overflowX: "auto",
+            overflowY: "hidden",
+            padding: "2px 0",
+            WebkitOverflowScrolling: "touch",
+          }}
+          onWheel={(e) => {
+            if (e.currentTarget.scrollWidth > e.currentTarget.clientWidth) {
+              if (e.deltaY !== 0) {
+                e.stopPropagation();
+                e.currentTarget.scrollLeft += e.deltaY;
+              }
+            }
+          }}
+        >
           {selectedOptions.length ? (
             selectedOptions.map((user) => (
               <span
                 key={user.id}
+                title={user.name}
                 onMouseEnter={() => setHoveredId(user.id)}
                 onMouseLeave={() => setHoveredId(null)}
                 style={{
@@ -93,6 +124,7 @@ export function AssigneeSelect({
                   alignItems: "center",
                   justifyContent: "center",
                   borderRadius: "999px",
+                  flexShrink: 0,
                 }}
               >
                 <UserAvatar
@@ -154,19 +186,18 @@ export function AssigneeSelect({
         <ul
           style={{
             position: "absolute",
-            top: "100%",
             left: 0,
             right: 0,
             zIndex: 100,
             background: "#ffffff",
             border: "1px solid var(--border)",
             borderRadius: "6px",
-            marginTop: "4px",
             padding: "4px",
             listStyle: "none",
             maxHeight: "280px",
             overflowY: "auto",
             boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            ...placementStyles,
           }}
         >
           <div style={{ padding: "4px 8px", position: "sticky", top: 0, background: "#fff", zIndex: 1, marginBottom: "4px" }}>
@@ -255,7 +286,7 @@ export function AssigneeSelect({
                       {user.name}
                     </span>
                     <span style={{ fontSize: "12px", color: "var(--foreground-muted)", marginTop: "2px" }}>
-                      {user.employeeCode || (user.id.startsWith("usr-") ? user.id : `usr-${user.id}`)}
+                      {user.employeeCode || formatEmployeeCode(user.id)}
                     </span>
                   </div>
                 </li>

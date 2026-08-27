@@ -40,6 +40,21 @@ function resolveTaskDates(task: EnrichedTask | undefined) {
   return { startDate, dueDate };
 }
 
+function calculateDueDateFromEstimate(startDateStr: string, hours: number): string | null {
+  if (!startDateStr || hours <= 0 || hours > 99999 || isNaN(hours)) return null;
+  try {
+    const daysRequired = Math.ceil(hours / 8);
+    if (daysRequired > 36500) return null;
+    const startDateObj = new Date(startDateStr);
+    if (isNaN(startDateObj.getTime())) return null;
+    startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
+    if (isNaN(startDateObj.getTime())) return null;
+    return startDateObj.toISOString().split("T")[0];
+  } catch {
+    return null;
+  }
+}
+
 export function CreateTaskModal({
   projectId,
   projectName,
@@ -53,13 +68,13 @@ export function CreateTaskModal({
   defaultParentTaskId = "",
 }: CreateTaskModalProps) {
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(TASK_DESCRIPTION_TEMPLATE);
   const [status, setStatus] = useState<"TODO" | "IN_PROGRESS" | "DONE">("TODO");
   const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "CRITICAL">("MEDIUM");
   const [startDate, setStartDate] = useState(today);
   const [dueDate, setDueDate] = useState(today);
   const [assigneeIds, setAssigneeIds] = useState<string[]>(() =>
-    projectType === "waterfall" && currentUserId ? [currentUserId] : [],
+    currentUserId ? [currentUserId] : [],
   );
   const [estimatedHours, setEstimatedHours] = useState("");
   const [parentTaskId, setParentTaskId] = useState(defaultParentTaskId);
@@ -86,23 +101,18 @@ export function CreateTaskModal({
 
   if (!isOpen) return null;
 
+  const handleInvalid = (event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event.target as HTMLInputElement | HTMLTextAreaElement).setCustomValidity("Vui lòng nhập đầy đủ thông tin trường này");
+  };
+
+  const handleInput = (event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event.target as HTMLInputElement | HTMLTextAreaElement).setCustomValidity("");
+  };
+
   const handleDescriptionFocus = (event: React.FocusEvent<HTMLTextAreaElement>) => {
     event.target.style.borderColor = "var(--accent)";
     event.target.style.boxShadow = "0 0 0 4px rgba(37, 99, 235, 0.1)";
     event.target.style.background = "#ffffff";
-
-    if (!description.trim()) {
-      setDescription(TASK_DESCRIPTION_TEMPLATE);
-      requestAnimationFrame(() => {
-        const textarea = descriptionRef.current;
-        if (!textarea) return;
-        const cursorPos =
-          TASK_DESCRIPTION_FIRST_INPUT_POS >= 0
-            ? TASK_DESCRIPTION_FIRST_INPUT_POS
-            : TASK_DESCRIPTION_TEMPLATE.length;
-        textarea.setSelectionRange(cursorPos, cursorPos);
-      });
-    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -110,7 +120,7 @@ export function CreateTaskModal({
     setFormError(null);
 
     if (!title.trim() || !startDate || !dueDate) {
-      setFormError("Vui lòng nhập tiêu đề, ngày bắt đầu và hạn chót.");
+      setFormError("Vui lòng nhập đầy đủ thông tin trường này");
       return;
     }
 
@@ -192,6 +202,8 @@ export function CreateTaskModal({
                 type="text"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
+                onInvalid={handleInvalid}
+                onInput={handleInput}
                 required
                 placeholder="Ví dụ: Hoàn thiện API cho task detail"
                 style={{
@@ -219,7 +231,7 @@ export function CreateTaskModal({
                 }}
               />
             </div>
-            
+
             <div style={{ marginBottom: "0.75rem", marginTop: "1.25rem" }}>
               <span className="task-detail-field-label" style={{ marginBottom: "0.5rem", display: "block" }}>Mô tả công việc</span>
               <textarea
@@ -292,14 +304,13 @@ export function CreateTaskModal({
                 />
               </label>
 
-              <label className="task-detail-field" style={{ opacity: projectType === "agile" ? 0.5 : 1 }}>
+              <label className="task-detail-field">
                 <span className="task-detail-field-label">Người thực hiện</span>
                 <AssigneeSelect
                   value={assigneeIds}
                   onChange={setAssigneeIds}
                   options={users}
                   className="task-detail-control"
-                  disabled={projectType === "agile"}
                 />
               </label>
 
@@ -310,17 +321,24 @@ export function CreateTaskModal({
                   className="task-detail-control"
                   type="number"
                   min="0"
+                  max="99999"
                   step="0.5"
                   value={estimatedHours}
                   onChange={(event) => {
-                    const newEstimate = event.target.value;
+                    let newEstimate = event.target.value;
+                    if (newEstimate.length > 5) {
+                      newEstimate = newEstimate.slice(0, 5);
+                    }
+                    const parsed = parseFloat(newEstimate);
+                    if (!isNaN(parsed) && parsed > 99999) {
+                      newEstimate = "99999";
+                    }
                     setEstimatedHours(newEstimate);
-                    const parsed = parseFloat(newEstimate) || 0;
-                    if (parsed > 0 && startDate) {
-                      const daysRequired = Math.ceil(parsed / 8);
-                      const startDateObj = new Date(startDate);
-                      startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
-                      setDueDate(startDateObj.toISOString().split("T")[0]);
+                    if (startDate) {
+                      const calculated = calculateDueDateFromEstimate(startDate, parseFloat(newEstimate) || 0);
+                      if (calculated) {
+                        setDueDate(calculated);
+                      }
                     }
                   }}
                   placeholder="Ví dụ: 6"
@@ -363,9 +381,7 @@ export function CreateTaskModal({
               )}
 
               <label className="task-detail-field">
-                <span className="task-detail-field-label">
-                  Ngày bắt đầu<span className="required-asterisk" aria-hidden="true">*</span>
-                </span>
+                <span className="task-detail-field-label">Ngày bắt đầu</span>
                 <span className="task-detail-date">
                   <input
                     data-testid="task-start-date"
@@ -377,12 +393,14 @@ export function CreateTaskModal({
                       setStartDate(newStartDate);
                       const parsedHours = parseFloat(estimatedHours) || 0;
                       if (parsedHours > 0 && newStartDate) {
-                        const daysRequired = Math.ceil(parsedHours / 8);
-                        const startDateObj = new Date(newStartDate);
-                        startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
-                        setDueDate(startDateObj.toISOString().split("T")[0]);
+                        const calculated = calculateDueDateFromEstimate(newStartDate, parsedHours);
+                        if (calculated) {
+                          setDueDate(calculated);
+                        }
                       }
                     }}
+                    onInvalid={handleInvalid}
+                    onInput={handleInput}
                     required
                     style={{ fontFamily: "inherit" }}
                   />
@@ -398,9 +416,7 @@ export function CreateTaskModal({
               </label>
 
               <label className="task-detail-field">
-                <span className="task-detail-field-label">
-                  Hạn chót<span className="required-asterisk" aria-hidden="true">*</span>
-                </span>
+                <span className="task-detail-field-label">Hạn chót</span>
                 <span className="task-detail-date">
                   <input
                     data-testid="task-due-date"
@@ -408,6 +424,8 @@ export function CreateTaskModal({
                     type="date"
                     value={dueDate}
                     onChange={(event) => setDueDate(event.target.value)}
+                    onInvalid={handleInvalid}
+                    onInput={handleInput}
                     required
                     style={{ fontFamily: "inherit" }}
                   />
@@ -422,7 +440,7 @@ export function CreateTaskModal({
                 </span>
               </label>
             </div>
-            
+
             {formError && (
               <div
                 style={{

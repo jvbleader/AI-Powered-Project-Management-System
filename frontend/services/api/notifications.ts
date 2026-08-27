@@ -1,7 +1,7 @@
 import { apiEndpoints, requestApi } from "./core";
 
-export function getNotifications() {
-  return requestApi<any[]>({ method: "GET", path: "/api/notifications" });
+export function getNotifications(limit = 100) {
+  return requestApi<any[]>({ method: "GET", path: `/api/notifications?limit=${limit}` });
 }
 
 export function markNotificationAsRead(id: number) {

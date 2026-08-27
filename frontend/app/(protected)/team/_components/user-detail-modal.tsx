@@ -1,3 +1,4 @@
+import { formatEmployeeCode } from "@/lib/utils/format";
 import { UserAvatar } from "@/components/user-avatar";
 import { StatusPill } from "@/components/ui";
 import { FilterSelect } from "@/components/filter-select";
@@ -130,7 +131,7 @@ export function UserDetailModal({
             <div className={styles.readonlyGrid}>
               <article>
                 <span>Mã nhân viên</span>
-                <strong>{user.employeeCode ?? user.id}</strong>
+                <strong>{user.employeeCode ?? formatEmployeeCode(user.id)}</strong>
               </article>
               <article>
                 <span>Số điện thoại</span>
@@ -174,7 +175,7 @@ export function UserDetailModal({
                 <div className={styles.detailFacts} style={{ marginBottom: "0.5rem" }}>
                   <article style={{ padding: "0.75rem" }}>
                     <span>Mã nhân viên</span>
-                    <strong style={{ fontSize: "0.95rem" }}>{user.employeeCode ?? user.id}</strong>
+                    <strong style={{ fontSize: "0.95rem" }}>{user.employeeCode ?? formatEmployeeCode(user.id)}</strong>
                   </article>
                   <article style={{ padding: "0.75rem" }}>
                     <span>Số điện thoại</span>

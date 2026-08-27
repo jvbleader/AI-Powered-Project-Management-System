@@ -39,11 +39,10 @@ function measureFromAnchor(
   const header = headerRect && headerRect.height > 0 ? headerRect.height : fallbackHeader;
   // Chỉ lấy từ header bảng trở xuống — bỏ phần tiêu đề card phía trên.
   const top = headerRect ? headerRect.top : (anchor?.getBoundingClientRect().top ?? fallbackTop);
-  const rowEl = anchor?.querySelector("tbody tr");
-  const row =
-    rowEl instanceof HTMLElement && rowEl.getBoundingClientRect().height > 24
-      ? rowEl.getBoundingClientRect().height
-      : fallbackRow;
+  // To prevent infinite loops caused by variable row heights across pages,
+  // we strictly use the fallbackRow (which is passed as rowHeight config)
+  // instead of measuring the first rendered row dynamically.
+  const row = fallbackRow;
   return { top, header, row };
 }
 

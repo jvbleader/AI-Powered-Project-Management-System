@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { formatEmployeeCode } from "@/lib/utils/format";
 import { UserAvatar } from "@/components/user-avatar";
 import { EmptyState, Surface, StatusPill } from "@/components/ui";
 import {
@@ -115,34 +116,47 @@ function ColumnSearch({
   return (
     <div className={styles.headerFilter}>
       {showInput ? (
-        <div className={styles.headerSearchInputWrap}>
-          <span className={styles.headerSearchIcon} aria-hidden>
-            <SearchIcon active={active} />
+        <>
+          <span className={styles.headerSearchPlaceholder} aria-hidden>
+            <span>{label}</span>
+            <SearchIcon active={false} />
           </span>
-          <input
-            ref={inputRef}
-            type="text"
-            className={styles.headerSearchInput}
-            placeholder="Họ tên hoặc email"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            aria-label="Tìm kiếm người dùng"
-          />
-          <button
-            type="button"
-            className={styles.headerSearchClose}
-            onClick={onClose}
-            aria-label="Đóng tìm kiếm"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+          <div className={styles.headerSearchInputWrap}>
+            <span className={styles.headerSearchIcon} aria-hidden>
+              <SearchIcon active={active} />
+            </span>
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.headerSearchInput}
+              placeholder="Họ tên hoặc email"
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              aria-label="Tìm kiếm người dùng"
+            />
+            <button
+              type="button"
+              className={styles.headerSearchClose}
+              onClick={onClose}
+              aria-label="Đóng tìm kiếm"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </>
       ) : (
         <>
-          <span>{label}</span>
+          <button
+            type="button"
+            className={styles.searchLabelButton}
+            onClick={onToggle}
+            aria-label={`Tìm kiếm ${label.toLowerCase()}`}
+          >
+            {label}
+          </button>
           <div className={styles.filterTriggerWrap}>
             <button
               type="button"
@@ -382,11 +396,20 @@ export function UserTable({
       <>
           <div className={styles.tableWrap} ref={tableAnchorRef}>
             <table className={styles.table}>
+              <colgroup>
+                <col className={styles.colUser} />
+                <col className={styles.colEmployeeCode} />
+                <col className={styles.colEmail} />
+                <col className={styles.colRole} />
+                <col className={styles.colStatus} />
+                <col className={styles.colDepartment} />
+                <col className={styles.colPhone} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>
+                  <th className={styles.userColumnHeader}>
                     <ColumnSearch
-                      label="Người dùng"
+                      label="Nhân viên"
                       active={Boolean(search.trim())}
                       open={openFilter === "search"}
                       value={search}
@@ -478,11 +501,10 @@ export function UserTable({
                           />
                           <span className={styles.userCellCopy}>
                             <strong>{user.name}</strong>
-                            <small>{user.jobTitle ?? user.title}</small>
                           </span>
                         </div>
                       </td>
-                      <td>{user.employeeCode ?? user.id}</td>
+                      <td>{user.employeeCode ?? formatEmployeeCode(user.id)}</td>
                       <td>
                         <div className={styles.contactCell}>
                           <span>{user.email}</span>
@@ -521,33 +543,7 @@ export function UserTable({
             </table>
           </div>
 
-          {directory.items.length ? (
-          <div className={styles.paginationBar}>
-            <p>
-              Hiển thị {(directory.page - 1) * directory.pageSize + 1} -{" "}
-              {Math.min(directory.page * directory.pageSize, directory.total)} trên tổng{" "}
-              {directory.total} người dùng.
-            </p>
-            <div className={styles.paginationActions}>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => onPageChange(Math.max(1, page - 1))}
-                disabled={directory.page <= 1}
-              >
-                Trang trước
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => onPageChange(Math.min(directory.totalPages, page + 1))}
-                disabled={directory.page >= directory.totalPages}
-              >
-                Trang sau
-              </button>
-            </div>
-          </div>
-          ) : (
+          {directory.items.length === 0 && (
             <EmptyState
               title={isLoading ? "Đang tải danh sách người dùng" : "Không tìm thấy người dùng phù hợp"}
               description={

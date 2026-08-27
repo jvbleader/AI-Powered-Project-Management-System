@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { aiApi } from "@/services/api";
-import { getStoredDraftStatus, isPersistedMessageId, setStoredDraftStatus } from "@/lib/assistant-storage";
+import { isPersistedMessageId } from "@/lib/assistant-storage";
 
 type SprintStatusDraft = {
   sprint_id: number | string;
@@ -24,7 +24,7 @@ export function SprintStatusDraftConfirm({
   initialStatus?: "pending" | "confirmed" | "rejected";
   onDraftResolved?: (messageId: string, status: "confirmed" | "rejected") => void;
 }) {
-  const persistedStatus = messageId ? getStoredDraftStatus(messageId) : null;
+  const persistedStatus = null;
   const resolvedInitialStatus =
     initialStatus !== "pending"
       ? initialStatus
@@ -36,6 +36,19 @@ export function SprintStatusDraftConfirm({
   const [isSuccess, setIsSuccess] = useState(resolvedInitialStatus === "confirmed");
   const [isRejected, setIsRejected] = useState(resolvedInitialStatus === "rejected");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (resolvedInitialStatus === "confirmed") {
+      setIsSuccess(true);
+      setIsRejected(false);
+    } else if (resolvedInitialStatus === "rejected") {
+      setIsRejected(true);
+      setIsSuccess(false);
+    } else if (resolvedInitialStatus === "pending") {
+      setIsSuccess(false);
+      setIsRejected(false);
+    }
+  }, [resolvedInitialStatus]);
 
   const items = useMemo<SprintStatusDraft[]>(() => {
     try {
@@ -64,7 +77,6 @@ export function SprintStatusDraftConfirm({
 
   const markResolved = (status: "confirmed" | "rejected") => {
     if (!messageId) return;
-    setStoredDraftStatus(messageId, status);
     onDraftResolved?.(messageId, status);
   };
 
@@ -93,7 +105,7 @@ export function SprintStatusDraftConfirm({
     }
     try {
       setIsSubmitting(true);
-      await aiApi.rejectDraft(Number(messageId), "json_sprint_status_draft");
+      await aiApi.rejectDraft(Number(messageId));
       setIsRejected(true);
       markResolved("rejected");
     } catch (e: any) {

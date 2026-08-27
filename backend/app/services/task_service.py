@@ -7,14 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.models.project_model import ProjectMember
 from app.models.task_model import Task
-from app.repositories import project_repository, task_repository
+from app.repositories import project_repository, sprint_repository, task_repository
 from app.schemas.task_schema import LogWorkCreate, TaskAttachmentCreate, TaskCreate, TaskUpdate
 from app.services.task_log_service import create_task_log
 from app.utils.dashboard_helpers import normalize_task_status
 from app.utils.project_helpers import (
+    has_companywide_project_access,
+    is_admin_user,
     list_accessible_project_ids,
     user_can_access_project,
     user_can_manage_project,
+    user_role_requires_manager_scope,
 )
 
 
@@ -73,6 +76,21 @@ def _require_project_access(db: Session, project_id: int, user_id: int):
 def _can_manage_project_tasks(db: Session, project_id: int, user_id: int) -> bool:
     user = _get_current_user(db, user_id)
     return user_can_manage_project(db, project_id, user)
+
+
+def _can_delete_task(db: Session, project_id: int, user_id: int) -> bool:
+    user = _get_current_user(db, user_id)
+    if not user:
+        return False
+    if is_admin_user(user) or has_companywide_project_access(user):
+        return True
+    project = project_repository.get_project_by_id(db, project_id)
+    if project and (project.manager_id == user.id or project.created_by == user.id):
+        return True
+    return bool(
+        user_role_requires_manager_scope(user)
+        and project_repository.get_project_member(db, project_id, user.id)
+    )
 
 
 def _parse_user_id(value) -> Optional[int]:
@@ -139,6 +157,35 @@ def _sync_ancestor_assignees(db: Session, task: Task, actor_member_id: int) -> N
         parent_id = parent.parent_task_id
 
 
+def _sync_ancestor_rollups(
+    db: Session, task: Task, actor_member_id: int, include_self: bool = False
+) -> None:
+    current = (
+        task
+        if include_self
+        else (task_repository.get_task_by_id(db, task.parent_task_id) if task.parent_task_id else None)
+    )
+    while current:
+        _sync_task_assignees_from_leaves(db, current, actor_member_id)
+
+        children = task_repository.get_tasks_by_parent_id(db, current.id)
+        if children:
+            total_hours = sum(float(c.estimated_hours or 0) for c in children)
+            starts = [c.start_date for c in children if c.start_date]
+            deadlines = [c.deadline for c in children if c.deadline]
+            update_fields = {}
+            update_fields["estimated_hours"] = round(total_hours, 1)
+            if starts:
+                update_fields["start_date"] = min(starts)
+            if deadlines:
+                update_fields["deadline"] = max(deadlines)
+            task_repository.update_task(db, current, update_fields)
+
+        if not current.parent_task_id:
+            break
+        current = task_repository.get_task_by_id(db, current.parent_task_id)
+
+
 def _require_manage_project_tasks(db: Session, project_id: int, user_id: int):
     user = _require_project_access(db, project_id, user_id)
     if user_can_manage_project(db, project_id, user):
@@ -161,6 +208,27 @@ def _validate_parent_task(db: Session, project_id: int, parent_task_id: Optional
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Parent task must belong to the same project",
+        )
+
+
+def _validate_sprint(db: Session, project, sprint_id: Optional[int]):
+    if sprint_id is None:
+        return
+    if (getattr(project, "project_type", "") or "").lower() == "waterfall":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dự án Waterfall không sử dụng Sprint.",
+        )
+    sprint = sprint_repository.get_sprint_by_id(db, sprint_id)
+    if not sprint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sprint không tồn tại.",
+        )
+    if sprint.project_id != project.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sprint không thuộc về dự án này.",
         )
 
 
@@ -201,17 +269,8 @@ def _get_or_create_actor_member(db: Session, project_id: int, user_id: int) -> P
 
 
 def _ensure_task_update_access(db: Session, task: Task, user_id: int, update_data: dict):
-    if _can_manage_project_tasks(db, task.project_id, user_id):
-        return
-
-    # Regular members can only update status and sprint_id (Kanban dragging)
-    allowed_keys = {"status", "sprint_id"}
-    disallowed_keys = set(update_data.keys()) - allowed_keys
-    if disallowed_keys:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn chỉ có quyền cập nhật trạng thái hoặc kéo thả task. Chỉ Quản lý/Leader mới được sửa đổi chi tiết task.",
-        )
+    # Cho phép mọi thành viên trong dự án có quyền truy cập được chỉnh sửa chi tiết task
+    _require_project_access(db, task.project_id, user_id)
 
 
 def list_tasks(db: Session, project_id: int, current_user_id: int, sprint_id: Optional[int] = None):
@@ -252,18 +311,27 @@ def create_task(db: Session, project_id: int, current_user_id: int, task_in: Tas
     actor_user = _require_project_access(db, project_id, current_user_id)
     actor_member = _get_or_create_actor_member(db, project_id, actor_user.id)
     _validate_parent_task(db, project_id, task_in.parent_task_id)
+    _validate_sprint(db, project, task_in.sprint_id)
 
     task_data = task_in.model_dump(exclude={"assignee_user_ids"})
     task_data["project_id"] = project_id
     task_data["created_by_member_id"] = actor_member.id
     task_data["status"] = normalize_task_status(task_data.get("status"))
+    if task_data["status"] == "done":
+        task_data["completed_at"] = datetime.now(timezone.utc)
+    else:
+        task_data["completed_at"] = None
 
     task = task_repository.create_task(db, task_data)
 
-    for assignee_user_id in task_in.assignee_user_ids:
-        parsed_user_id = _parse_user_id(assignee_user_id)
-        if parsed_user_id is None:
-            continue
+    unique_assignee_ids = tuple(
+        dict.fromkeys(
+            parsed
+            for raw_id in task_in.assignee_user_ids
+            if (parsed := _parse_user_id(raw_id)) is not None
+        )
+    )
+    for parsed_user_id in unique_assignee_ids:
         assignee_member = project_repository.get_project_member(
             db,
             project_id,
@@ -272,7 +340,8 @@ def create_task(db: Session, project_id: int, current_user_id: int, task_in: Tas
         if assignee_member:
             task_repository.add_task_assignee(db, task.id, assignee_member.id, actor_member.id)
 
-    _sync_ancestor_assignees(db, task, actor_member.id)
+    _sync_ancestor_rollups(db, task, actor_member.id)
+    _sync_task_and_ancestor_statuses(db, task)
     db.commit()
     db.refresh(task)
     return _normalize_task(task)
@@ -287,14 +356,52 @@ def get_task(db: Session, task_id: int, current_user_id: int):
     return _normalize_task(task)
 
 
-def _auto_complete_parent_recursive(db: Session, parent_task_id: int):
-    siblings = task_repository.get_tasks_by_parent_id(db, parent_task_id)
-    if siblings and all(normalize_task_status(s.status) == "done" for s in siblings):
-        parent_task = task_repository.get_task_by_id(db, parent_task_id)
-        if parent_task and normalize_task_status(parent_task.status) != "done":
-            task_repository.update_task(db, parent_task, {"status": "done"})
-            if parent_task.parent_task_id:
-                _auto_complete_parent_recursive(db, parent_task.parent_task_id)
+def _sync_task_and_ancestor_statuses(
+    db: Session,
+    task: Task,
+    *,
+    include_self: bool = False,
+) -> None:
+    """Derive every parent status from its direct children.
+
+    A parent is ``done`` only when all of its direct children are ``done``.
+    As soon as one child is reopened/not done, the parent and every ancestor
+    become ``in_progress`` and their completion timestamps are cleared.
+    """
+    current = (
+        task
+        if include_self
+        else (task_repository.get_task_by_id(db, task.parent_task_id) if task.parent_task_id else None)
+    )
+
+    while current:
+        children = task_repository.get_tasks_by_parent_id(db, current.id)
+        if children:
+            all_children_done = all(
+                normalize_task_status(child.status) == "done" for child in children
+            )
+            desired_status = "done" if all_children_done else "in_progress"
+            current_status = normalize_task_status(current.status)
+            completed_at_is_consistent = (
+                current.completed_at is not None
+                if desired_status == "done"
+                else current.completed_at is None
+            )
+            if current_status != desired_status or not completed_at_is_consistent:
+                task_repository.update_task(
+                    db,
+                    current,
+                    {
+                        "status": desired_status,
+                        "completed_at": (
+                            datetime.now(timezone.utc) if desired_status == "done" else None
+                        ),
+                    },
+                )
+
+        if not current.parent_task_id:
+            break
+        current = task_repository.get_task_by_id(db, current.parent_task_id)
 
 
 def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUpdate):
@@ -302,8 +409,26 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
     update_data = task_in.model_dump(exclude_unset=True)
     if "status" in update_data:
         update_data["status"] = normalize_task_status(update_data["status"])
+        if update_data["status"] == "done":
+            update_data["completed_at"] = datetime.now(timezone.utc)
+        else:
+            update_data["completed_at"] = None
 
     _ensure_task_update_access(db, task, current_user_id, update_data)
+
+    if "estimated_hours" in update_data and _has_child_tasks(db, task.id):
+        if update_data["estimated_hours"] != task.estimated_hours:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Không thể trực tiếp sửa thời gian ước tính của task cha. Thời gian ước tính của task cha được tính tự động từ các task con.",
+            )
+        else:
+            del update_data["estimated_hours"]
+
+    if "sprint_id" in update_data and update_data["sprint_id"] is not None:
+        project = project_repository.get_project_by_id(db, task.project_id)
+        if project:
+            _validate_sprint(db, project, update_data["sprint_id"])
 
     previous_parent_id = task.parent_task_id
     parent_task_id = update_data.get("parent_task_id")
@@ -313,27 +438,29 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
             detail="Task cannot be its own parent",
         )
 
-    if _can_manage_project_tasks(db, task.project_id, current_user_id):
-        _validate_parent_task(db, task.project_id, parent_task_id)
-        _ensure_no_parent_cycle(db, task.id, parent_task_id)
+    _validate_parent_task(db, task.project_id, parent_task_id)
+    _ensure_no_parent_cycle(db, task.id, parent_task_id)
 
-        # Auto-update deadline based on estimated_hours change
-        if "estimated_hours" in update_data and "deadline" not in update_data:
-            old_estimate = float(task.estimated_hours or 0)
-            new_estimate = float(update_data["estimated_hours"] or 0)
-            diff_hours = new_estimate - old_estimate
-            diff_days = round(diff_hours / 8.0)
+    # Auto-update deadline based on estimated_hours change
+    if "estimated_hours" in update_data and "deadline" not in update_data:
+        old_estimate = float(task.estimated_hours or 0)
+        new_estimate = float(update_data["estimated_hours"] or 0)
+        diff_hours = new_estimate - old_estimate
+        diff_days = round(diff_hours / 8.0)
 
-            if diff_days != 0 and task.deadline:
+        if diff_days != 0 and task.deadline:
+            try:
                 update_data["deadline"] = task.deadline + timedelta(days=diff_days)
+            except (OverflowError, ValueError):
+                pass
 
-        start_date = update_data.get("start_date", task.start_date)
-        deadline = update_data.get("deadline", task.deadline)
-        if start_date and deadline and deadline < start_date:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Deadline must be after or equal to start date",
-            )
+    start_date = update_data.get("start_date", task.start_date)
+    deadline = update_data.get("deadline", task.deadline)
+    if start_date and deadline and deadline < start_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Deadline must be after or equal to start date",
+        )
 
     # Track changes for logging
     changes_to_log = []
@@ -348,17 +475,26 @@ def update_task(db: Session, task_id: int, current_user_id: int, task_in: TaskUp
 
     task = task_repository.update_task(db, task, update_data)
 
+    previous_parent = None
     if "parent_task_id" in update_data:
         actor_member = _get_or_create_actor_member(db, task.project_id, current_user_id)
         if previous_parent_id and previous_parent_id != task.parent_task_id:
             previous_parent = task_repository.get_task_by_id(db, previous_parent_id)
             if previous_parent:
-                _sync_task_assignees_from_leaves(db, previous_parent, actor_member.id)
-                _sync_ancestor_assignees(db, previous_parent, actor_member.id)
-        _sync_ancestor_assignees(db, task, actor_member.id)
+                _sync_ancestor_rollups(db, previous_parent, actor_member.id, include_self=True)
+        _sync_ancestor_rollups(db, task, actor_member.id, include_self=False)
+    elif task.parent_task_id:
+        actor_member = _get_or_create_actor_member(db, task.project_id, current_user_id)
+        _sync_ancestor_rollups(db, task, actor_member.id, include_self=False)
 
-    if "status" in update_data and update_data["status"] == "done" and task.parent_task_id:
-        _auto_complete_parent_recursive(db, task.parent_task_id)
+    if "status" in update_data or "parent_task_id" in update_data:
+        if previous_parent and previous_parent.id != task.parent_task_id:
+            _sync_task_and_ancestor_statuses(db, previous_parent, include_self=True)
+        _sync_task_and_ancestor_statuses(
+            db,
+            task,
+            include_self=_has_child_tasks(db, task.id),
+        )
 
     for key, old_val_str, new_val_str in changes_to_log:
         create_task_log(
@@ -402,16 +538,6 @@ def add_assignee(
         parsed_user_id = _parse_user_id(user_id_to_assign)
         next_user_ids = (parsed_user_id,) if parsed_user_id is not None else ()
 
-    if not is_manager:
-        previous_set = set(previous_user_ids)
-        next_set = set(next_user_ids)
-        added = next_set - previous_set
-        removed = previous_set - next_set
-        if (added - {current_user_id}) or (removed - {current_user_id}):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Bạn chỉ có thể tự thêm mình vào người thực hiện. Chỉ Quản lý/Leader mới được giao việc hoặc gỡ người khác.",
-            )
 
     change = TaskAssigneeChange(
         previous_user_ids=previous_user_ids,
@@ -424,7 +550,7 @@ def add_assignee(
 
     if not next_user_ids:
         task_repository.clear_task_assignees(db, task.id)
-        _sync_ancestor_assignees(db, task, actor_member.id)
+        _sync_ancestor_rollups(db, task, actor_member.id)
         db.commit()
         return change
 
@@ -437,7 +563,7 @@ def add_assignee(
             )
 
     applied_user_ids = _replace_task_assignees(db, task, next_user_ids, actor_member.id)
-    _sync_ancestor_assignees(db, task, actor_member.id)
+    _sync_ancestor_rollups(db, task, actor_member.id)
     db.commit()
     return TaskAssigneeChange(
         previous_user_ids=previous_user_ids,
@@ -500,15 +626,27 @@ def add_logwork(db: Session, task_id: int, current_user_id: int, logwork_in: Log
     return logwork
 
 
+def _delete_task_recursive(db: Session, task: Task):
+    children = task_repository.get_tasks_by_parent_id(db, task.id)
+    for child in children:
+        _delete_task_recursive(db, child)
+    task_repository.delete_task(db, task)
+
+
 def delete_task(db: Session, task_id: int, current_user_id: int):
     task = get_task(db, task_id, current_user_id)
-    _require_manage_project_tasks(db, task.project_id, current_user_id)
+    _require_project_access(db, task.project_id, current_user_id)
+    if not _can_delete_task(db, task.project_id, current_user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ có Leader, PM hoặc Quản trị viên mới có quyền xoá task.",
+        )
     parent_id = task.parent_task_id
     actor_member = _get_or_create_actor_member(db, task.project_id, current_user_id)
-    task_repository.delete_task(db, task)
+    _delete_task_recursive(db, task)
     if parent_id:
         parent = task_repository.get_task_by_id(db, parent_id)
         if parent:
-            _sync_task_assignees_from_leaves(db, parent, actor_member.id)
-            _sync_ancestor_assignees(db, parent, actor_member.id)
+            _sync_ancestor_rollups(db, parent, actor_member.id, include_self=True)
+            _sync_task_and_ancestor_statuses(db, parent, include_self=True)
     db.commit()

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { StatusPill } from "@/components/ui";
 import { EnrichedTask, Project, TaskStatus, UserProfile } from "@/types";
 import {
+  formatEmployeeCode,
   taskPriorityLabel,
   taskPriorityPillStyle,
   taskStatusLabel,
@@ -23,6 +25,7 @@ type DueTone = "neutral" | "soon" | "overdue";
 type FilterKey = "key" | "title" | "assigneeCode" | "assigneeName" | "status" | "priority" | "dueDate";
 
 type ColumnFilters = Record<FilterKey, string>;
+type FilterOptions = Record<FilterKey, string[]>;
 
 const EMPTY_FILTERS: ColumnFilters = {
   key: "",
@@ -60,6 +63,10 @@ function formatDueDate(dueDate?: string) {
   return new Date(dueDate).toLocaleDateString("vi-VN");
 }
 
+function dueDateInputValue(dueDate?: string) {
+  return dueDate?.slice(0, 10) || "";
+}
+
 function getTaskAssignees(task: EnrichedTask): UserProfile[] {
   if (task.assignees?.length) return task.assignees;
   if (task.assignee) return [task.assignee];
@@ -80,7 +87,7 @@ function getTaskAssigneeCodes(task: EnrichedTask): string[] {
   return Array.from(
     new Set(
       getTaskAssignees(task)
-        .map((user) => (user.employeeCode || user.id || "").toString().trim())
+        .map((user) => (user.employeeCode || formatEmployeeCode(user.id) || "").toString().trim())
         .filter(Boolean),
     ),
   );
@@ -115,6 +122,178 @@ function FilterIcon({ active }: { active: boolean }) {
   );
 }
 
+function SearchIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={active ? styles.filterIconActive : styles.filterIcon}
+      aria-hidden
+    >
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function ColumnSearch({
+  label,
+  value,
+  open,
+  onToggle,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  open: boolean;
+  onToggle: () => void;
+  onChange: (next: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const showInput = open || Boolean(value.trim());
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  return (
+    <div className={styles.headerFilter}>
+      {showInput ? (
+        <>
+          <span className={styles.headerSearchPlaceholder} aria-hidden>
+            <span>{label}</span>
+            <SearchIcon active={false} />
+          </span>
+          <div className={styles.headerSearchInputWrap}>
+            <span className={styles.headerSearchIcon} aria-hidden>
+              <SearchIcon active={Boolean(value.trim())} />
+            </span>
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.headerSearchInput}
+              placeholder="Tìm người phụ trách..."
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              aria-label="Tìm người phụ trách"
+            />
+            <button
+              type="button"
+              className={styles.headerSearchClose}
+              onClick={() => onChange("")}
+              aria-label="Đóng tìm kiếm người phụ trách"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            className={styles.searchLabelButton}
+            onClick={onToggle}
+            aria-label="Tìm người phụ trách"
+          >
+            {label}
+          </button>
+          <button
+            type="button"
+            className={styles.filterIconButton}
+            onClick={onToggle}
+            aria-label="Tìm người phụ trách"
+          >
+            <SearchIcon active={false} />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CalendarIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={active ? styles.filterIconActive : styles.filterIcon}
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function DateColumnFilter({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className={styles.headerFilter}>
+      <span>{label}</span>
+      <div className={styles.filterTriggerWrap}>
+        {value ? (
+          <span className={styles.filterChip}>
+            {new Date(`${value}T00:00:00`).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}
+            <button
+              type="button"
+              className={styles.filterChipButton}
+              onClick={() => onChange("")}
+              aria-label="Xóa bộ lọc hạn"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </span>
+        ) : null}
+        <button
+          type="button"
+          className={`${styles.filterIconButton} ${value ? styles.filterIconButtonActive : ""}`}
+          onClick={() => inputRef.current?.showPicker()}
+          aria-label="Lọc theo hạn"
+        >
+          <CalendarIcon active={Boolean(value)} />
+        </button>
+        <input
+          ref={inputRef}
+          type="date"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={styles.hiddenDateInput}
+          tabIndex={-1}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ColumnFilter({
   label,
   value,
@@ -123,6 +302,7 @@ function ColumnFilter({
   onToggle,
   onChange,
   searchPlaceholder,
+  searchable = true,
 }: {
   label: string;
   value: string;
@@ -131,78 +311,108 @@ function ColumnFilter({
   onToggle: () => void;
   onChange: (next: string) => void;
   searchPlaceholder?: string;
+  searchable?: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) {
-      setQuery("");
-      return;
-    }
+    if (!open) return;
+
+    const updateMenuPosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) setMenuPosition({ top: rect.bottom + 6, left: rect.left });
+    };
+
+    updateMenuPosition();
 
     function handleClickOutside(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        setQuery("");
         onToggle();
       }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
   }, [open, onToggle]);
 
-  const filteredOptions = options.filter((option) =>
-    option.toLowerCase().includes(query.trim().toLowerCase()),
-  );
+  const filteredOptions = (searchable
+    ? options.filter((option) => option && option.toLowerCase().includes(query.trim().toLowerCase()))
+    : options
+  ).filter((opt) => Boolean(opt && opt.trim() && opt !== "—"));
 
   return (
     <div className={styles.headerFilter} ref={rootRef}>
       <span>{label}</span>
-      <div className={styles.filterTriggerWrap}>
+      <div className={styles.filterTriggerWrap} ref={triggerRef}>
         <button
           type="button"
           className={`${styles.filterIconButton} ${value ? styles.filterIconButtonActive : ""}`}
           onClick={(event) => {
             event.stopPropagation();
+            if (open) setQuery("");
             onToggle();
           }}
           aria-label={`Lọc ${label}`}
         >
           <FilterIcon active={Boolean(value)} />
         </button>
-        {open ? (
-          <div className={styles.dropdownMenu} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.dropdownSearchWrap}>
-              <input
-                type="text"
-                placeholder={searchPlaceholder || `Tìm ${label.toLowerCase()}...`}
-                className={styles.dropdownSearchInput}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                autoFocus
-              />
-            </div>
+        {open && menuPosition
+          ? createPortal(
+            <div
+              ref={menuRef}
+              className={styles.dropdownMenu}
+              style={{ top: menuPosition.top, left: menuPosition.left }}
+              onClick={(event) => event.stopPropagation()}
+            >
+            {searchable ? (
+              <div className={styles.dropdownSearchWrap}>
+                <input
+                  type="text"
+                  placeholder={searchPlaceholder || `Tìm ${label.toLowerCase()}...`}
+                  className={styles.dropdownSearchInput}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoFocus
+                />
+              </div>
+            ) : null}
             <div className={styles.dropdownList}>
-              <button
-                type="button"
-                className={`${styles.dropdownItem} ${value === "" ? styles.dropdownItemActive : ""}`}
-                onClick={() => onChange("")}
-              >
-                Tất cả
-              </button>
-              {filteredOptions.map((option) => (
+              <div className={styles.dropdownListInner}>
                 <button
                   type="button"
-                  key={option}
-                  className={`${styles.dropdownItem} ${value === option ? styles.dropdownItemActive : ""}`}
-                  onClick={() => onChange(option)}
+                  className={`${styles.dropdownItem} ${value === "" ? styles.dropdownItemActive : ""}`}
+                  onClick={() => onChange("")}
                 >
-                  {option}
+                  Tất cả
                 </button>
-              ))}
+                {filteredOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className={`${styles.dropdownItem} ${value === option ? styles.dropdownItemActive : ""}`}
+                    onClick={() => onChange(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : null}
+            </div>,
+            document.body,
+          )
+          : null}
       </div>
     </div>
   );
@@ -257,14 +467,12 @@ function ColumnHeaderRow({
           />
         </th>
         <th className={styles.colAssignee} scope="col">
-          <ColumnFilter
+          <ColumnSearch
             label="Người phụ trách"
             value={filters.assigneeName}
-            options={filterOptions.assigneeName}
             open={openFilter === "assigneeName"}
             onToggle={() => onToggleFilter("assigneeName")}
             onChange={(value) => onChangeFilter("assigneeName", value)}
-            searchPlaceholder="Tìm người phụ trách..."
           />
         </th>
         <th className={styles.colStatus} scope="col">
@@ -275,6 +483,7 @@ function ColumnHeaderRow({
             open={openFilter === "status"}
             onToggle={() => onToggleFilter("status")}
             onChange={(value) => onChangeFilter("status", value)}
+            searchable={false}
           />
         </th>
         <th className={styles.colPriority} scope="col">
@@ -285,15 +494,13 @@ function ColumnHeaderRow({
             open={openFilter === "priority"}
             onToggle={() => onToggleFilter("priority")}
             onChange={(value) => onChangeFilter("priority", value)}
+            searchable={false}
           />
         </th>
         <th className={styles.colDue} scope="col">
-          <ColumnFilter
+          <DateColumnFilter
             label="Hạn"
             value={filters.dueDate}
-            options={filterOptions.dueDate}
-            open={openFilter === "dueDate"}
-            onToggle={() => onToggleFilter("dueDate")}
             onChange={(value) => onChangeFilter("dueDate", value)}
           />
         </th>
@@ -313,7 +520,7 @@ export function GroupedTaskList({
       ? null
       : projects.find((project) => project.id === selectedProjectId);
 
-  const [filters, setFilters] = useState<ColumnFilters>(EMPTY_FILTERS);
+  const [filtersByProject, setFiltersByProject] = useState<Record<string, ColumnFilters>>({});
   const [openFilter, setOpenFilter] = useState<{ projectId: string; key: FilterKey } | null>(null);
   const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>({});
   const [pageByProjectId, setPageByProjectId] = useState<Record<string, number>>({});
@@ -330,73 +537,79 @@ export function GroupedTaskList({
     remeasureKey: tasks.length,
   });
 
-  const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      if (filters.key && task.key !== filters.key) return false;
-      if (filters.title && task.title !== filters.title) return false;
-      if (filters.assigneeCode) {
-        const codes = getTaskAssigneeCodes(task);
-        if (!codes.includes(filters.assigneeCode)) return false;
-      }
-      if (filters.assigneeName) {
-        const names = getTaskAssigneeNames(task);
-        if (!names.includes(filters.assigneeName)) return false;
-      }
-      if (filters.status && taskStatusLabel(task.status) !== filters.status) return false;
-      if (filters.priority && taskPriorityLabel(task.priority) !== filters.priority) return false;
-      if (filters.dueDate && formatDueDate(task.dueDate) !== filters.dueDate) return false;
-      return true;
-    });
-  }, [filters, tasks]);
-
-  const filterOptions = useMemo(() => {
-    const keys = new Set<string>();
-    const titles = new Set<string>();
-    const assigneeCodes = new Set<string>();
-    const assigneeNames = new Set<string>();
-    const statuses = new Set<string>();
-    const priorities = new Set<string>();
-    const dueDates = new Set<string>();
-
-    for (const task of tasks) {
-      if (task.key) keys.add(task.key);
-      if (task.title) titles.add(task.title);
-      getTaskAssigneeCodes(task).forEach((code) => assigneeCodes.add(code));
-      getTaskAssigneeNames(task).forEach((name) => assigneeNames.add(name));
-      statuses.add(taskStatusLabel(task.status));
-      priorities.add(taskPriorityLabel(task.priority));
-      dueDates.add(formatDueDate(task.dueDate));
-    }
-
-    return {
-      key: Array.from(keys).sort(),
-      title: Array.from(titles).sort((a, b) => a.localeCompare(b, "vi")),
-      assigneeCode: Array.from(assigneeCodes).sort(),
-      assigneeName: Array.from(assigneeNames).sort((a, b) => a.localeCompare(b, "vi")),
-      status: Array.from(statuses),
-      priority: Array.from(priorities),
-      dueDate: Array.from(dueDates).sort(),
-    };
-  }, [tasks]);
-
   const projectGroups = useMemo(() => {
-    if (selectedProject) {
-      return [
-        {
-          project: selectedProject,
-          tasks: filteredTasks.filter((task) => task.projectId === selectedProject.id),
-        },
-      ];
-    }
+    const list = selectedProject ? [selectedProject] : projects;
 
-    return projects
-      .map((project) => ({
-        project,
-        tasks: filteredTasks.filter((task) => task.projectId === project.id),
-      }))
-      .filter((entry) => entry.tasks.length > 0)
-      .sort((left, right) => right.tasks.length - left.tasks.length);
-  }, [filteredTasks, projects, selectedProject]);
+    return list
+      .map((project) => {
+        const allProjectTasks = tasks.filter((task) => task.projectId === project.id);
+        if (allProjectTasks.length === 0) return null;
+
+        const pFilters = filtersByProject[project.id] || EMPTY_FILTERS;
+        const filteredTasks = allProjectTasks.filter((task) => {
+          if (pFilters.key && task.key !== pFilters.key) return false;
+          if (pFilters.title && task.title !== pFilters.title) return false;
+          if (pFilters.assigneeCode) {
+            const codes = getTaskAssigneeCodes(task);
+            if (!codes.includes(pFilters.assigneeCode)) return false;
+          }
+          if (pFilters.assigneeName) {
+            const names = getTaskAssigneeNames(task);
+            const query = pFilters.assigneeName.trim().toLocaleLowerCase();
+            if (!names.some((name) => name.toLocaleLowerCase().includes(query))) return false;
+          }
+          if (pFilters.status && taskStatusLabel(task.status) !== pFilters.status) return false;
+          if (pFilters.priority && taskPriorityLabel(task.priority) !== pFilters.priority) return false;
+          if (pFilters.dueDate && dueDateInputValue(task.dueDate) !== pFilters.dueDate) return false;
+          return true;
+        });
+
+        const keys = new Set<string>();
+        const titles = new Set<string>();
+        const assigneeCodes = new Set<string>();
+        const assigneeNames = new Set<string>();
+        const statuses = new Set<string>();
+        const priorities = new Set<string>();
+        const dueDates = new Set<string>();
+
+        for (const task of allProjectTasks) {
+          if (task.key) keys.add(task.key);
+          if (task.title) titles.add(task.title);
+          getTaskAssigneeCodes(task).forEach((code) => assigneeCodes.add(code));
+          getTaskAssigneeNames(task).forEach((name) => assigneeNames.add(name));
+          statuses.add(taskStatusLabel(task.status));
+          priorities.add(taskPriorityLabel(task.priority));
+          dueDates.add(formatDueDate(task.dueDate));
+        }
+
+        const filterOptions = {
+          key: Array.from(keys).filter(Boolean).sort(),
+          title: Array.from(titles).filter(Boolean).sort((a, b) => a.localeCompare(b, "vi")),
+          assigneeCode: Array.from(assigneeCodes).filter(Boolean).sort(),
+          assigneeName: Array.from(assigneeNames).filter(Boolean).sort((a, b) => a.localeCompare(b, "vi")),
+          status: Array.from(statuses).filter(Boolean),
+          priority: Array.from(priorities).filter(Boolean),
+          dueDate: Array.from(dueDates).filter((d) => Boolean(d && d !== "—")).sort(),
+        };
+
+        return {
+          project,
+          allProjectTasks,
+          tasks: filteredTasks,
+          filterOptions,
+          filters: pFilters,
+        };
+      })
+      .filter(Boolean) as Array<{
+        project: Project;
+        allProjectTasks: EnrichedTask[];
+        tasks: EnrichedTask[];
+        filterOptions: FilterOptions;
+        filters: ColumnFilters;
+      }>;
+  }, [tasks, projects, selectedProject, filtersByProject]);
+
+
 
   if (tasks.length === 0) {
     return null;
@@ -409,10 +622,16 @@ export function GroupedTaskList({
     }));
   };
 
-  const setFilterValue = (key: FilterKey, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+  const setFilterValue = (projectId: string, key: FilterKey, value: string) => {
+    setFiltersByProject((prev) => ({
+      ...prev,
+      [projectId]: {
+        ...(prev[projectId] || EMPTY_FILTERS),
+        [key]: value,
+      },
+    }));
     setOpenFilter(null);
-    setPageByProjectId({});
+    setPageByProjectId((prev) => ({ ...prev, [projectId]: 1 }));
   };
 
   const toggleFilter = (projectId: string, key: FilterKey) => {
@@ -427,27 +646,13 @@ export function GroupedTaskList({
     setPageByProjectId((prev) => ({ ...prev, [projectId]: nextPage }));
   };
 
-  const hasActiveFilters = Object.values(filters).some(Boolean);
+  // The global "Không có nhiệm vụ khớp bộ lọc" message is removed since filters are per-project now.
+  // Instead, each project will show an empty state if its tasks are filtered out.
 
   return (
     <div className={styles.container}>
-      {hasActiveFilters && projectGroups.length === 0 ? (
-        <div className={styles.emptyFilterResult}>
-          Không có nhiệm vụ khớp bộ lọc hiện tại.
-          <button
-            type="button"
-            className={styles.clearFiltersButton}
-            onClick={() => {
-              setFilters(EMPTY_FILTERS);
-              setPageByProjectId({});
-            }}
-          >
-            Xóa bộ lọc
-          </button>
-        </div>
-      ) : null}
-
-      {projectGroups.map(({ project, tasks: projectTasks }, groupIndex) => {
+      {projectGroups.map((group, groupIndex) => {
+        const { project, tasks: projectTasks, filterOptions: pFilterOptions, filters: pFilters } = group;
         const isCollapsed = Boolean(collapsedIds[project.id]);
         const panelId = `project-tasks-${project.id}`;
         const totalPages = Math.max(1, Math.ceil(projectTasks.length / pageSize));
@@ -511,13 +716,13 @@ export function GroupedTaskList({
                       <col className={styles.colDue} />
                     </colgroup>
                     <ColumnHeaderRow
-                      filters={filters}
-                      filterOptions={filterOptions}
+                      filters={pFilters}
+                      filterOptions={pFilterOptions}
                       openFilter={
                         openFilter?.projectId === project.id ? openFilter.key : null
                       }
                       onToggleFilter={(key) => toggleFilter(project.id, key)}
-                      onChangeFilter={setFilterValue}
+                      onChangeFilter={(key, value) => setFilterValue(project.id, key, value)}
                     />
 
                     <tbody>
@@ -594,7 +799,9 @@ export function GroupedTaskList({
                         <tr>
                           <td colSpan={7}>
                             <div className={styles.emptyProject}>
-                              Không có nhiệm vụ nào trong dự án này
+                              {Object.values(pFilters).some(Boolean)
+                                ? "Không có nhiệm vụ nào khớp bộ lọc"
+                                : "Không có nhiệm vụ nào trong dự án này"}
                             </div>
                           </td>
                         </tr>

@@ -65,7 +65,7 @@ builder.add_edge("out_of_scope_agent", END)
 builder.add_edge("summarize_conversation", END)
 
 settings = get_settings()
-redis_url = f"redis://{settings.redis_host}:{settings.redis_port}/0"
+redis_url = settings.redis_url
 
 # Cấu hình Redis Checkpointer
 redis_saver = AsyncRedisSaver(redis_url)

@@ -12,7 +12,7 @@ export default function DepartmentsPage() {
   const session = useAuthSession();
   const router = useRouter();
   const currentUser = session?.currentUser;
-  const canManage = canManageUsers(currentUser?.role ?? "");
+  const canManage = canManageUsers(currentUser?.role ?? "", currentUser?.isAdmin);
 
   useEffect(() => {
     if (currentUser && !canManage) {

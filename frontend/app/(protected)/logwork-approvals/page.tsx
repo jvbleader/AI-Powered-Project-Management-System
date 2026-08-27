@@ -36,6 +36,7 @@ export default function LogworkApprovalsPage() {
       highlightLabel=""
       highlightValue=""
       noBottomPadding
+      noScroll
     >
       <div className={styles.pageWrap}>
         <Suspense fallback={<div className={styles.loading}>Đang tải dữ liệu...</div>}>

@@ -100,8 +100,9 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
             setIsConfirmDeleteOpen(false);
             router.push("/tasks");
             router.refresh();
-          } catch (e) {
-            alert("Lỗi khi xoá task");
+          } catch (e: any) {
+            const msg = e?.response?.data?.detail || e?.message || "Lỗi khi xoá task";
+            alert(msg);
           }
         }}
         title="Xoá task"

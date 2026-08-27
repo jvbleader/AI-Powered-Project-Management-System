@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { createPortal } from "react-dom";
 
 interface ConfirmModalProps {
@@ -24,6 +24,8 @@ export function ConfirmModal({
   cancelText = "Hủy",
   isDanger = true,
 }: ConfirmModalProps) {
+  const titleId = useId();
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -53,6 +55,9 @@ export function ConfirmModal({
       onMouseDown={(event) => event.stopPropagation()}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         style={{
           background: "#fff",
           borderRadius: "12px",
@@ -67,7 +72,7 @@ export function ConfirmModal({
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 600, color: "var(--ink)" }}>
+        <h3 id={titleId} style={{ margin: 0, fontSize: "1.1rem", fontWeight: 600, color: "var(--ink)" }}>
           {title}
         </h3>
         <p style={{ margin: 0, fontSize: "0.95rem", color: "var(--foreground-muted)", lineHeight: 1.5 }}>

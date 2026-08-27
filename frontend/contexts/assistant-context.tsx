@@ -16,15 +16,25 @@ import { getApiBaseUrl } from "@/services/api/core";
 import {
   clearAssistantSessionStorage,
   getStoredActiveSessionId,
-  markDraftFenceInContent,
   setStoredActiveSessionId,
-  setStoredDraftStatus,
 } from "@/lib/assistant-storage";
 
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  drafts?: DraftMeta[];
+  isError?: boolean;
+  retryPrompt?: string;
+  retryProjectId?: string | null;
+};
+
+export type DraftMeta = {
+  id: number;
+  fence: "json_task_draft" | "json_sprint_draft" | "json_sprint_status_draft";
+  block_index: number;
+  payload: string;
+  status: "pending" | "confirmed" | "rejected";
 };
 
 export type ChatSession = {
@@ -56,7 +66,7 @@ type AssistantContextValue = {
   streamingSessionIds: string[];
   activeLoadingMessageId: string | null;
   createNewSession: () => Promise<void>;
-  deleteSession: (id: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<boolean>;
   submitPrompt: (prompt: string, projectId?: string | null) => Promise<void>;
   pauseSession: (sessionId?: string | null) => void;
   updateMessageContent: (messageId: string, content: string) => void;
@@ -247,6 +257,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           id: String(message.id),
           role: message.sender,
           content: message.content,
+          drafts: message.drafts,
         }));
         setSessions((current) =>
           current.map((session) => {
@@ -297,14 +308,20 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const resolveDraftMessage = useCallback(
-    (messageId: string, status: "confirmed" | "rejected") => {
-      setStoredDraftStatus(messageId, status);
+    (draftId: string, status: "confirmed" | "rejected") => {
+      const id = Number(draftId);
+      if (!Number.isInteger(id)) return;
       setSessions((current) =>
         current.map((session) => ({
           ...session,
           messages: session.messages.map((message) =>
-            message.id === messageId
-              ? { ...message, content: markDraftFenceInContent(message.content, status) }
+            message.drafts?.some((draft) => draft.id === id)
+              ? {
+                  ...message,
+                  drafts: message.drafts.map((draft) =>
+                    draft.id === id ? { ...draft, status } : draft,
+                  ),
+                }
               : message,
           ),
         })),
@@ -340,7 +357,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const deleteSession = useCallback(async (id: string) => {
     pauseSession(id);
     if (!id.startsWith("sess-")) {
-      await aiApi.clearSession(id).catch(console.error);
+      try {
+        await aiApi.clearSession(id);
+      } catch (error) {
+        console.error(error);
+        return false;
+      }
     }
     setSessions((current) => {
       const updated = current.filter((session) => session.id !== id);
@@ -354,10 +376,18 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       }
       return updated;
     });
+    return true;
   }, [pauseSession]);
 
   const patchMessage = useCallback(
-    (messageId: string, patch: { content?: string; id?: string }) => {
+    (messageId: string, patch: {
+      content?: string;
+      id?: string;
+      drafts?: DraftMeta[];
+      isError?: boolean;
+      retryPrompt?: string;
+      retryProjectId?: string | null;
+    }) => {
       setSessions((current) =>
         current.map((session) => {
           if (!session.messages.some((message) => message.id === messageId)) {
@@ -371,6 +401,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
                     ...message,
                     content: patch.content !== undefined ? patch.content : message.content,
                     id: patch.id || message.id,
+                    drafts: patch.drafts !== undefined ? patch.drafts : message.drafts,
+                    isError: patch.isError !== undefined ? patch.isError : message.isError,
+                    retryPrompt: patch.retryPrompt !== undefined ? patch.retryPrompt : message.retryPrompt,
+                    retryProjectId:
+                      patch.retryProjectId !== undefined
+                        ? patch.retryProjectId
+                        : message.retryProjectId,
                   }
                 : message,
             ),
@@ -395,6 +432,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       const loadingMessageId = `assistant-loading-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const controller = new AbortController();
       let finalMessageId = `assistant-${Date.now()}`;
+      let didAbort = false;
+      let streamFailed = false;
 
       startStream(targetSessionId, { controller, loadingMessageId });
       setMessages(
@@ -438,11 +477,23 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           targetSessionId = newId;
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : "Không tạo được phiên chat.";
-          patchMessage(loadingMessageId, { content: errorMsg });
+          patchMessage(loadingMessageId, {
+            content: errorMsg,
+            isError: true,
+            retryPrompt: cleanPrompt,
+            retryProjectId: projectId ?? null,
+          });
           endStream(targetSessionId);
           return;
         }
       }
+
+      const parsedProjectId = (() => {
+        if (!projectId) return null;
+        const cleaned = String(projectId).trim().replace(/^prj-/i, "");
+        const num = parseInt(cleaned, 10);
+        return Number.isFinite(num) ? num : null;
+      })();
 
       try {
         let response = await fetch(`${getApiBaseUrl()}${aiApi.streamChatUrl}`, {
@@ -453,7 +504,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({
             session_id: targetSessionId,
             message: cleanPrompt,
-            project_id: projectId ? Number(projectId) : null,
+            project_id: parsedProjectId,
           }),
         });
 
@@ -467,7 +518,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
             body: JSON.stringify({
               session_id: targetSessionId,
               message: cleanPrompt,
-              project_id: projectId ? Number(projectId) : null,
+              project_id: parsedProjectId,
             }),
           });
         }
@@ -512,8 +563,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
                 assistantContent = data.replace;
                 patchMessage(loadingMessageId, { content: assistantContent });
               } else if (data.error) {
-                assistantContent += `\n\n**Lỗi:** ${data.error}`;
-                patchMessage(loadingMessageId, { content: assistantContent });
+                streamFailed = true;
+                patchMessage(loadingMessageId, {
+                  content: "Không thể nhận phản hồi từ AI. Vui lòng thử lại.",
+                  isError: true,
+                  retryPrompt: cleanPrompt,
+                  retryProjectId: projectId ?? null,
+                });
               } else if (data.new_session_id) {
                 const newId = String(data.new_session_id);
                 activeSessionIdRef.current = newId;
@@ -530,6 +586,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
                 patchMessage(loadingMessageId, {
                   id: finalMessageId,
                   content: assistantContent || undefined,
+                  drafts: data.drafts,
                 });
               }
             } catch {
@@ -539,12 +596,25 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         }
       } catch (error: any) {
         if (error?.name === "AbortError") {
+          didAbort = true;
           return;
         }
-        const errorMsg = error instanceof Error ? error.message : "Không thể kết nối với AI.";
-        patchMessage(loadingMessageId, { content: errorMsg });
+        streamFailed = true;
+        patchMessage(loadingMessageId, {
+          content: "Không thể kết nối tới AI. Vui lòng kiểm tra mạng và thử lại.",
+          isError: true,
+          retryPrompt: cleanPrompt,
+          retryProjectId: projectId ?? null,
+        });
       } finally {
-        patchMessage(loadingMessageId, { id: finalMessageId });
+        if (didAbort) {
+          setMessages(
+            (current) => current.filter((message) => message.id !== loadingMessageId),
+            targetSessionId,
+          );
+        } else if (!streamFailed) {
+          patchMessage(loadingMessageId, { id: finalMessageId });
+        }
         endStream(targetSessionId);
       }
     },

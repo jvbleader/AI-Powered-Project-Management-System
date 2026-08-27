@@ -153,7 +153,36 @@
 .table {
   width: 100%;
   min-width: 980px;
+  table-layout: fixed;
   border-collapse: collapse;
+}
+
+.colUser {
+  width: 20%;
+}
+
+.colEmployeeCode {
+  width: 9%;
+}
+
+.colEmail {
+  width: 20%;
+}
+
+.colRole {
+  width: 14%;
+}
+
+.colStatus {
+  width: 13%;
+}
+
+.colDepartment {
+  width: 14%;
+}
+
+.colPhone {
+  width: 10%;
 }
 
 .table th,
@@ -176,11 +205,41 @@
   overflow: visible;
 }
 
+.userColumnHeader {
+  width: 20%;
+}
+
 .headerFilter {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 0.4rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+}
+
+.searchLabelButton {
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.searchLabelButton:hover,
+.searchLabelButton:focus-visible {
+  color: var(--accent);
+}
+
+.searchLabelButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 .headerSearchInputWrap {
@@ -188,8 +247,22 @@
   display: flex;
   align-items: center;
   width: 100%;
-  min-width: 140px;
-  max-width: 220px;
+  min-width: 0;
+  max-width: none;
+}
+
+.headerFilter .headerSearchInputWrap {
+  position: absolute;
+  inset: 50% 0 auto;
+  transform: translateY(-50%);
+}
+
+.headerSearchPlaceholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  visibility: hidden;
 }
 
 .headerSearchIcon {

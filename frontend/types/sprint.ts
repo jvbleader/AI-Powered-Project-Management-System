@@ -7,6 +7,7 @@ export interface Sprint {
   projectId: string;
   name: string;
   goal: string;
+  reviewNote?: string;
   status: SprintStatus;
   progress: number;
   committedPoints: number;

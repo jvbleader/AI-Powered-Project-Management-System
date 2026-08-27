@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { AssigneeSelect } from "@/components/assignee-select";
 import { taskApi } from "@/services/api";
@@ -6,11 +6,11 @@ import { CustomSelect } from "@/components/custom-select";
 import {
   formatDateTime,
   canAccessLogworkApprovalsRole,
+  canDeleteTaskRole,
   canEditPendingLogwork,
   logworkStatusClassName,
   logworkStatusLabel,
 } from "@/lib/utils/format";
-import { resolveAvatarUrl } from "@/lib/utils/avatar";
 import type { EnrichedTask, Task, TaskLogworkEntry, UserProfile, TaskLog } from "@/types";
 import { LogworkModal } from "./logwork-modal";
 import { LogworkEntryDetailModal } from "./logwork-entry-detail-modal";
@@ -20,6 +20,21 @@ function truncateText(text: string, max = 52) {
   const value = text.trim();
   if (!value) return "Không có mô tả";
   return value.length <= max ? value : `${value.slice(0, max)}…`;
+}
+
+function calculateDueDateFromEstimate(startDateStr: string, hours: number): string | null {
+  if (!startDateStr || hours <= 0 || hours > 99999 || isNaN(hours)) return null;
+  try {
+    const daysRequired = Math.ceil(hours / 8);
+    if (daysRequired > 36500) return null;
+    const startDateObj = new Date(startDateStr);
+    if (isNaN(startDateObj.getTime())) return null;
+    startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
+    if (isNaN(startDateObj.getTime())) return null;
+    return startDateObj.toISOString().split("T")[0];
+  } catch {
+    return null;
+  }
 }
 
 
@@ -138,6 +153,7 @@ export function TaskDetailModal({
 
   const [logworks, setLogworks] = useState<TaskLogworkEntry[]>([]);
   const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
+  const [projectTasks, setProjectTasks] = useState<Task[]>([]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -145,7 +161,7 @@ export function TaskDetailModal({
     }
   }, [isOpen]);
 
-  const canEditTask = canManage; // Theo yêu cầu: Chỉ Manager và Leader (canManage) mới được sửa tiêu đề, mô tả
+  const canEditTask = true; // Cho phép tất cả thành viên trong dự án có thể chỉnh sửa chi tiết task
   const canUpdateStatus = true; // Ai cũng có thể update status (vì cũng có quyền kéo thả)
   const canLogwork = true;
 
@@ -182,11 +198,8 @@ export function TaskDetailModal({
           focusScore: 0,
           isActive: true,
           status: "ACTIVE",
-          avatarUrl: resolveAvatarUrl({
-            userId: assigneeId,
-            email: preview?.email || task?.assigneeEmail,
-            name: preview?.name || task?.assigneeName || "Người dùng",
-          }),
+          // UserAvatar derives the fallback from assigneeId consistently.
+          avatarUrl: undefined,
         } satisfies UserProfile;
       });
   })();
@@ -199,22 +212,46 @@ export function TaskDetailModal({
   const extraAssignees = resolvedAssignees.filter(
     (assignee) => !projectUsers.some((user) => user.id === assignee.id),
   );
-  const assigneeOptions = canManage
-    ? [...extraAssignees, ...projectUsers]
-    : [
-        ...extraAssignees.filter((assignee) => assignee.id !== viewerId),
-        ...projectUsers.filter((user) => user.id === viewerId),
-      ];
+  const assigneeOptions = [...extraAssignees, ...projectUsers];
 
   const isWaterfall = task && "project" in task && task.project?.projectType === "waterfall";
   const isAgile = task && "project" in task && task.project?.projectType === "agile";
   const isBacklog = isAgile && !task?.sprintId;
 
   const hasChildren = Boolean(task?.hasChildren);
-  // Người quản lý trong dự án waterfall có quyền assign thành viên. Còn agile thì kéo rồi tự gán trên Kanban.
-  const canEditAssignee = isWaterfall ? canManage && !hasChildren : false;
+  // Cho phép chỉnh sửa người thực hiện trên task lá (không có subtask con)
+  const canEditAssignee = !hasChildren;
   const viewer = users.find((user) => user.id === viewerId);
   const canGoToLogworkApprovals = viewer ? canAccessLogworkApprovalsRole(viewer.role) : false;
+  const canDeleteTask = Boolean(
+    canManage ||
+      (viewer &&
+        (canDeleteTaskRole(viewer.role, viewer.department) ||
+          (task && "project" in task && task.project?.managerId === viewer.id)))
+  );
+
+  const descendantIds = useMemo(() => {
+    if (!task || !projectTasks.length) return new Set<string>();
+    const descendants = new Set<string>();
+    const queue = [task.id];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      for (const t of projectTasks) {
+        if (t.parentTaskId === currentId && !descendants.has(t.id)) {
+          descendants.add(t.id);
+          queue.push(t.id);
+        }
+      }
+    }
+    return descendants;
+  }, [task, projectTasks]);
+
+  const parentTaskOptions = useMemo(() => {
+    if (!task) return [];
+    return projectTasks.filter(
+      (candidate) => candidate.id !== task.id && !descendantIds.has(candidate.id)
+    );
+  }, [task, projectTasks, descendantIds]);
 
   const loadTask = useEffectEvent(async (nextTaskId: string) => {
     setIsLoading(true);
@@ -230,6 +267,12 @@ export function TaskDetailModal({
       setEstimateDraft(String(taskResponse.data.estimateHours || 0));
       setLogworks(logworkResponse.data);
       setTaskLogs(logsResponse.data);
+      if (taskResponse.data.projectId) {
+        taskApi
+          .list({ projectId: taskResponse.data.projectId })
+          .then((res) => setProjectTasks(res.data))
+          .catch(() => {});
+      }
     } catch (error: unknown) {
       alert(
         `Không thể tải thông tin công việc: ${
@@ -288,9 +331,16 @@ export function TaskDetailModal({
         setEstimateDraft(String(refreshed.data.estimateHours || 0));
       }
       setTaskLogs(newLogs.data);
+      if ("parentTaskId" in updates && refreshed.data.projectId) {
+        taskApi
+          .list({ projectId: refreshed.data.projectId })
+          .then((res) => setProjectTasks(res.data))
+          .catch(() => {});
+      }
       onTaskUpdated(refreshed.data);
-    } catch (error: unknown) {
-      alert(`Cập nhật thất bại: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } catch (error: any) {
+      const msg = error?.response?.data?.detail || error?.message || "Cập nhật thất bại";
+      alert(`Cập nhật thất bại: ${msg}`);
     } finally {
       setIsSaving(false);
     }
@@ -304,32 +354,44 @@ export function TaskDetailModal({
 
     const pending = pendingEstimateRef.current;
     pendingEstimateRef.current = null;
-    if (!pending || !task || pending.taskId !== task.id) return;
+    if (!pending || !task || pending.taskId !== task.id || hasChildren) return;
 
-    const newEstimate = parseFloat(pending.value) || 0;
+    let newEstimate = parseFloat(pending.value) || 0;
+    if (newEstimate > 99999) {
+      newEstimate = 99999;
+    }
     if (newEstimate === pending.currentEstimate) {
       setEstimateDraft(String(pending.currentEstimate || 0));
       return;
     }
 
     const updates: Partial<Task> = { estimateHours: newEstimate };
-    if (newEstimate > 0 && pending.startDate) {
-      const daysRequired = Math.ceil(newEstimate / 8);
-      const startDateObj = new Date(pending.startDate);
-      startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
-      updates.dueDate = startDateObj.toISOString().split("T")[0];
+    if (pending.startDate) {
+      const calculated = calculateDueDateFromEstimate(pending.startDate, newEstimate);
+      if (calculated) {
+        updates.dueDate = calculated;
+      }
     }
 
     await handleUpdate(updates);
   }
 
   function scheduleEstimateUpdate(value: string) {
-    if (!task) return;
+    if (!task || hasChildren) return;
 
-    setEstimateDraft(value);
+    let sanitized = value;
+    if (sanitized.length > 5) {
+      sanitized = sanitized.slice(0, 5);
+    }
+    const parsed = parseFloat(sanitized);
+    if (!isNaN(parsed) && parsed > 99999) {
+      sanitized = "99999";
+    }
+
+    setEstimateDraft(sanitized);
     pendingEstimateRef.current = {
       taskId: task.id,
-      value,
+      value: sanitized,
       startDate: task.startDate || "",
       currentEstimate: Number(task.estimateHours || 0),
     };
@@ -407,8 +469,9 @@ export function TaskDetailModal({
       } else {
         onClose();
       }
-    } catch {
-      alert("Lỗi khi xoá task");
+    } catch (error: any) {
+      const msg = error?.response?.data?.detail || error?.message || "Lỗi khi xoá task";
+      alert(msg);
     } finally {
       setIsSaving(false);
     }
@@ -492,20 +555,22 @@ export function TaskDetailModal({
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <button
-              type="button"
-              className="secondary-button"
-              style={{
-                color: "var(--critical-fg)",
-                borderColor: "var(--critical-border)",
-                padding: "0.5rem 1rem",
-                fontSize: "0.85rem",
-              }}
-              onClick={() => setIsConfirmDeleteOpen(true)}
-              disabled={isLoading || isSaving}
-            >
-              Xoá task
-            </button>
+            {canDeleteTask && (
+              <button
+                type="button"
+                className="secondary-button"
+                style={{
+                  color: "var(--critical-fg)",
+                  borderColor: "var(--critical-border)",
+                  padding: "0.5rem 1rem",
+                  fontSize: "0.85rem",
+                }}
+                onClick={() => setIsConfirmDeleteOpen(true)}
+                disabled={isLoading || isSaving}
+              >
+                Xoá task
+              </button>
+            )}
             {showGoToProject && task?.projectId ? (
               <a
                 href={`/projects/${task.projectId}?tab=${isWaterfall ? "gantt" : "kanban"}&highlightTaskId=${task.id}&highlightColor=green`}
@@ -629,11 +694,7 @@ export function TaskDetailModal({
                     title={
                       hasChildren
                         ? "Người thực hiện task cha được lấy từ tất cả người thực hiện các task lá."
-                        : isAgile
-                          ? "Kéo thả trên Kanban sẽ tự thêm người kéo vào danh sách người thực hiện, không gỡ người đang được gán."
-                          : !canManage
-                            ? "Chỉ quản lý mới có quyền phân công người thực hiện trong dự án Waterfall."
-                            : ""
+                        : ""
                     }
                     options={assigneeOptions}
                   />
@@ -645,13 +706,48 @@ export function TaskDetailModal({
                     className="task-detail-control"
                     type="number"
                     min="0"
+                    max="99999"
                     step="0.5"
                     value={estimateDraft}
                     onChange={(event) => scheduleEstimateUpdate(event.target.value)}
                     onBlur={() => void commitPendingEstimate()}
-                    disabled={isLoading || isSaving || !canEditTask}
+                    disabled={isLoading || isSaving || !canEditTask || hasChildren}
+                    title={
+                      hasChildren
+                        ? "Thời gian ước tính của task cha được tính tự động từ tổng các task con."
+                        : ""
+                    }
                   />
                 </label>
+
+                {!isAgile && (
+                  <label className="task-detail-field" style={{ gridColumn: "1 / -1" }}>
+                    <span className="task-detail-field-label">Parent task</span>
+                    <CustomSelect
+                      testId="task-parent-select"
+                      className="task-detail-control"
+                      value={task?.parentTaskId || ""}
+                      onChange={(nextParentId) => {
+                        void handleUpdate({ parentTaskId: nextParentId ? String(nextParentId) : null });
+                      }}
+                      disabled={isLoading || isSaving || !canEditTask}
+                      placeholder="-- Không có (Task gốc) --"
+                      style={{
+                        color: task?.parentTaskId ? "#1e3a5f" : "#64748b",
+                        backgroundColor: task?.parentTaskId
+                          ? "rgba(59, 130, 246, 0.12)"
+                          : "rgba(148, 163, 184, 0.12)",
+                      }}
+                      options={[
+                        { value: "", label: "-- Không có (Task gốc) --" },
+                        ...parentTaskOptions.map((candidate) => ({
+                          value: candidate.id,
+                          label: candidate.key ? `${candidate.key} - ${candidate.title}` : candidate.title,
+                        })),
+                      ]}
+                    />
+                  </label>
+                )}
 
                 <label className="task-detail-field">
                   <span className="task-detail-field-label">Ngày bắt đầu</span>
@@ -664,10 +760,10 @@ export function TaskDetailModal({
                         const newStartDate = event.target.value;
                         const updates: Partial<Task> = { startDate: newStartDate };
                         if (task?.estimateHours && task.estimateHours > 0 && newStartDate) {
-                          const daysRequired = Math.ceil(task.estimateHours / 8);
-                          const startDateObj = new Date(newStartDate);
-                          startDateObj.setDate(startDateObj.getDate() + (daysRequired - 1));
-                          updates.dueDate = startDateObj.toISOString().split("T")[0];
+                          const calculated = calculateDueDateFromEstimate(newStartDate, task.estimateHours);
+                          if (calculated) {
+                            updates.dueDate = calculated;
+                          }
                         }
                         void handleUpdate(updates);
                       }}
@@ -826,7 +922,22 @@ export function TaskDetailModal({
                           })()
                         ) : log.action === "updated" ? (
                           <span>
-                            Đã cập nhật <strong>{log.field_changed}</strong>
+                            Đã cập nhật{" "}
+                            <strong>
+                              {(
+                                {
+                                  parent_task_id: "parent task",
+                                  title: "tiêu đề",
+                                  description: "mô tả",
+                                  status: "trạng thái",
+                                  priority: "độ ưu tiên",
+                                  estimated_hours: "thời gian ước tính",
+                                  start_date: "ngày bắt đầu",
+                                  deadline: "hạn chót",
+                                  sprint_id: "sprint",
+                                } as Record<string, string>
+                              )[log.field_changed ?? ""] ?? log.field_changed}
+                            </strong>
                           </span>
                         ) : (
                           <span>
@@ -942,6 +1053,10 @@ export function TaskDetailModal({
         entry={selectedLogworkEntry}
         isOpen={!!selectedLogworkEntry}
         onClose={() => setSelectedLogworkEntry(null)}
+        onGoToApprovals={() => {
+          setSelectedLogworkEntry(null);
+          onClose();
+        }}
         canGoToApprovals={canGoToLogworkApprovals}
         canEdit={
           selectedLogworkEntry

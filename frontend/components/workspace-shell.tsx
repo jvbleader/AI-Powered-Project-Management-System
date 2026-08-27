@@ -14,7 +14,7 @@ import { useNotifications, type Notification as AppNotification } from "@/contex
 import {
   canAccessLogworkApprovalsRole,
   canAccessTeamDirectoryRole,
-  isAdminRole,
+  canManageUsers,
   roleLabel,
 } from "@/lib/utils/format";
 import { resolveNotificationLink } from "@/lib/utils/notification-link";
@@ -107,10 +107,11 @@ export function WorkspaceShell({
     : shellData;
   const currentUser = activeShellData.currentUser;
   const currentUserId = activeShellData.currentUser.id;
-  const isAdminViewer = isAdminRole(currentUser.role);
+  const isAdminViewer = canManageUsers(currentUser.role, currentUser.isAdmin);
   const canViewTeamNavigation = canAccessTeamDirectoryRole(
     currentUser.role,
     currentUser.department,
+    currentUser.isAdmin,
   );
   const canViewLogworkApprovals = canAccessLogworkApprovalsRole(currentUser.role);
   const sidebarUserTitle = currentUser.department
@@ -245,7 +246,7 @@ export function WorkspaceShell({
       <aside className="sidebar">
         <div className="sidebar-logo-container">
           {/* Typographic Logo */}
-          <div className="sidebar-logo-brand">
+          <Link href="/dashboard" className="sidebar-logo-brand" title="Về trang tổng quan">
             <div className="sidebar-logo-wordmark">
               <span className="sidebar-logo-ap">AP</span>
               <span className="sidebar-logo-ms">MS</span>
@@ -270,24 +271,31 @@ export function WorkspaceShell({
             <span className="sidebar-logo-tagline">
               Smart Projects Management
             </span>
-          </div>
+          </Link>
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">
-          {filteredNavigation.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              data-testid={`nav-${item.href.slice(1)}`}
-              className={classNames("nav-link", pathname === item.href && "nav-link-active")}
-              onPointerEnter={item.href === "/tasks" ? warmTasksPage : undefined}
-              onFocus={item.href === "/tasks" ? warmTasksPage : undefined}
-              onPointerDown={item.href === "/tasks" ? warmTasksPage : undefined}
-            >
-              <NavIcon icon={item.icon} />
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {filteredNavigation.map((item) => {
+            const isItemActive =
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : pathname?.startsWith(item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                data-testid={`nav-${item.href.slice(1)}`}
+                className={classNames("nav-link", isItemActive && "nav-link-active")}
+                onPointerEnter={item.href === "/tasks" ? warmTasksPage : undefined}
+                onFocus={item.href === "/tasks" ? warmTasksPage : undefined}
+                onPointerDown={item.href === "/tasks" ? warmTasksPage : undefined}
+              >
+                <NavIcon icon={item.icon} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
       </aside>
 
@@ -497,7 +505,7 @@ export function WorkspaceShell({
             </div>
           </div>
         </header>
-        <div className="page-stack">{children}</div>
+        <div className="page-stack" style={noScroll ? { flex: 1, minHeight: 0 } : {}}>{children}</div>
       </main>
 
       {isPasswordModalOpen ? (

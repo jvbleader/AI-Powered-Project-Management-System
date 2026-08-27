@@ -9,6 +9,13 @@ class UserLogin(BaseModel):
     password: str
     remember_me: bool = False
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v):
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
 
 class DepartmentResponse(BaseModel):
     id: int

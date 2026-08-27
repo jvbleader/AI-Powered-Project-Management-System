@@ -113,11 +113,17 @@ export const projectApi = {
   async update(projectId: string, payload: Partial<Project>): Promise<ApiResponse<Project>> {
     const endpoint = apiEndpoints.projects.update(projectId);
     
-    const backendPayload: Record<string, unknown> = { ...payload };
-    if (payload.projectType) backendPayload.project_type = payload.projectType;
-    if (payload.startDate) backendPayload.start_date = payload.startDate;
-    if (payload.endDate) backendPayload.end_date = payload.endDate;
-    if (payload.departmentId) backendPayload.department_id = payload.departmentId;
+    const backendPayload: Record<string, unknown> = {};
+    if (payload.name !== undefined) backendPayload.name = payload.name;
+    if (payload.description !== undefined) backendPayload.description = payload.description;
+    if (payload.status !== undefined) backendPayload.status = payload.status;
+    if (payload.projectType !== undefined) backendPayload.project_type = payload.projectType;
+    if (payload.startDate !== undefined) backendPayload.start_date = payload.startDate || null;
+    if (payload.endDate !== undefined) backendPayload.end_date = payload.endDate || null;
+    if (payload.departmentId !== undefined) {
+      const numDeptId = Number(payload.departmentId);
+      backendPayload.department_id = isNaN(numDeptId) || numDeptId <= 0 ? null : numDeptId;
+    }
     
     const response = await requestApi<BackendProject>(endpoint, {
       body: JSON.stringify(backendPayload),

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { formatEmployeeCode } from "@/lib/utils/format";
 import { logworkApi, type PendingLogWork } from "@/services/api/logworks";
 import { userApi } from "@/services/api/users";
 import { useAuthSession } from "@/hooks/use-session";
@@ -19,6 +20,149 @@ function isDocumentReload() {
   return nav?.type === "reload";
 }
 
+function parseSafeTimestamp(value: string | number | Date | undefined | null): number {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+
+  const normalized = String(value).trim().replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}(?::\d{2})?)/, "$1T$2");
+  const time = Date.parse(normalized);
+  if (Number.isFinite(time)) return time;
+
+  const fallback = new Date(value).getTime();
+  return Number.isFinite(fallback) ? fallback : 0;
+}
+
+function compareNewestLogworkFirst(a: PendingLogWork, b: PendingLogWork) {
+  // 1. Ưu tiên hàng đầu: Thời điểm ghi nhận/gửi logwork (created_at) mới nhất lên đầu
+  const bCreated = parseSafeTimestamp(b.created_at);
+  const aCreated = parseSafeTimestamp(a.created_at);
+  if (bCreated !== aCreated) {
+    return bCreated - aCreated;
+  }
+
+  // 2. Nếu cùng thời điểm tạo: ngày làm việc (work_date) mới nhất lên đầu
+  const bWork = parseSafeTimestamp(b.work_date);
+  const aWork = parseSafeTimestamp(a.work_date);
+  if (bWork !== aWork) {
+    return bWork - aWork;
+  }
+
+  // 3. Fallback theo ID mới nhất
+  return (Number(b.id) || 0) - (Number(a.id) || 0);
+}
+
+function SearchIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={active ? styles.filterIconActive : styles.filterIcon}
+      aria-hidden
+    >
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function ColumnSearch({
+  label,
+  active,
+  open,
+  value,
+  onChange,
+  onToggle,
+  onClose,
+  inputRef,
+  placeholder,
+}: {
+  label: string;
+  active: boolean;
+  open: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  onToggle: () => void;
+  onClose: () => void;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  placeholder?: string;
+}) {
+  const showInput = open || active;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const frame = requestAnimationFrame(() => {
+      inputRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [inputRef, open]);
+
+  return (
+    <div className={styles.headerFilter}>
+      {showInput ? (
+        <>
+          <span className={styles.headerSearchPlaceholder} aria-hidden>
+            <span>{label}</span>
+            <SearchIcon active={false} />
+          </span>
+          <div className={styles.headerSearchInputWrap}>
+            <span className={styles.headerSearchIcon} aria-hidden>
+              <SearchIcon active={active} />
+            </span>
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.headerSearchInput}
+              placeholder={placeholder || "Tìm kiếm..."}
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              aria-label={`Tìm kiếm ${label}`}
+            />
+            <button
+              type="button"
+              className={styles.headerSearchClose}
+              onClick={onClose}
+              aria-label="Đóng tìm kiếm"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            className={styles.searchLabelButton}
+            onClick={onToggle}
+            aria-label={`Tìm kiếm theo ${label}`}
+          >
+            {label}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterIconButton} ${styles.filterIconButtonLg} ${active ? styles.filterIconButtonActive : ""}`}
+            onClick={onToggle}
+            aria-label={`Tìm kiếm theo ${label}`}
+          >
+            <SearchIcon active={active} />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function LogworkApprovalsClient() {
   const session = useAuthSession();
   const router = useRouter();
@@ -30,21 +174,23 @@ export function LogworkApprovalsClient() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("");
-    const [staffCodeFilter, setStaffCodeFilter] = useState<string>("");
-    const [staffNameFilter, setStaffNameFilter] = useState<string>("");
-    const [staffCodeDropdownOpen, setStaffCodeDropdownOpen] = useState(false);
-    const [staffNameDropdownOpen, setStaffNameDropdownOpen] = useState(false);
-    const [staffCodeSearchQuery, setStaffCodeSearchQuery] = useState("");
-    const [staffNameSearchQuery, setStaffNameSearchQuery] = useState("");
-  const [flashLogworkId, setFlashLogworkId] = useState<string | null>(null);
+  const [staffCodeFilter, setStaffCodeFilter] = useState<string>("");
+  const [staffNameFilter, setStaffNameFilter] = useState<string>("");
+  const [staffCodeDropdownOpen, setStaffCodeDropdownOpen] = useState(false);
+  const [staffNameDropdownOpen, setStaffNameDropdownOpen] = useState(false);
+  const [staffCodeSearchQuery, setStaffCodeSearchQuery] = useState("");
+  const [staffNameSearchQuery, setStaffNameSearchQuery] = useState("");
+  const [flashLogworkId, setFlashLogworkId] = useState<string | null>(() => {
+    return highlightFromUrl ? String(highlightFromUrl).replace(/^lw-/, "").trim() : null;
+  });
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
-  const urlConsumedRef = useRef<string | null>(null);
-  const pageJumpDoneRef = useRef(false);
-  const flashStartedRef = useRef<string | null>(null);
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(() => {
+    return highlightFromUrl ? String(highlightFromUrl).replace(/^lw-/, "").trim() : null;
+  });
   const tableAnchorRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(1);
+  const [filledRowHeight, setFilledRowHeight] = useState<number>();
   const pageSize = useAutoPageSize({
     anchorRef: tableAnchorRef,
     rowHeight: 88,
@@ -59,8 +205,9 @@ export function LogworkApprovalsClient() {
 
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const projectDropdownRef = useRef<HTMLDivElement>(null);
-    const staffCodeDropdownRef = useRef<HTMLDivElement>(null);
-    const staffNameDropdownRef = useRef<HTMLDivElement>(null);
+  const staffCodeDropdownRef = useRef<HTMLDivElement>(null);
+  const staffNameDropdownRef = useRef<HTMLDivElement>(null);
+  const staffNameInputRef = useRef<HTMLInputElement>(null);
   const [directoryUsers, setDirectoryUsers] = useState<UserProfile[]>([]);
   const [toastMessage, setToastMessage] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [rejectTarget, setRejectTarget] = useState<number | null>(null);
@@ -92,8 +239,6 @@ export function LogworkApprovalsClient() {
         if (isCancelled) return;
         setDirectoryUsers(res.data.items);
       } catch (e) {
-        // Không bắt buộc: nếu fail vẫn có thể hiển thị theo fallback `usr-<id>`
-        // eslint-disable-next-line no-console
         console.warn("Failed to load directory users for employeeCode mapping", e);
       }
     }
@@ -109,7 +254,7 @@ export function LogworkApprovalsClient() {
     for (const user of directoryUsers) {
       const email = user.email?.toLowerCase().trim();
       if (!email) continue;
-      map.set(email, (user.employeeCode ?? user.id).toString());
+      map.set(email, (user.employeeCode ?? formatEmployeeCode(user.id)).toString());
     }
     return map;
   }, [directoryUsers]);
@@ -125,19 +270,21 @@ export function LogworkApprovalsClient() {
   }
 
   const filteredLogworks = useMemo(() => {
-    return logworks.filter((lw) => {
-      if (projectFilter && lw.project_name !== projectFilter) return false;
-      if (dateFilter && lw.work_date !== dateFilter) return false;
-      if (staffCodeFilter) {
-        const code = getStaffCode(lw);
-        if (!code.toLowerCase().includes(staffCodeFilter.toLowerCase())) return false;
-      }
-      if (staffNameFilter) {
-        const name = lw.user_name || "";
-        if (!name.toLowerCase().includes(staffNameFilter.toLowerCase())) return false;
-      }
-      return true;
-    });
+    return logworks
+      .filter((lw) => {
+        if (projectFilter && lw.project_name !== projectFilter) return false;
+        if (dateFilter && lw.work_date !== dateFilter) return false;
+        if (staffCodeFilter) {
+          const code = getStaffCode(lw);
+          if (!code.toLowerCase().includes(staffCodeFilter.toLowerCase())) return false;
+        }
+        if (staffNameFilter) {
+          const name = lw.user_name || "";
+          if (!name.toLowerCase().includes(staffNameFilter.toLowerCase())) return false;
+        }
+        return true;
+      })
+      .sort(compareNewestLogworkFirst);
   }, [logworks, projectFilter, dateFilter, staffCodeFilter, staffNameFilter, emailToEmployeeCode]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLogworks.length / pageSize));
@@ -147,9 +294,35 @@ export function LogworkApprovalsClient() {
     validPage * pageSize,
   );
 
+  useLayoutEffect(() => {
+    const tableWrap = tableAnchorRef.current;
+    if (!tableWrap) return;
+
+    const updateRowHeight = () => {
+      const rows = Array.from(tableWrap.querySelectorAll("tbody tr"));
+      const headerHeight = tableWrap.querySelector("thead")?.getBoundingClientRect().height ?? 0;
+      if (rows.length === 0 || headerHeight === 0) return;
+
+      const availableRowSpace = tableWrap.clientHeight - headerHeight;
+      const nextHeight = rows.length > 1 ? Math.floor(availableRowSpace / rows.length) : undefined;
+      setFilledRowHeight((current) => (current === nextHeight ? current : nextHeight));
+    };
+
+    const frame = window.requestAnimationFrame(updateRowHeight);
+    const observer = new ResizeObserver(updateRowHeight);
+    observer.observe(tableWrap);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [page, paginatedLogworks.length]);
+
   useEffect(() => {
-    setPage(1);
-  }, [projectFilter, dateFilter, staffCodeFilter, staffNameFilter]);
+    if (!activeHighlightId) {
+      setPage(1);
+    }
+  }, [projectFilter, dateFilter, staffCodeFilter, staffNameFilter, activeHighlightId]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -193,65 +366,83 @@ export function LogworkApprovalsClient() {
   }, [session]);
 
   useEffect(() => {
-    if (!highlightFromUrl) {
-      urlConsumedRef.current = null;
-      return;
-    }
-    if (urlConsumedRef.current === highlightFromUrl) return;
-    urlConsumedRef.current = highlightFromUrl;
+    if (!highlightFromUrl) return;
 
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("highlightLogworkId");
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    const normalized = String(highlightFromUrl).replace(/^lw-/, "").trim();
+    if (!normalized) return;
 
-    if (isDocumentReload()) return;
-
-    pageJumpDoneRef.current = false;
-    flashStartedRef.current = null;
     setProjectFilter("");
     setDateFilter("");
     setStaffCodeFilter("");
     setStaffNameFilter("");
-    setActiveHighlightId(highlightFromUrl);
-  }, [highlightFromUrl, pathname, router, searchParams]);
+    setActiveHighlightId(normalized);
+    setFlashLogworkId(normalized);
 
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("highlightLogworkId")) {
+        params.delete("highlightLogworkId");
+        const query = params.toString();
+        window.history.replaceState(null, "", query ? `${pathname}?${query}` : pathname);
+      }
+    } catch {
+      // Ignore in non-browser environments
+    }
+  }, [highlightFromUrl, pathname]);
+
+  // Jump to page containing the highlighted logwork item
   useEffect(() => {
-    if (!activeHighlightId || loading || pageJumpDoneRef.current) return;
+    if (!activeHighlightId || filteredLogworks.length === 0) return;
+
+    const normalizedId = String(activeHighlightId).replace(/^lw-/, "").trim();
+    if (!normalizedId) return;
 
     const targetIndex = filteredLogworks.findIndex(
-      (lw) => String(lw.id) === String(activeHighlightId),
+      (lw) => String(lw.id) === normalizedId,
     );
-    if (targetIndex < 0) return;
 
-    pageJumpDoneRef.current = true;
-    setPage(Math.floor(targetIndex / pageSize) + 1);
-  }, [activeHighlightId, loading, filteredLogworks, pageSize]);
+    if (targetIndex >= 0) {
+      const targetPage = Math.floor(targetIndex / pageSize) + 1;
+      setPage(targetPage);
+    }
+  }, [activeHighlightId, filteredLogworks, pageSize]);
 
+  // Smooth scroll and flash highlight on targeted row
   useEffect(() => {
-    if (!activeHighlightId || loading) return;
-    if (flashStartedRef.current === activeHighlightId) return;
+    if (!activeHighlightId) return;
 
-    flashStartedRef.current = activeHighlightId;
-    setFlashLogworkId(String(activeHighlightId));
+    const normalizedId = String(activeHighlightId).replace(/^lw-/, "").trim();
+    if (!normalizedId) return;
 
-    const scrollTimer = window.setTimeout(() => {
-      document.getElementById(`logwork-row-${activeHighlightId}`)?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 350);
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+    const attemptScroll = (delay: number) => {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`logwork-row-${normalizedId}`);
+        if (el) {
+          el.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+      }, delay);
+      timers.push(timer);
+    };
 
-    const clearTimer = window.setTimeout(() => {
+    attemptScroll(100);
+    attemptScroll(300);
+    attemptScroll(600);
+    attemptScroll(1000);
+
+    const clearTimer = setTimeout(() => {
       setFlashLogworkId(null);
       setActiveHighlightId(null);
-    }, 5000);
+    }, 6000);
+    timers.push(clearTimer);
 
     return () => {
-      window.clearTimeout(scrollTimer);
-      window.clearTimeout(clearTimer);
+      timers.forEach(clearTimeout);
     };
-  }, [activeHighlightId, loading]);
+  }, [activeHighlightId, page, loading]);
 
   const handleApprove = async (id: number) => {
     setActionLoading(id);
@@ -300,11 +491,23 @@ export function LogworkApprovalsClient() {
 
   return (
     <>
-      <TableWrap ref={tableAnchorRef}>
-        <Table>
+      <div className={styles.panel}>
+        <div className={styles.card}>
+          <TableWrap ref={tableAnchorRef} className={styles.tableWrap}>
+            <Table>
+          <colgroup>
+            <col className={styles.colEmployeeCode} />
+            <col className={styles.colEmployeeName} />
+            <col className={styles.colProject} />
+            <col className={styles.colTask} />
+            <col className={styles.colContent} />
+            <col className={styles.colHours} />
+            <col className={styles.colDate} />
+            <col className={styles.colActions} />
+          </colgroup>
           <TableHeader>
             <TableRow>
-              <TableHead className={styles.colStaff}>
+              <TableHead className={styles.colEmployeeCode}>
                 <div className={styles.headerFilter}>
                   <span>Mã nhân viên</span>
                   <div className={styles.filterTriggerWrap}>
@@ -392,93 +595,21 @@ export function LogworkApprovalsClient() {
                   </div>
                 </div>
               </TableHead>
-              <TableHead className={styles.colStaff}>
-                <div className={styles.headerFilter}>
-                  <span>Tên nhân viên</span>
-                  <div className={styles.filterTriggerWrap}>
-                    <button
-                      type="button"
-                      className={`${styles.filterIconButton} ${styles.filterIconButtonLg} ${
-                        staffNameFilter ? styles.filterIconButtonActive : ""
-                      }`}
-                      onClick={() => setStaffNameDropdownOpen(!staffNameDropdownOpen)}
-                    >
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={staffNameFilter ? styles.filterIconActive : styles.filterIcon}
-                      >
-                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                      </svg>
-                      <div ref={staffNameDropdownRef} className={styles.dropdownAnchor}>
-                        {staffNameDropdownOpen ? (
-                          <div
-                            className={styles.dropdownMenu}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className={styles.dropdownSearchWrap}>
-                              <input
-                                type="text"
-                                placeholder="Tìm tên nhân viên..."
-                                className={styles.dropdownSearchInput}
-                                value={staffNameSearchQuery}
-                                onChange={(e) => setStaffNameSearchQuery(e.target.value)}
-                                autoFocus
-                              />
-                            </div>
-                            <div className={styles.dropdownList}>
-                              <div
-                                className={`${styles.dropdownItem} ${staffNameFilter === "" ? styles.dropdownItemActive : ""}`}
-                                onClick={() => {
-                                  setStaffNameFilter("");
-                                  setStaffNameDropdownOpen(false);
-                                  setStaffNameSearchQuery("");
-                                }}
-                              >
-                                {staffNameFilter === "" ? (
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="20 6 9 17 4 12" />
-                                  </svg>
-                                ) : (
-                                  <div className={styles.dropdownSpacer} />
-                                )}
-                                Tất cả
-                              </div>
-                              {uniqueStaffNames
-                                .filter((name) => name.toLowerCase().includes(staffNameSearchQuery.toLowerCase()))
-                                .map((name) => (
-                                  <div
-                                    key={name}
-                                    className={`${styles.dropdownItem} ${staffNameFilter === name ? styles.dropdownItemActive : ""}`}
-                                    onClick={() => {
-                                      setStaffNameFilter(name);
-                                      setStaffNameDropdownOpen(false);
-                                      setStaffNameSearchQuery("");
-                                    }}
-                                  >
-                                    {staffNameFilter === name ? (
-                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <polyline points="20 6 9 17 4 12" />
-                                      </svg>
-                                    ) : (
-                                      <div className={styles.dropdownSpacer} />
-                                    )}
-                                    {name}
-                                  </div>
-                                ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </button>
-                  </div>
-                </div>
+              <TableHead className={styles.colEmployeeName}>
+                <ColumnSearch
+                  label="Tên nhân viên"
+                  active={Boolean(staffNameFilter.trim())}
+                  open={staffNameDropdownOpen}
+                  value={staffNameFilter}
+                  onChange={(val) => setStaffNameFilter(val)}
+                  onToggle={() => setStaffNameDropdownOpen(!staffNameDropdownOpen)}
+                  onClose={() => {
+                    setStaffNameFilter("");
+                    setStaffNameDropdownOpen(false);
+                  }}
+                  inputRef={staffNameInputRef}
+                  placeholder="Tìm tên nhân viên..."
+                />
               </TableHead>
               <TableHead className={styles.colProject}>
                 <div className={styles.headerFilter}>
@@ -631,7 +762,13 @@ export function LogworkApprovalsClient() {
                 <TableRow
                   key={lw.id}
                   id={`logwork-row-${lw.id}`}
-                  className={flashLogworkId === String(lw.id) ? styles.rowHighlight : undefined}
+                  style={filledRowHeight ? { height: filledRowHeight } : undefined}
+                  className={
+                    (flashLogworkId && String(lw.id) === String(flashLogworkId)) ||
+                    (activeHighlightId && String(lw.id) === String(activeHighlightId))
+                      ? styles.rowHighlight
+                      : undefined
+                  }
                 >
                   <TableCell>
                     <div className={styles.staffName}>{getStaffCode(lw) || "—"}</div>
@@ -713,7 +850,6 @@ export function LogworkApprovalsClient() {
           </TableBody>
         </Table>
       </TableWrap>
-
       {filteredLogworks.length > 0 ? (
         <div className={styles.paginationBar}>
           <p>
@@ -732,7 +868,7 @@ export function LogworkApprovalsClient() {
             </button>
             <button
               type="button"
-              className="primary-button"
+              className={validPage >= totalPages ? "secondary-button" : "primary-button"}
               onClick={() => setPage(Math.min(totalPages, validPage + 1))}
               disabled={validPage >= totalPages}
             >
@@ -741,6 +877,8 @@ export function LogworkApprovalsClient() {
           </div>
         </div>
       ) : null}
+        </div>
+      </div>
 
       {/* Reject Reason Modal */}
       {rejectTarget !== null && (

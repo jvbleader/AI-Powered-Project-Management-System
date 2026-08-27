@@ -1,5 +1,6 @@
 import math
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.project_model import Project, ProjectMember
@@ -98,7 +99,9 @@ def get_user_role_name(user: User | None) -> str:
 
 
 def is_admin_user(user: User | None) -> bool:
-    return get_user_role_name(user) == ROLE_ADMIN
+    # The role flag is the source of truth.  Relying on the display name made
+    # changing ``is_admin`` in Role management ineffective.
+    return bool(user and getattr(user, "is_admin", False))
 
 
 def is_director_user(user: User | None) -> bool:
@@ -228,34 +231,54 @@ def build_project_response(
 
 
 def user_is_project_manager(db: Session, project_id: int, user_id: int) -> bool:
-    membership = project_repository.get_project_member(db, project_id, user_id)
-    if not membership:
-        return False
     user = db.query(User).filter(User.id == user_id).first()
-    return user_role_requires_manager_scope(user)
+    if not user:
+        return False
+    if is_admin_user(user) or has_companywide_project_access(user):
+        return True
+    project = project_repository.get_project_by_id(db, project_id)
+    return bool(project and (project.manager_id == user_id or project.created_by == user_id))
 
 
 def user_is_project_member(db: Session, project_id: int, user_id: int) -> bool:
-    return project_repository.get_project_member(db, project_id, user_id) is not None
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return False
+    if is_admin_user(user) or has_companywide_project_access(user):
+        return True
+    if project_repository.get_project_member(db, project_id, user_id) is not None:
+        return True
+    project = project_repository.get_project_by_id(db, project_id)
+    return bool(project and (project.manager_id == user_id or project.created_by == user_id))
 
 
 def list_accessible_project_ids(db: Session, user: User | None) -> list[int]:
     if not user:
         return []
 
+    # Chỉ Admin, Giám đốc, Head of Dev có quyền truy cập toàn bộ dự án công ty
     if is_admin_user(user) or has_companywide_project_access(user):
         return sorted(project_repository.list_all_project_ids(db))
 
-    # Mọi role: dự án đang join (active membership)
-    return sorted(project_repository.list_member_project_ids(db, user.id))
+    # Tất cả các user khác (kể cả PM, Leader, Dev...):
+    # CHỈ những dự án mà người đó tham gia (active member), HOẶC là Manager của dự án, HOẶC là người tạo dự án
+    member_ids = set(project_repository.list_member_project_ids(db, user.id))
+    direct_ids = {
+        pid
+        for (pid,) in db.query(Project.id)
+        .filter(
+            or_(Project.manager_id == user.id, Project.created_by == user.id)
+        )
+        .all()
+    }
+    return sorted(member_ids.union(direct_ids))
 
 
 def list_managed_project_ids(db: Session, user: User | None) -> list[int]:
     """
     Dự án thuộc phạm vi quản lý của user:
-    - Admin / companywide: mọi dự án
-    - PM/PO/GM hoặc Leader: mọi dự án đang join (vì role hệ thống đã là quản lý)
-    - Role khác: chỉ dự án có projects.manager_id = user
+    - Admin / Giám đốc / Head of Dev: quản lý toàn bộ các dự án
+    - Còn lại: các dự án có projects.manager_id = user.id hoặc projects.created_by = user.id
     """
     if not user:
         return []
@@ -263,10 +286,15 @@ def list_managed_project_ids(db: Session, user: User | None) -> list[int]:
     if is_admin_user(user) or has_companywide_project_access(user):
         return sorted(project_repository.list_all_project_ids(db))
 
-    if user_role_requires_manager_scope(user):
-        return sorted(project_repository.list_member_project_ids(db, user.id))
-
-    return []
+    direct_ids = {
+        pid
+        for (pid,) in db.query(Project.id)
+        .filter(
+            or_(Project.manager_id == user.id, Project.created_by == user.id)
+        )
+        .all()
+    }
+    return sorted(direct_ids)
 
 
 def user_can_access_team_directory(db: Session, user: User | None) -> bool:
@@ -326,6 +354,10 @@ def user_can_access_project(db: Session, project_id: int, user: User | None) -> 
     if is_admin_user(user) or has_companywide_project_access(user):
         return True
 
+    project = project_repository.get_project_by_id(db, project_id)
+    if project and (project.manager_id == user.id or project.created_by == user.id):
+        return True
+
     membership = project_repository.get_project_member(db, project_id, user.id)
     return membership is not None
 
@@ -337,22 +369,23 @@ def user_can_manage_project(db: Session, project_id: int, user: User | None) -> 
     if is_admin_user(user) or has_companywide_project_access(user):
         return True
 
-    membership = project_repository.get_project_member(db, project_id, user.id)
-    return bool(membership) and user_role_requires_manager_scope(user)
+    project = project_repository.get_project_by_id(db, project_id)
+    return bool(project and (project.manager_id == user.id or project.created_by == user.id))
 
 
 def user_can_manage_sprints(db: Session, project_id: int, user: User | None) -> bool:
-    """Chỉ PM/PO/GM hoặc Leader của đúng dự án đó được tạo/sửa sprint.
-
-    Không bypass Admin / Giám đốc / Head of Dev — họ tạo task được nếu truy cập
-    được dự án, nhưng không tạo sprint trừ khi cũng là PM/Leader của dự án đó.
-    """
-    if not user or not user_role_requires_manager_scope(user):
+    """Admin, Giám đốc, Head of Dev, hoặc PM/Leader/Creator quản lý dự án này."""
+    if not user:
         return False
-    if project_repository.get_project_member(db, project_id, user.id):
+
+    if is_admin_user(user) or has_companywide_project_access(user):
         return True
+
     project = project_repository.get_project_by_id(db, project_id)
-    return bool(project and project.manager_id == user.id)
+    if project and (project.manager_id == user.id or project.created_by == user.id):
+        return True
+
+    return bool(user_role_requires_manager_scope(user) and project_repository.get_project_member(db, project_id, user.id))
 
 
 def paginate(total: int, page: int, page_size: int) -> int:

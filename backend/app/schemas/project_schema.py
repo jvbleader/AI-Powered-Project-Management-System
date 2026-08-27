@@ -64,12 +64,24 @@ class ProjectCreate(BaseModel):
     # Giữ optional để tương thích client cũ; server luôn gắn manager = người tạo.
     manager_id: Optional[int] = None
 
-    @field_validator("name", "description")
+    @field_validator("name")
     @classmethod
-    def strip_and_validate(cls, v: str) -> str:
+    def validate_name(cls, v: str) -> str:
         stripped = v.strip()
         if not stripped:
             raise ValueError("Trường này không được để trống.")
+        if len(stripped) > 255:
+            raise ValueError("Tên dự án không được vượt quá 255 ký tự.")
+        return stripped
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Trường này không được để trống.")
+        if len(stripped) > 20000:
+            raise ValueError("Mô tả không được vượt quá 20.000 ký tự.")
         return stripped
 
     @field_validator("end_date")
@@ -89,6 +101,30 @@ class ProjectUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     department_id: Optional[int] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_update_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            stripped = v.strip()
+            if not stripped:
+                raise ValueError("Trường này không được để trống.")
+            if len(stripped) > 255:
+                raise ValueError("Tên dự án không được vượt quá 255 ký tự.")
+            return stripped
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def validate_update_description(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            stripped = v.strip()
+            if not stripped:
+                raise ValueError("Trường này không được để trống.")
+            if len(stripped) > 20000:
+                raise ValueError("Mô tả không được vượt quá 20.000 ký tự.")
+            return stripped
+        return v
 
 
 class ProjectMemberCreate(BaseModel):

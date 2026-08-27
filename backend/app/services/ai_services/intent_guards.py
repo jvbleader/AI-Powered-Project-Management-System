@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
-
 
 _SQL_WRITE_PATTERNS = (
     r"\bupdate\s+\w+\s+set\b",
@@ -126,9 +126,25 @@ def refuse_destructive_message() -> str:
 
 
 _CREATE_TASK_PATTERNS = (
-    r"tạo\s+(cho\s+(tôi|mình)\s+)?(một\s+|1\s+)?(cây\s+)?(task|công\s+việc|cv)\b",
-    r"tao\s+(cho\s+(toi|minh)\s+)?(mot\s+)?(cay\s+)?(task|cong\s+viec)\b",
-    r"\b(create|generate|make)\s+(a\s+|some\s+|the\s+)?(task|tasks|wbs|backlog|tree)\b",
+    r"tạo\s+(cho\s+(tôi|mình)\s+)?(?:một|1|\d+|hai|ba|bốn|năm|các|danh\s*sách\s+)?\s*(cây\s+)?(tasks?|công\s+việc|nhiệm\s*vụ|cv)\b",
+    r"tao\s+(cho\s+(toi|minh)\s+)?(?:mot|1|\d+|hai|ba|bon|nam|cac|danh\s*sach\s+)?\s*(cay\s+)?(tasks?|cong\s+viec|nhiem\s*vu)\b",
+    r"giao\s+(cho\s+(tôi|mình)\s+)?(?:một|1|\d+|hai|ba|bốn|năm|các|danh\s*sách\s+)?\s*(cây\s+)?(tasks?|công\s+việc|việc|nhiệm\s*vụ|cv)\b",
+    r"giao\s+tasks?",
+    r"giao\s+việc",
+    r"giao\s+nhiệm\s*vụ",
+    r"giao\s+nhiem\s*vu",
+    r"giao\s+cho\b",
+    r"gán\s+cho\b",
+    r"phân\s*công\s+(cho\s+)?",
+    r"phan\s*cong\s+(cho\s+)?",
+    r"assign\s+(cho\s+)?",
+    r"\b(?:oke|ok|được|nhất\s*trí|yes)?\s*(?:assign|giao|gán|phân\s*công|tạo\s*draft|tạo\s*bản\s*nháp|tạo\s*task|lập\s*task|tạo)\s+(?:đi|luôn|ngay|giúp|hộ|nhé|nha|ạ|như\s*vậy|theo\s*gợi\s*ý)\b",
+    r"\b(?:assign|giao|gán|phân\s*công)\s+đi\b",
+    r"\b(?:oke|ok)\s+(?:assign|giao|gán|phân\s*công|tạo)\b",
+    r"\b(?:áp\s*dụng|đồng\s*ý|chấp\s*nhận)\s+(?:gợi\s*ý|phương\s*án|phân\s*công)\b",
+    r"\b(?:tạo|lập)\s+(?:draft|bản\s*nháp)\b",
+    r"thêm\s+(cho\s+(tôi|mình)\s+)?(?:một|1|\d+|hai|ba|bốn|năm|các|danh\s*sách\s+)?\s*(tasks?|công\s+việc|nhiệm\s*vụ|cv)\b",
+    r"\b(create|generate|make|assign)\s+(a\s+|some\s+|the\s+)?(task|tasks|wbs|backlog|tree)\b",
     r"cây\s*task",
     r"cay\s*task",
     r"task\s*tree",
@@ -142,11 +158,14 @@ _CREATE_TASK_PATTERNS = (
     r"lap\s*ke\s*hoach",
     r"\bbreak\s*down\b",
     r"\bwbs\b",
+    r"^(thêm|tạo|làm|phát\s*triển|xây\s*dựng|viết)\s+(cho\s+(tôi|mình)\s+)?(?:toàn\s*bộ\s+)?(?:một|1|\d+|hai|ba|bốn|năm|các|danh\s*sách\s+)?\s*(api|chức\s*năng|tính\s*năng|module|phân\s*hệ|hệ\s*thống|platform|trang|giao\s*diện|ui|nút|form|luồng)",
 )
 
 _GENERIC_SCOPE_STRIP = (
     r"tạo\s+(cho\s+(tôi|mình)\s+)?",
     r"tao\s+(cho\s+(toi|minh)\s+)?",
+    r"giao\s+(cho\s+(tôi|mình)\s+)?",
+    r"thêm\s+(cho\s+(tôi|mình)\s+)?",
     r"giúp\s+(tôi|mình)?",
     r"help\s+me",
     r"please",
@@ -156,6 +175,8 @@ _GENERIC_SCOPE_STRIP = (
     r"\b(tasks?|backlog|wbs)\b",
     r"công\s+việc",
     r"cong\s+viec",
+    r"nhiệm\s*vụ",
+    r"nhiem\s*vu",
     r"dự\s+án",
     r"du\s+an",
     r"\bprojects?\b",
@@ -278,6 +299,226 @@ def clarify_underspecified_task_message(project_hint: str | None = None) -> str:
     return "Hãy cung cấp cho mình thêm thông tin về nhiệm vụ task bạn định tạo nhé"
 
 
+_ASSIGNEE_STOPWORDS = {
+    "du an", "project", "ai", "nguoi nao", "toi", "minh", "nguoi", "thanh vien",
+    "ai do", "task", "subtask", "cong viec", "viec", "he thong", "module", "chuc nang",
+    "developer", "dev", "tester", "leader", "pm", "po", "nhan vien", "ngay", "deadline",
+    "gio", "tuan", "thang", "1 task", "mot task", "tao", "tạo"
+}
+
+
+def _fold_text(value: str) -> str:
+    text = " ".join(str(value or "").strip().casefold().split())
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFD", text)
+    stripped = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+    return stripped.replace("đ", "d")
+
+
+def _clean_assignee_token(token: str) -> str:
+    cleaned = token.strip(" \"'`.,:;()[]{}")
+    cleaned = re.sub(r"^(?:cả\s+|anh\s+|chị\s+|bạn\s+|em\s+|ông\s+|bà\s+)+", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(
+        r"\s+(?:hoàn\s*thành|làm|thực\s*hiện|phụ\s*trách|xử\s*lý|làm\s*task|đảm\s*nhận|triển\s*khai)\b.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    cleaned = re.sub(
+        r"\s+(?:trong\s+(?:vòng\s+)?(?:\d+|một|1|hai|2|ba|3|bốn|4|năm|5)|trong\s+ngày|vào\s+ngày|trước\s+ngày|với\s+(?:thời\s*gian|et))\b.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    # The project context frequently follows the assignee without the words
+    # "dự án" (for example: "cho An trong People Hub").  It is never part of
+    # a person's name, so strip it before name matching.
+    cleaned = re.sub(
+        r"\s+(?:trong|ở|thuộc)\s+(?:(?:dự\s*án|du\s*an|project)\s+)?[^,.;]+$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    return cleaned
+
+
+def _format_display_person_name(value: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return ""
+    return " ".join(word.capitalize() for word in cleaned.split())
+
+
+def _is_generic_or_auto_assignee(folded: str) -> bool:
+    if not folded:
+        return True
+    patterns = (
+        r"\b(?:phu\s*hop|ranh|thich\s*hop|tot\s*nhat|it\s*viec|nhieu\s*viec|tu\s*chon|ai\s*cung\s*duoc|ai\s*ranh|ai\s*phu\s*hop)\b",
+        r"^(?:\d+|mot|hai|ba|bon|nam|cac|tat\s*ca)?\s*(?:nguoi|thanh\s*vien|nhan\s*su|ai|dev|tester|leader)\b",
+        r"\b(?:nguoi\s*khac|ai\s*do|thanh\s*vien\s*moi|nhan\s*su\s*moi)\b",
+    )
+    return any(re.search(p, folded) for p in patterns)
+
+
+def extract_requested_assignee_names(text: str) -> list[str]:
+    s = text.replace("“", "\"").replace("”", "\"").replace("‘", "'").replace("’", "'")
+    candidates = []
+
+    p1 = re.findall(
+        r"(?:(?:giao|gán|tạo|assign|phân\s*công)\s+)?(?:task|việc|subtask)?\s*(?:[\"'][^\"']+[\"']\s*)?\bcho\s+(?:cả\s+)?(?!(?:dự\s*án|project|app|web|hệ\s*thống|module|phân\s*hệ|màn\s*hình)\b)([A-ZÀ-Ỹa-zà-ỹ0-9_\s,và+&]+?)(?=(?:\s+(?:trong|ở|thuộc|vào)\s+dự\s*án|\s+(?:hoàn\s*thành|làm|thực\s*hiện|phụ\s*trách|đảm\s*nhận)\b|\s+trực\s+thuộc|\s+deadline|\s+vào\s+ngày|\s+với\s+thời\s*gian|\s+với\s+et|\s*$))",
+        s,
+        flags=re.IGNORECASE
+    )
+    for match in p1:
+        candidates.append(match)
+
+    p2 = re.findall(
+        r"(?:giao|gán|assign|phân\s*công)\s+cho\s+(?:cả\s+)?(?!(?:dự\s*án|project|app|web|hệ\s*thống|module|phân\s*hệ|màn\s*hình)\b)([A-ZÀ-Ỹa-zà-ỹ0-9_\s,và+&]+?)(?=(?:\s+(?:task|việc|subtask)\s+[\"']|,\s*task))",
+        s,
+        flags=re.IGNORECASE
+    )
+    for match in p2:
+        candidates.append(match)
+
+    results = []
+    seen = set()
+    for raw in candidates:
+        parts = re.split(r"\s+(?:và|va|and|&|\+)\s+|,\s*", raw, flags=re.IGNORECASE)
+        for part in parts:
+            name = _clean_assignee_token(part)
+            if not name:
+                continue
+            folded = _fold_text(name)
+            if not folded or folded in _ASSIGNEE_STOPWORDS or len(folded) < 2 or _is_generic_or_auto_assignee(folded):
+                continue
+            if folded.isdigit():
+                continue
+            if folded not in seen:
+                seen.add(folded)
+                results.append(_format_display_person_name(name))
+    return results
+
+
+def check_project_requested_assignees(
+    db,
+    project_id: int | str | None,
+    requested_names: list[str],
+) -> tuple[list[str], list[str], dict[str, list[dict[str, Any]]]]:
+    if not requested_names or not db or not project_id:
+        return [], [], {}
+
+    try:
+        from app.models.project_model import ProjectMember, Role
+        from app.models.user_model import User
+
+        pid = int(project_id)
+        members = (
+            db.query(User.id, User.full_name, User.email, Role.name.label("role_name"))
+            .join(ProjectMember, ProjectMember.user_id == User.id)
+            .outerjoin(Role, User.role_id == Role.id)
+            .filter(
+                ProjectMember.project_id == pid,
+                ProjectMember.is_active.is_(True),
+            )
+            .all()
+        )
+        if not members:
+            return requested_names, [], {}
+
+        member_records: list[dict[str, Any]] = []
+        available_names: list[str] = []
+        seen_names = set()
+        for user_id, full_name, email, role_name in members:
+            if not full_name:
+                continue
+            name_clean = full_name.strip()
+            if name_clean and name_clean not in seen_names:
+                seen_names.add(name_clean)
+                available_names.append(name_clean)
+            name_tokens = set(_fold_text(full_name).split())
+            email_tokens = set(_fold_text(email.split("@")[0].replace(".", " ")).split()) if email else set()
+            member_records.append({
+                "id": user_id,
+                "full_name": name_clean,
+                "email": email or "",
+                "role": role_name or "",
+                "tokens": name_tokens | email_tokens,
+                "exact_fold": _fold_text(full_name),
+            })
+
+        unmatched: list[str] = []
+        ambiguous: dict[str, list[dict[str, Any]]] = {}
+
+        for cand in requested_names:
+            folded_cand = _fold_text(cand)
+            cand_tokens = set(folded_cand.split())
+            if not cand_tokens:
+                continue
+
+            exact_matches = [m for m in member_records if m["exact_fold"] == folded_cand]
+            if len(exact_matches) == 1:
+                continue
+            elif len(exact_matches) > 1:
+                ambiguous[cand] = exact_matches
+                continue
+
+            token_matches = [m for m in member_records if cand_tokens.issubset(m["tokens"])]
+            if len(token_matches) == 0:
+                unmatched.append(_format_display_person_name(cand))
+            elif len(token_matches) > 1:
+                ambiguous[cand] = token_matches
+
+        return unmatched, available_names, ambiguous
+    except Exception:
+        return [], [], {}
+
+
+def find_unmatched_project_assignees(
+    db,
+    project_id: int | str | None,
+    requested_names: list[str],
+) -> tuple[list[str], list[str]]:
+    unmatched, available_names, _ = check_project_requested_assignees(
+        db, project_id, requested_names
+    )
+    return unmatched, available_names
+
+
+def clarify_ambiguous_assignee_message(
+    project_name: str,
+    ambiguous_map: dict[str, list[dict[str, Any]]],
+) -> str:
+    parts = []
+    for cand, members in ambiguous_map.items():
+        formatted_cand = _format_display_person_name(cand)
+        part_lines = [
+            f"Trong dự án **{project_name}** có **{len(members)}** thành viên trùng tên **{formatted_cand}**:"
+        ]
+        for i, m in enumerate(members, start=1):
+            role_str = f" - {m['role']}" if m.get("role") else ""
+            email_str = f" ({m['email']})" if m.get("email") else ""
+            part_lines.append(f"{i}. **{m['full_name']}**{role_str}{email_str}")
+        parts.append("\n".join(part_lines))
+
+    parts.append("Vui lòng chỉ định rõ họ tên đầy đủ hoặc email của thành viên bạn muốn giao task.")
+    return "\n\n".join(parts)
+
+
+def refuse_unmatched_assignee_message(
+    unmatched_names: list[str],
+    project_name: str,
+    available_member_names: list[str] | None = None,
+) -> str:
+    formatted_unmatched = [_format_display_person_name(n) for n in unmatched_names if n]
+    names_str = ", ".join(f"**{n}**" for n in formatted_unmatched)
+    msg = f"Không thể tạo task vì nhân sự {names_str} không có trong danh sách thành viên của dự án **{project_name}**."
+    if available_member_names:
+        formatted_available = [_format_display_person_name(n) for n in available_member_names if n]
+        msg += f"\n\nDanh sách thành viên hiện có trong dự án gồm: {', '.join(formatted_available)}. Vui lòng chọn nhân sự phù hợp hoặc chỉ định người khác."
+    return msg
+
+
 _TASK_TREE_PATTERNS = (
     r"cây\s*task",
     r"cay\s*task",
@@ -305,6 +546,36 @@ def refuse_task_tree_on_agile_message(project_name: str | None = None) -> str:
         f"Dự án{loc} đang quản lý theo mô hình **Agile**, nên không hỗ trợ cây task (WBS). "
         "Cấu trúc cha-con chỉ dùng cho dự án **Waterfall**."
     )
+
+
+_INVERTED_WATERFALL_TREE_CLAIM = re.compile(
+    r"[^.!\n]*(?:loại|mô hình|type)?\s*waterfall[^.!\n]{0,100}"
+    r"không hỗ trợ[^.!\n]{0,80}(?:cây|wbs|cấu trúc cha)[^.!\n]*[.!]?",
+    flags=re.IGNORECASE,
+)
+_INVERTED_WATERFALL_TREE_CLAIM_REV = re.compile(
+    r"[^.!\n]*không hỗ trợ[^.!\n]{0,50}(?:cây task|cấu trúc cây|wbs)[^.!\n]{0,80}waterfall[^.!\n]*[.!]?",
+    flags=re.IGNORECASE,
+)
+_INVERTED_WATERFALL_ASSIGNEE_CLAIM = re.compile(
+    r"[^.!\n]*(?:vì|do)?\s*(?:dự\s*án\s+(?:này\s+)?(?:thuộc\s+loại\s+|là\s+)?|mô\s*hình\s+)waterfall[^.!\n]{0,100}(?:không\s+gán\s+người|không\s+phân\s*công|không\s+hỗ\s*trợ\s+gán\s*người|không\s+thể\s+gán\s*người|sẽ\s+không\s+gán\s+người|không\s+được\s+gán\s+người|tôi\s+sẽ\s+không\s+gán)[^.!\n]*[.!]?",
+    flags=re.IGNORECASE,
+)
+_INVERTED_WATERFALL_ASSIGNEE_CLAIM_REV = re.compile(
+    r"[^.!\n]*(?:không\s+gán\s+người|không\s+phân\s*công|sẽ\s+không\s+gán\s+người|không\s+được\s+gán\s+người|tôi\s+sẽ\s+không\s+gán)[^.!\n]{0,100}(?:vì|do|trong)\s+(?:dự\s*án\s+(?:này\s+)?(?:là\s+|thuộc\s+loại\s+)?|mô\s*hình\s+)waterfall[^.!\n]*[.!]?",
+    flags=re.IGNORECASE,
+)
+
+
+def strip_inverted_waterfall_tree_claims(text: str) -> str:
+    """Gỡ câu AI nói ngược: Waterfall không hỗ trợ cây task hoặc Waterfall không gán người."""
+    if not text:
+        return text
+    cleaned = _INVERTED_WATERFALL_TREE_CLAIM.sub("", text)
+    cleaned = _INVERTED_WATERFALL_TREE_CLAIM_REV.sub("", cleaned)
+    cleaned = _INVERTED_WATERFALL_ASSIGNEE_CLAIM.sub("", cleaned)
+    cleaned = _INVERTED_WATERFALL_ASSIGNEE_CLAIM_REV.sub("", cleaned)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
 _SPRINT_PATTERNS = (
@@ -537,9 +808,243 @@ _TASK_DETAIL_QUESTION_PATTERNS = (
     r"\b(task|nhiệm\s+vụ|công\s+việc)\b.*\b(bạn\s+muốn|định)\s+tạo\b",
 )
 
+# The create-task guard asks for a project in a separate turn when it cannot
+# determine one.  The answer to that question is often just a project name
+# (for example "PEOPLE HUB").  It is a selection, not a replacement for the
+# task request made immediately before the question.
+_PROJECT_SELECTION_QUESTION_PATTERNS = (
+    r"bạn\s+muốn\s+lập\s+bản\s+nháp\s+cho\s+dự\s+án\s+nào",
+    r"hãy\s+nêu\s+tên\s+dự\s+án",
+    r"mở\s+trang\s+dự\s+án",
+)
+
+
+def recover_task_request_after_project_selection(
+    messages: list | None,
+    latest_text: str,
+    selected_project=None,
+) -> str:
+    """Return the task request that preceded a project-selection answer.
+
+    This intentionally only applies to the exact three-message sequence
+    ``human(task request) -> ai(ask project) -> human(project name)``.  That
+    keeps a later standalone project mention from being mistaken for a task.
+    """
+    if not messages or selected_project is None:
+        return latest_text
+
+    selected_name = normalize_user_text(getattr(selected_project, "name", ""))
+    latest_normalized = normalize_user_text(latest_text)
+    latest_clean = re.sub(r"^(dự\s*án|du\s*an|project)\s+", "", latest_normalized).strip()
+    if not selected_name or (latest_normalized != selected_name and latest_clean != selected_name and selected_name not in latest_normalized):
+        return latest_text
+
+    latest_human_index = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if getattr(messages[index], "type", None) in ("human", "user")
+        ),
+        None,
+    )
+    if latest_human_index is None:
+        return latest_text
+
+    previous_ai_index = next(
+        (
+            index
+            for index in range(latest_human_index - 1, -1, -1)
+            if getattr(messages[index], "type", None) in ("ai", "assistant")
+        ),
+        None,
+    )
+    if previous_ai_index is None:
+        return latest_text
+
+    previous_ai = normalize_user_text(_message_text(messages[previous_ai_index]))
+    if not any(
+        re.search(pattern, previous_ai, flags=re.IGNORECASE)
+        for pattern in _PROJECT_SELECTION_QUESTION_PATTERNS
+    ):
+        return latest_text
+
+    previous_human_index = next(
+        (
+            index
+            for index in range(previous_ai_index - 1, -1, -1)
+            if getattr(messages[index], "type", None) in ("human", "user")
+        ),
+        None,
+    )
+    if previous_human_index is None:
+        return latest_text
+
+    previous_request = _message_text(messages[previous_human_index]).strip()
+    return previous_request if looks_like_task_create(previous_request) else latest_text
+
+
+_ASSIGNEE_SELECTION_QUESTION_PATTERNS = (
+    r"trùng\s+tên",
+    r"thành\s+viên\s+có\s+tên",
+    r"chỉ\s+định\s+rõ\s+họ\s+tên",
+    r"chọn\s+nhân\s+sự\s+phù\s+hợp",
+    r"chỉ\s+định\s+người\s+khác",
+    r"vui\s+lòng\s+chọn\s+thành\s+viên",
+)
+
+_SUGGESTION_CONFIRMATION_PATTERNS = (
+    r"gợi\s*ý\s*(?:hai|ba|bốn|\d+)?\s*(?:người|thành\s*viên|nhân\s*sự|phù\s*hợp)",
+    r"nếu\s*bạn\s*đồng\s*ý\s*với\s*(?:các\s*)?gợi\s*ý",
+    r"bạn\s*có\s*muốn\s*giao\s*task",
+    r"bạn\s*có\s*muốn\s*tạo\s*bản\s*nháp",
+    r"gợi\s*ý\s*cho\s*(?:hai|ba|\d+)?\s*task",
+)
+
+
+def recover_task_request_after_assignee_selection(
+    messages: list | None,
+    latest_text: str,
+) -> str:
+    """Khôi phục câu lệnh tạo task trước đó khi người dùng chọn nhân sự giải quyết trùng tên."""
+    if not messages:
+        return latest_text
+
+    latest_human_index = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if getattr(messages[index], "type", None) in ("human", "user")
+        ),
+        None,
+    )
+    if latest_human_index is None:
+        return latest_text
+
+    previous_ai_index = next(
+        (
+            index
+            for index in range(latest_human_index - 1, -1, -1)
+            if getattr(messages[index], "type", None) in ("ai", "assistant")
+        ),
+        None,
+    )
+    if previous_ai_index is None:
+        return latest_text
+
+    previous_ai = normalize_user_text(_message_text(messages[previous_ai_index]))
+    if not any(
+        re.search(pattern, previous_ai, flags=re.IGNORECASE)
+        for pattern in _ASSIGNEE_SELECTION_QUESTION_PATTERNS
+    ):
+        return latest_text
+
+    previous_human_index = next(
+        (
+            index
+            for index in range(previous_ai_index - 1, -1, -1)
+            if getattr(messages[index], "type", None) in ("human", "user")
+        ),
+        None,
+    )
+    if previous_human_index is None:
+        return latest_text
+
+    previous_request = _message_text(messages[previous_human_index]).strip()
+    if not previous_request:
+        return latest_text
+
+    selected_name = latest_text.strip()
+    selected_name_clean = re.sub(
+        r"^(?:giao\s+(?:task\s+|việc\s+|công\s*việc\s+|nhiệm\s*vụ\s+)?cho|gán\s+cho|cho|assign\s+cho)\s+",
+        "",
+        selected_name,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    ambiguous_match = re.search(r"trùng\s+tên\s+\*\*([^\*]+)\*\*", previous_ai)
+    ambiguous_name = ambiguous_match.group(1) if ambiguous_match else None
+
+    if ambiguous_name:
+        pattern = re.compile(rf"\b(cho\s+(?:cả\s+)?){re.escape(ambiguous_name)}\b", re.IGNORECASE)
+        if pattern.search(previous_request):
+            return pattern.sub(rf"\g<1>{selected_name_clean}", previous_request)
+
+    return f"{previous_request}, giao cho {selected_name_clean}"
+
+
+def recover_task_request_after_suggestion_confirmation(
+    messages: list | None,
+    latest_text: str,
+) -> str:
+    """Khôi phục câu lệnh tạo task kèm nhân sự khi người dùng xác nhận gợi ý phân công (VD: 'oke assign đi', 'nhầm tự tạo draft')."""
+    if not messages:
+        return latest_text
+
+    if not re.search(
+        r"\b(?:oke|ok|yes|được|nhất\s*trí)?\s*(?:assign|giao|gán|phân\s*công|tạo\s*draft|tạo\s*bản\s*nháp|tạo\s*task|tạo|tự\s*tạo|nhầm\s+tự\s+tạo\s+draft|áp\s*dụng)\b",
+        latest_text,
+        flags=re.IGNORECASE,
+    ):
+        return latest_text
+
+    prev_ai = None
+    for m in reversed(messages):
+        if getattr(m, "type", None) in ("ai", "assistant"):
+            text = getattr(m, "content", "")
+            if "gợi ý" in text.lower() or "phù hợp" in text.lower():
+                prev_ai = text
+                break
+
+    if not prev_ai:
+        return latest_text
+
+    pairs: list[tuple[str, str]] = []
+    lines = prev_ai.split("\n")
+    for line in lines:
+        line_clean = line.strip().lstrip("-*•> ").strip()
+        m = re.search(
+            r"^(?:\*\*)?([^:\*]+?)(?:\*\*)?\s*:\s*(?:\*\*)?([A-ZÀ-Ỹ][A-Za-zÀ-ỹ\s]+?)(?:\*\*)?(?:\s*[-–—]|\s*\(|\n|$)",
+            line_clean,
+        )
+        if m:
+            t_name = m.group(1).strip()
+            a_name = m.group(2).strip()
+            if (
+                len(t_name) >= 3
+                and len(a_name.split()) >= 2
+                and not t_name.lower().startswith(
+                    ("người", "thành viên", "vai trò", "lưu ý", "dựa trên", "nếu bạn")
+                )
+            ):
+                pairs.append((t_name, a_name))
+
+    orig_req = None
+    for m in messages:
+        if getattr(m, "type", None) in ("human", "user"):
+            text = getattr(m, "content", "").strip()
+            if text.lower().startswith("tạo") and "task" in text.lower():
+                orig_req = text
+                break
+
+    if not pairs:
+        return orig_req or latest_text
+
+    if orig_req:
+        res = orig_req
+        for t_name, a_name in pairs:
+            p = re.compile(rf"([\"“]?{re.escape(t_name)}[\"”]?(?:\s*\([^\)]+\))?)", re.IGNORECASE)
+            if p.search(res):
+                res = p.sub(rf"\g<1> giao cho {a_name}", res)
+            else:
+                res += f", task \"{t_name}\" giao cho {a_name}"
+        return res
+
+    parts = [f"task \"{t}\" giao cho {a}" for t, a in pairs]
+    return "Tạo các task: " + ", ".join(parts)
+
 
 def is_task_creation_followup(messages: list | None) -> bool:
-    """True khi user đang trả lời câu hỏi bổ sung cho bản nháp task."""
+    """True khi user đang trả lời câu hỏi bổ sung cho bản nháp task hoặc xác nhận gợi ý phân công."""
     if not messages:
         return False
 
@@ -564,7 +1069,12 @@ def is_task_creation_followup(messages: list | None) -> bool:
         previous_ai = normalize_user_text(_message_text(message))
         return any(
             re.search(pattern, previous_ai, flags=re.IGNORECASE)
-            for pattern in _TASK_DETAIL_QUESTION_PATTERNS
+            for pattern in (
+                *_TASK_DETAIL_QUESTION_PATTERNS,
+                *_PROJECT_SELECTION_QUESTION_PATTERNS,
+                *_ASSIGNEE_SELECTION_QUESTION_PATTERNS,
+                *_SUGGESTION_CONFIRMATION_PATTERNS,
+            )
         )
     return False
 
@@ -574,17 +1084,13 @@ def resolve_conversation_project(
     projects: list,
     summary: str | None = None,
 ):
-    """Lấy dự án đang nói trong hội thoại (tin mới hơn thắng). Bỏ qua tin user mới nhất."""
+    """Lấy dự án đang nói trong hội thoại (tin mới hơn thắng)."""
     if not projects:
         return None
 
     texts: list[str] = []
-    skipped_latest_human = False
     for message in reversed(messages or []):
         msg_type = getattr(message, "type", None)
-        if not skipped_latest_human and msg_type in ("human", "user"):
-            skipped_latest_human = True
-            continue
         if msg_type not in ("human", "user", "ai", "assistant"):
             continue
         texts.append(_message_text(message))
@@ -626,7 +1132,10 @@ def resolve_guard_project(
     messages: list | None = None,
     summary: str | None = None,
     conversation_project_id: int | str | None = None,
+    target_project=None,
 ):
+    if target_project is not None:
+        return target_project
     target = resolve_mentioned_project(text, projects)
     if target is not None:
         return target
@@ -651,6 +1160,7 @@ def task_create_hard_guard_message(
     messages: list | None = None,
     summary: str | None = None,
     conversation_project_id: int | str | None = None,
+    target_project=None,
 ) -> str | None:
     """Luật cứng theo tin mới nhất, nhưng tái dùng dự án đang nói trong hội thoại khi follow-up."""
     target = resolve_guard_project(
@@ -660,6 +1170,7 @@ def task_create_hard_guard_message(
         messages=messages,
         summary=summary,
         conversation_project_id=conversation_project_id,
+        target_project=target_project,
     )
     project_names = [getattr(project, "name", "") for project in projects]
     hint = getattr(target, "name", None) if target is not None else None
@@ -687,6 +1198,36 @@ def task_create_hard_guard_message(
             "Hãy nêu tên dự án (hoặc mở trang dự án đó) để mình đọc nội dung hiện có và soạn draft."
         )
 
+    if target is not None and looks_like_task_create(text):
+        req_assignees = extract_requested_assignee_names(text)
+        if req_assignees:
+            target_db = db
+            close_db = False
+            if target_db is None:
+                try:
+                    from app.core.connection import SessionLocal
+
+                    target_db = SessionLocal()
+                    close_db = True
+                except Exception:
+                    target_db = None
+            if target_db is not None:
+                try:
+                    unmatched, available_members, ambiguous = check_project_requested_assignees(
+                        target_db, getattr(target, "id", None), req_assignees
+                    )
+                    if unmatched:
+                        return refuse_unmatched_assignee_message(
+                            unmatched, getattr(target, "name", "dự án"), available_members
+                        )
+                    if ambiguous:
+                        return clarify_ambiguous_assignee_message(
+                            getattr(target, "name", "dự án"), ambiguous
+                        )
+                finally:
+                    if close_db:
+                        target_db.close()
+
     if is_underspecified_task_create(text, project_names):
         return clarify_underspecified_task_message(hint)
 
@@ -704,6 +1245,7 @@ def refuse_if_unauthorized_sprint_draft(
     messages: list | None = None,
     summary: str | None = None,
     conversation_project_id: int | str | None = None,
+    target_project=None,
 ) -> str | None:
     """Chặn output AI chứa json_sprint_draft khi user không phải PM/Leader của dự án."""
     if not output or "json_sprint_draft" not in output:
@@ -719,6 +1261,7 @@ def refuse_if_unauthorized_sprint_draft(
         messages=messages,
         summary=summary,
         conversation_project_id=conversation_project_id,
+        target_project=target_project,
     )
     if target is None:
         return None

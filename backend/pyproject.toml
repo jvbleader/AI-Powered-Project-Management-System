@@ -30,6 +30,7 @@ dependencies = [
     "redis>=5.0.0",
     "pydantic-settings>=2.0.0",
     "azure-storage-blob>=12.19.0",
+    "certifi>=2026.7.22",
     "langchain-community>=0.2.0",
     "langgraph-checkpoint-redis>=0.5.0"
 ]
@@ -46,7 +47,7 @@ asyncio_mode = "auto"
 asyncio_default_test_loop_scope = "session"
 asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
-pythonpath = ["app"]
+pythonpath = ["."]
 addopts = "-ra --strict-markers"
 timeout = 120
 markers = [

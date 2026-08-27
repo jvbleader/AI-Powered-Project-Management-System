@@ -92,8 +92,29 @@
   border-radius: 0 !important;
   box-shadow: none !important;
   background: transparent !important;
-  /* Không dùng overflow-x:auto — browser sẽ ép overflow-y thành auto và cắt dropdown */
-  overflow: visible !important;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.flatTableWrap::-webkit-scrollbar {
+  height: 6px;
+}
+
+.flatTableWrap::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.6);
+  border-radius: 999px;
+}
+
+.flatTableWrap::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 999px;
+}
+
+.flatTableWrap::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.6);
 }
 
 .flatTableWrap :global(thead),
@@ -416,4 +437,15 @@
 .paginationActions {
   display: flex;
   gap: 0.5rem;
+}
+
+.emptyCell {
+  padding: 0.65rem 0 0 0 !important;
+  border-bottom: none !important;
+}
+
+.emptyCell :global(.empty-state) {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
 }

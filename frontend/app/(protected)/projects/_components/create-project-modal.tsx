@@ -5,7 +5,7 @@ import { projectApi } from "@/services/api";
 import { CustomSelect } from "@/components/custom-select";
 import { Department } from "@/types/user";
 import styles from "./create-project-modal.module.css";
-import { isHeadOfDevDepartment } from "@/lib/utils/format";
+import { hasCompanywideProjectAccess, toVietnamDateInputValue } from "@/lib/utils/format";
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -23,16 +23,16 @@ export function CreateProjectModal({
   onClose,
   viewerId,
   viewerName,
-  viewerRole: _viewerRole,
+  viewerRole,
   viewerDepartment,
   accessibleUsers: _accessibleUsers,
   onProjectCreated,
 }: CreateProjectModalProps) {
-  const canSelectDepartment = isHeadOfDevDepartment(viewerDepartment);
+  const canSelectDepartment = hasCompanywideProjectAccess(viewerRole, viewerDepartment);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
-  const [newProjectStart, setNewProjectStart] = useState("2026-07-01");
-  const [newProjectEnd, setNewProjectEnd] = useState("2026-08-15");
+  const [newProjectStart, setNewProjectStart] = useState(() => toVietnamDateInputValue());
+  const [newProjectEnd, setNewProjectEnd] = useState(() => toVietnamDateInputValue());
   const [newProjectType, setNewProjectType] = useState<"agile" | "waterfall">("agile");
   const [newProjectDepartmentId, setNewProjectDepartmentId] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -41,6 +41,14 @@ export function CreateProjectModal({
 
   useEffect(() => {
     if (!isOpen) return;
+
+    const today = toVietnamDateInputValue();
+    setNewProjectStart(today);
+    setNewProjectEnd(today);
+    setNewProjectName("");
+    setNewProjectDescription("");
+    setNewProjectType("agile");
+    setFormError(null);
 
     userApi
       .getDepartments()
@@ -69,6 +77,14 @@ export function CreateProjectModal({
     onClose();
   };
 
+  const handleInvalid = (event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event.target as HTMLInputElement | HTMLTextAreaElement).setCustomValidity("Vui lòng nhập đầy đủ thông tin trường này");
+  };
+
+  const handleInput = (event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event.target as HTMLInputElement | HTMLTextAreaElement).setCustomValidity("");
+  };
+
   if (!isOpen) return null;
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
@@ -82,7 +98,7 @@ export function CreateProjectModal({
       !newProjectEnd ||
       !newProjectDepartmentId
     ) {
-      setFormError("Vui lòng nhập đầy đủ tên dự án, phòng ban, mô tả, ngày bắt đầu và ngày kết thúc.");
+      setFormError("Vui lòng nhập đầy đủ thông tin trường này");
       return;
     }
 
@@ -146,12 +162,16 @@ export function CreateProjectModal({
           <div className={styles.modalBody}>
             <div className={styles.formGrid}>
               <div className={styles.inputGroup}>
-                <label>Tên dự án</label>
+                <label>
+                  Tên dự án<span className={styles.requiredStar}>*</span>
+                </label>
                 <input
                   data-testid="project-name"
                   className={styles.inputControl}
                   value={newProjectName}
                   onChange={(event) => setNewProjectName(event.target.value)}
+                  onInvalid={handleInvalid}
+                  onInput={handleInput}
                   placeholder="Nhập tên dự án..."
                   required
                 />
@@ -211,12 +231,16 @@ export function CreateProjectModal({
               </div>
 
               <div className={`${styles.inputGroup} ${styles.fullWidth}`}>
-                <label>Mô tả chi tiết</label>
+                <label>
+                  Mô tả chi tiết<span className={styles.requiredStar}>*</span>
+                </label>
                 <textarea
                   data-testid="project-description"
                   className={styles.inputControl}
                   value={newProjectDescription}
                   onChange={(event) => setNewProjectDescription(event.target.value)}
+                  onInvalid={handleInvalid}
+                  onInput={handleInput}
                   placeholder="Mô tả mục tiêu và phạm vi của dự án..."
                   required
                   rows={8}
@@ -231,6 +255,8 @@ export function CreateProjectModal({
                   type="date"
                   value={newProjectStart}
                   onChange={(event) => setNewProjectStart(event.target.value)}
+                  onInvalid={handleInvalid}
+                  onInput={handleInput}
                   required
                 />
               </div>
@@ -242,6 +268,8 @@ export function CreateProjectModal({
                   type="date"
                   value={newProjectEnd}
                   onChange={(event) => setNewProjectEnd(event.target.value)}
+                  onInvalid={handleInvalid}
+                  onInput={handleInput}
                   required
                 />
               </div>

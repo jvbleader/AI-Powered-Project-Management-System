@@ -31,7 +31,6 @@ import type {
   WorkspaceShellData,
 } from "@/types";
 import { roleLabel } from "@/lib/utils/format";
-import { resolveAvatarUrl } from "@/lib/utils/avatar";
 
 export type EndpointMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -102,7 +101,7 @@ export function toInitials(name: string) {
     .join("");
 }
 
-export function toFrontendRole(backendUser: BackendUserResponse): UserRole {
+function toFrontendRole(backendUser: BackendUserResponse): UserRole {
   return backendUser.role?.trim() || (backendUser.is_admin ? "Admin" : "Lập trình viên");
 }
 
@@ -115,12 +114,10 @@ export function toFrontendUserProfile(backendUser: BackendUserResponse): UserPro
     backendUser.full_name?.trim() || backendUser.email.split("@")[0] || "Người dùng";
   const role = toFrontendRole(backendUser);
   const userId = `usr-${backendUser.id}`;
-  const avatarUrl = resolveAvatarUrl({
-    userId,
-    email: backendUser.email,
-    name: resolvedName,
-    avatarUrl: backendUser.avatar_url,
-  });
+  // Keep only a server-owned/uploaded avatar in domain data. UserAvatar builds
+  // a deterministic fallback from userId; persisting that fallback here made
+  // different browser snapshots disagree about the same user.
+  const avatarUrl = backendUser.avatar_url?.trim() || undefined;
 
   return {
     id: userId,
@@ -135,6 +132,7 @@ export function toFrontendUserProfile(backendUser: BackendUserResponse): UserPro
     workloadHours: 0,
     focusScore: 75,
     isActive: backendUser.is_active,
+    isAdmin: backendUser.is_admin,
     status: backendUser.is_active ? "ACTIVE" : "INACTIVE",
     phoneNumber: backendUser.phone_number ?? undefined,
     department: backendUser.department ?? undefined,
@@ -154,35 +152,71 @@ export function toAuthSession(currentUser: UserProfile): AuthSession {
   };
 }
 
+function isSameOriginApiBase(value: string | undefined) {
+  return !value || value === "same-origin" || value === "/";
+}
+
 export function getApiBaseUrl() {
   const configuredBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const internalBaseUrl = process.env.API_BASE_URL_INTERNAL;
 
   if (typeof window === "undefined") {
-    return internalBaseUrl ?? configuredBaseUrl ?? DEFAULT_INTERNAL_API_BASE_URL;
+    if (internalBaseUrl) {
+      return internalBaseUrl;
+    }
+    if (!isSameOriginApiBase(configuredBaseUrl) && configuredBaseUrl) {
+      return configuredBaseUrl;
+    }
+    return DEFAULT_INTERNAL_API_BASE_URL;
   }
 
   const currentProtocol = window.location.protocol;
   const currentHostname = window.location.hostname;
 
-  if (!configuredBaseUrl) {
-    return `${currentProtocol}//${currentHostname}:${DEFAULT_API_PORT}`;
+  if (!configuredBaseUrl || configuredBaseUrl === "same-origin" || configuredBaseUrl === "/") {
+    return window.location.origin;
   }
 
   try {
     const url = new URL(configuredBaseUrl);
-    if (isLoopbackHostname(url.hostname) && currentHostname) {
-      url.protocol = currentProtocol;
-      url.hostname = currentHostname;
-      if (!url.port) {
-        url.port = DEFAULT_API_PORT;
+    if (isLoopbackHostname(url.hostname)) {
+      if (isLoopbackHostname(currentHostname)) {
+        url.protocol = currentProtocol;
+        url.hostname = currentHostname;
+        if (!url.port) {
+          url.port = DEFAULT_API_PORT;
+        }
+        return url.origin;
       }
+      return window.location.origin;
     }
 
     return url.origin;
   } catch {
-    return `${currentProtocol}//${currentHostname}:${DEFAULT_API_PORT}`;
+    return isLoopbackHostname(currentHostname)
+      ? `${currentProtocol}//${currentHostname}:${DEFAULT_API_PORT}`
+      : window.location.origin;
   }
+}
+
+export function cleanProjectId(id?: string | number | null): string {
+  if (id === null || id === undefined) return "";
+  return String(id).replace(/^prj-/, "").trim();
+}
+
+export function cleanSprintId(id?: string | number | null): string {
+  if (id === null || id === undefined) return "";
+  return String(id).replace(/^spr-/, "").trim();
+}
+
+export function cleanTaskId(id?: string | number | null): string {
+  if (id === null || id === undefined) return "";
+  return String(id).replace(/^task-/, "").trim();
+}
+
+export function cleanUserId(id?: string | number | null): string {
+  if (id === null || id === undefined) return "";
+  return String(id).replace(/^usr-/, "").trim();
 }
 
 export const apiEndpoints = {
@@ -198,43 +232,43 @@ export const apiEndpoints = {
     list: { method: "GET" as EndpointMethod, path: "/api/projects" },
     detail: (projectId: string) => ({
       method: "GET" as EndpointMethod,
-      path: `/api/projects/${projectId}`,
+      path: `/api/projects/${cleanProjectId(projectId)}`,
     }),
     create: { method: "POST" as EndpointMethod, path: "/api/projects" },
     update: (projectId: string) => ({
       method: "PATCH" as EndpointMethod,
-      path: `/api/projects/${projectId}`,
+      path: `/api/projects/${cleanProjectId(projectId)}`,
     }),
   },
   sprints: {
     list: (projectId: string) => ({
       method: "GET" as EndpointMethod,
-      path: `/api/projects/${projectId}/sprints`,
+      path: `/api/projects/${cleanProjectId(projectId)}/sprints`,
     }),
     detail: (sprintId: string) => ({
       method: "GET" as EndpointMethod,
-      path: `/api/sprints/${sprintId}`,
+      path: `/api/sprints/${cleanSprintId(sprintId)}`,
     }),
     create: (projectId: string) => ({
       method: "POST" as EndpointMethod,
-      path: `/api/projects/${projectId}/sprints`,
+      path: `/api/projects/${cleanProjectId(projectId)}/sprints`,
     }),
     update: (sprintId: string) => ({
       method: "PATCH" as EndpointMethod,
-      path: `/api/sprints/${sprintId}`,
+      path: `/api/sprints/${cleanSprintId(sprintId)}`,
     }),
   },
   tasks: {
     list: { method: "GET" as EndpointMethod, path: "/api/tasks" },
-    detail: (taskId: string) => ({ method: "GET" as EndpointMethod, path: `/api/tasks/${taskId}` }),
+    detail: (taskId: string) => ({ method: "GET" as EndpointMethod, path: `/api/tasks/${cleanTaskId(taskId)}` }),
     create: { method: "POST" as EndpointMethod, path: "/api/tasks" },
     update: (taskId: string) => ({
       method: "PATCH" as EndpointMethod,
-      path: `/api/tasks/${taskId}`,
+      path: `/api/tasks/${cleanTaskId(taskId)}`,
     }),
     updateStatus: (taskId: string) => ({
       method: "PATCH" as EndpointMethod,
-      path: `/api/tasks/${taskId}/status`,
+      path: `/api/tasks/${cleanTaskId(taskId)}/status`,
     }),
   },
   logwork: {
@@ -360,7 +394,7 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
-    
+
     // Nếu gặp lỗi 401 và không phải là các API Auth thì sẽ gọi refresh
     if (
       error.response?.status === 401 &&
@@ -401,17 +435,17 @@ axiosInstance.interceptors.response.use(
         return Promise.reject(e);
       }
     }
-    
+
     if (
-      error.response?.status === 401 && 
-      originalRequest && 
+      error.response?.status === 401 &&
+      originalRequest &&
       originalRequest.url?.endsWith("/refresh")
     ) {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("flowpilot-session-expired"));
       }
     }
-    
+
     return Promise.reject(error);
   }
 );

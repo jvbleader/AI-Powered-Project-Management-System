@@ -43,6 +43,15 @@ class TaskAttachmentBase(BaseModel):
     file_url: str
     file_name: str
 
+    @field_validator("file_url")
+    @classmethod
+    def validate_file_url(cls, v: str) -> str:
+        stripped = v.strip()
+        lower = stripped.lower()
+        if lower.startswith("javascript:") or lower.startswith("vbscript:") or lower.startswith("data:text/html"):
+            raise ValueError("URL tệp đính kèm không hợp lệ hoặc chứa nội dung không an toàn.")
+        return stripped
+
 
 class TaskAttachmentCreate(TaskAttachmentBase):
     pass
@@ -155,8 +164,11 @@ class TaskBase(BaseModel):
     @field_validator("estimated_hours")
     @classmethod
     def validate_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
-        if value is not None and value < 0:
-            raise ValueError("Thời gian ước tính không được âm.")
+        if value is not None:
+            if value < 0:
+                raise ValueError("Thời gian ước tính không được âm.")
+            if value > 99999:
+                raise ValueError("Thời gian ước tính không được vượt quá 99.999 giờ.")
         return value
 
 
@@ -217,8 +229,11 @@ class TaskUpdate(BaseModel):
     @field_validator("estimated_hours")
     @classmethod
     def validate_optional_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
-        if value is not None and value < 0:
-            raise ValueError("Thời gian ước tính không được âm.")
+        if value is not None:
+            if value < 0:
+                raise ValueError("Thời gian ước tính không được âm.")
+            if value > 99999:
+                raise ValueError("Thời gian ước tính không được vượt quá 99.999 giờ.")
         return value
 
 
