@@ -21,6 +21,7 @@ export function LogworkModal({
 }: LogworkModalProps) {
   void userId;
   const [hours, setHours] = useState("0");
+  const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [comment, setComment] = useState("");
   const [date, setDate] = useState(toVietnamDateInputValue());
@@ -50,8 +51,13 @@ export function LogworkModal({
       return;
     }
 
+    if (!title.trim()) {
+      setFormError("Vui lòng nhập tên logwork.");
+      return;
+    }
+
     if (!description.trim()) {
-      setFormError("Vui lòng nhập mô tả công việc.");
+      setFormError("Vui lòng nhập nội dung công việc.");
       return;
     }
 
@@ -60,6 +66,7 @@ export function LogworkModal({
       await taskApi.addLogwork(taskId, {
         workDate: date,
         hoursSpent: hoursVal,
+        title: title.trim(),
         workContent: description.trim(),
         comment: comment.trim() || null,
         progressPercent: 0,
@@ -70,6 +77,7 @@ export function LogworkModal({
       }
 
       setHours("0");
+      setTitle("");
       setDescription("");
       setComment("");
       handleClose();
@@ -138,6 +146,20 @@ export function LogworkModal({
                   onChange={(event) => setDate(event.target.value)}
                   disabled={isSubmitting}
                   required
+                />
+              </div>
+              <div className={`${modalStyles.inputGroup} ${styles.inputGroup} ${styles.fullWidth}`}>
+                <label className={styles.fieldLabel}>Tên logwork</label>
+                <input
+                  data-testid="logwork-title"
+                  className={`${modalStyles.inputControl} ${styles.compactInput}`}
+                  type="text"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  disabled={isSubmitting}
+                  required
+                  maxLength={255}
+                  placeholder="Ví dụ: Fix lỗi đăng nhập, họp sprint..."
                 />
               </div>
               <div className={`${modalStyles.inputGroup} ${styles.inputGroup} ${styles.fullWidth}`}>

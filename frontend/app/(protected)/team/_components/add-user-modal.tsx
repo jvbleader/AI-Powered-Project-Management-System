@@ -54,7 +54,6 @@ export function AddUserModal({
       >
         <div className="password-modal-header">
           <div>
-            <span className="eyebrow">Tài khoản mới</span>
             <h2 id="add-user-title">Thêm nhân sự</h2>
             <p>Khởi tạo thông tin cơ bản cho nhân viên mới.</p>
           </div>

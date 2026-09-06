@@ -72,6 +72,7 @@ class DashboardRecentLogworkResponse(BaseModel):
     userName: str
     workDate: date
     hours: float
+    title: str = ""
     note: str
     progressPercent: float = 0
     status: str = "PENDING"

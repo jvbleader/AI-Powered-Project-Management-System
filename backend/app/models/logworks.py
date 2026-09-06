@@ -13,6 +13,7 @@ class LogWork(Base):
     project_member_id = Column(Integer, ForeignKey("project_members.id"), nullable=False)
     work_date = Column(Date, nullable=False, index=True)
     hours_spent = Column(Numeric, nullable=False)
+    title = Column(String(255), nullable=False)
     work_content = Column(Text, nullable=False)
     comment = Column(Text)
     progress_percent = Column(Numeric, nullable=False, default=0)

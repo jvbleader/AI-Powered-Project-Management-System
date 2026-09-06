@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useParams, useSearchParams } from "next/navigation";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
+import { SectionHeader } from "@/components/section-header";
 import { dashboardApi, projectApi, sprintApi, taskApi, workspaceApi, userApi } from "@/services/api";
 import { canManageProjectMembership, isAdminRole } from "@/lib/utils/format";
-import { useAuthSession } from "@/hooks/use-session";
+import { useAuthSession, PENDING_USER } from "@/hooks/use-session";
 import type {
   DashboardOverview,
   EnrichedTask,
@@ -87,6 +87,27 @@ function normalizeHref(href: string) {
   return buildNormalizedHref(url.pathname, url.searchParams);
 }
 
+function UserPlusIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <line x1="19" y1="8" x2="19" y2="14" />
+      <line x1="22" y1="11" x2="16" y2="11" />
+    </svg>
+  );
+}
+
 export default function ProjectDetailPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -100,7 +121,7 @@ export default function ProjectDetailPage() {
   const requestedTab = resolveProjectDetailTab(searchTab);
 
   const session = useAuthSession();
-  const viewer = session?.currentUser as UserProfile;
+  const viewer = session?.currentUser ?? PENDING_USER;
 
   const [state, setState] = useState<ProjectDetailState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +135,7 @@ export default function ProjectDetailPage() {
     sprintId: null,
   });
   const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
 
   const selectedSprintId =
     selectedSprintState.projectId === projectId ? selectedSprintState.sprintId : null;
@@ -161,7 +183,7 @@ export default function ProjectDetailPage() {
     let isCancelled = false;
 
     async function loadProjectDetails() {
-      if (!projectId) return;
+      if (!projectId || !viewer.id) return;
 
       try {
         const [
@@ -227,7 +249,28 @@ export default function ProjectDetailPage() {
     if (normalizeHref(nextHref) !== currentHref) {
       router.replace(nextHref, { scroll: false });
     }
+    if (tab !== "members") {
+      setIsAddMemberOpen(false);
+    }
   }
+
+  const projectTabs = state
+    ? (state.project.projectType === "waterfall"
+        ? [
+            { id: "overview" as const, label: "Tổng quan" },
+            { id: "gantt" as const, label: "Gantt Chart" },
+            { id: "members" as const, label: "Thành viên" },
+          ]
+        : [
+            { id: "overview" as const, label: "Tổng quan" },
+            { id: "kanban" as const, label: "Kanban & Backlog" },
+            { id: "members" as const, label: "Thành viên" },
+          ]
+      ).map((tab) => ({
+        ...tab,
+        href: projectId ? buildProjectDetailHref(projectId, tab.id) : "#",
+      }))
+    : [];
 
   return (
     <WorkspaceShell
@@ -236,137 +279,79 @@ export default function ProjectDetailPage() {
       subheading={state?.project.code ?? "Đang tải dữ liệu..."}
       highlightLabel="Số lượng Task"
       highlightValue={`${state?.tasks.length ?? 0}`}
-      assistantProjectId={projectId || null}
+      fillViewport={activeTab === "gantt"}
     >
-      <div style={{ marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button type="button" className="secondary-button" onClick={() => router.push("/projects")}>
-          &larr; Quay lại danh sách Dự án
-        </button>
-
-        {state && (
-          <div style={{ display: "flex", flexDirection: "row", gap: "0.5rem", alignItems: "center" }}>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => {
-                setDefaultParentTaskId("");
-                setIsCreateModalOpen(true);
-              }}
-              style={{ fontWeight: 600 }}
-            >
-              + Tạo Task mới
-            </button>
-            {state.project.projectType === "agile" && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setIsCreateSprintModalOpen(true)}
-                style={{ fontWeight: 500, fontSize: "0.875rem" }}
-              >
-                + Tạo Sprint mới
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
       {error ? (
         <Surface title="Lỗi">
           <EmptyState title="Không thể hiển thị" description={error} />
         </Surface>
-      ) : !state ? (
-        <Surface title="Đang tải dữ liệu...">
-          <div style={{ padding: "2rem", textAlign: "center", color: "var(--foreground-muted)" }}>
-            Đang lấy thông tin dự án...
-          </div>
-        </Surface>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          {/* Tabs */}
-          <div
-            style={{
-              display: "flex",
-              gap: "1rem",
-              padding: "0.5rem",
-              border: "1px solid rgba(148, 163, 184, 0.18)",
-              borderRadius: "999px",
-              background: "rgba(255, 255, 255, 0.78)",
-              width: "fit-content",
-              maxWidth: "100%",
-              overflowX: "auto",
-            }}
-            role="tablist"
-            aria-label="Điều hướng chi tiết dự án"
-          >
-            {(() => {
-              const tabs: Array<{ id: ProjectDetailTab; label: string }> =
-                state.project.projectType === "waterfall"
-                  ? [
-                      { id: "overview", label: "Tổng quan" },
-                      { id: "gantt", label: "Gantt Chart" },
-                      { id: "members", label: "Thành viên" },
-                    ]
-                  : [
-                      { id: "overview", label: "Tổng quan" },
-                      { id: "kanban", label: "Kanban & Backlog" },
-                      { id: "members", label: "Thành viên" },
-                    ];
-
-              return tabs.map((tab) => {
-                const isActive = activeTab === tab.id;
-
-                return (
-                  <Link
-                    key={tab.id}
-                    href={projectId ? buildProjectDetailHref(projectId, tab.id) : "#"}
-                    role="tab"
-                    aria-selected={isActive}
-                    aria-current={isActive ? "page" : undefined}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      handleTabChange(tab.id);
-                    }}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      minHeight: 44,
-                      padding: "0.7rem 1.15rem",
-                      borderRadius: "999px",
-                      border: isActive
-                        ? "1px solid rgba(37, 99, 235, 0.18)"
-                        : "1px solid transparent",
-                      background: isActive
-                        ? "linear-gradient(135deg, rgba(255,255,255,0.98), rgba(239,246,255,0.96))"
-                        : "transparent",
-                      color: isActive ? "var(--primary-dark)" : "var(--foreground-muted)",
-                      fontSize: "0.95rem",
-                      fontWeight: isActive ? 600 : 500,
-                      textDecoration: "none",
-                      boxShadow: isActive ? "0 4px 12px rgba(37,99,235,0.06)" : "none",
-                      transition: "all 0.15s cubic-bezier(0.4, 0, 0.2, 1)",
-                      whiteSpace: "nowrap",
-                      cursor: "pointer",
-                    }}
+        <div
+          className="page-section-stack"
+          style={{
+            flex: activeTab === "gantt" ? 1 : undefined,
+            minHeight: activeTab === "gantt" ? 0 : undefined,
+            overflow: activeTab === "gantt" ? "hidden" : undefined,
+            gap: activeTab === "gantt" ? 0 : undefined,
+          }}
+        >
+          {state ? (
+            <SectionHeader
+              ariaLabel="Điều hướng chi tiết dự án"
+              tabs={projectTabs}
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              primaryAction={
+                activeTab === "members" ? (
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => setIsAddMemberOpen(true)}
                   >
-                    {tab.label}
-                  </Link>
-                );
-              });
-            })()}
-          </div>
+                    <UserPlusIcon />
+                    Thêm thành viên
+                  </button>
+                ) : activeTab === "gantt" || activeTab === "kanban" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => {
+                        setDefaultParentTaskId("");
+                        setIsCreateModalOpen(true);
+                      }}
+                    >
+                      + Tạo Task mới
+                    </button>
+                    {state.project.projectType === "agile" && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setIsCreateSprintModalOpen(true)}
+                      >
+                        + Tạo Sprint mới
+                      </button>
+                    )}
+                  </>
+                ) : undefined
+              }
+            />
+          ) : null}
 
           {activeTab === "overview" && (
-            <ProjectDashboardOverview overview={state.dashboardOverview} />
+            <ProjectDashboardOverview
+              overview={state?.dashboardOverview ?? null}
+              isLoading={!state}
+            />
           )}
 
           {activeTab === "gantt" && (
             <>
-
-              {state.tasks.length > 0 ? (
-                <section style={{ flex: 1, display: "flex", height: "calc(100vh - 300px)", marginTop: "1rem" }}>
+              {!state || state.tasks.length > 0 ? (
+                <section style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
                   <GanttChart
-                    tasks={state.tasks}
+                    tasks={state?.tasks ?? []}
+                    isLoading={!state}
                     onTaskClick={(taskId) => {
                       setSelectedTaskId(taskId);
                       setIsTaskDetailModalOpen(true);
@@ -389,11 +374,12 @@ export default function ProjectDetailPage() {
           )}
 
           {activeTab === "kanban" && (
-            <section style={{ flex: 1, display: "flex", height: "calc(100vh - 300px)", marginTop: "1rem" }}>
+            <section style={{ flex: 1, display: "flex", height: "calc(100vh - 300px)" }}>
               <div style={{ flex: 1, overflow: "hidden" }}>
                 <ProjectKanbanBoard
-                  tasks={state.tasks}
-                  sprints={state.sprints}
+                  isLoading={!state}
+                  tasks={state?.tasks ?? []}
+                  sprints={state?.sprints}
                   selectedSprintId={selectedSprintId}
                   viewerId={String(viewer.id)}
                   onSelectedSprintIdChange={handleSelectedSprintIdChange}
@@ -402,7 +388,7 @@ export default function ProjectDetailPage() {
                     setIsTaskDetailModalOpen(true);
                   }}
                   onEditSprint={(sprintId) => {
-                    const sprint = state.sprints.find((s) => String(s.id) === String(sprintId));
+                    const sprint = state?.sprints.find((s) => String(s.id) === String(sprintId));
                     if (sprint) {
                       setSprintToEdit(sprint);
                       setIsCreateSprintModalOpen(true);
@@ -458,8 +444,10 @@ export default function ProjectDetailPage() {
               projectId={projectId}
               viewerId={String(viewer.id)}
               canManage={canManageProjectMembers}
-              accessibleUsers={state.users}
-              project={state.project}
+              accessibleUsers={state?.users ?? []}
+              project={state?.project}
+              isAddMemberOpen={isAddMemberOpen}
+              onAddMemberOpenChange={setIsAddMemberOpen}
             />
           )}
         </div>
@@ -503,6 +491,7 @@ export default function ProjectDetailPage() {
         <TaskDetailModal
           taskId={selectedTaskId}
           isOpen={isTaskDetailModalOpen}
+          hideProjectLink
           onClose={() => setIsTaskDetailModalOpen(false)}
           users={state.users}
           viewerId={viewer.id}

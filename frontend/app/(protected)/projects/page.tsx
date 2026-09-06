@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { projectApi, userApi, workspaceApi } from "@/services/api";
@@ -11,7 +11,7 @@ import {
   isAdminRole,
   roleLabel,
 } from "@/lib/utils/format";
-import { useAuthSession } from "@/hooks/use-session";
+import { useAuthSession, PENDING_USER } from "@/hooks/use-session";
 import type {
   Project,
   UserProfile,
@@ -32,7 +32,8 @@ let accessibleUsersCache: { viewerId: string; data: UserProfile[] } | null = nul
 
 export default function ProjectsPage() {
   const session = useAuthSession();
-  const viewer = useMemo(() => session?.currentUser as any, [session?.currentUser]);
+  const viewer = session?.currentUser ?? PENDING_USER;
+  const isViewerReady = Boolean(session?.currentUser?.id);
   const cachedProjectsState =
     viewer?.id && projectsPageCache?.viewerId === viewer.id ? projectsPageCache!.data : null;
   const cachedAccessibleUsers =
@@ -43,6 +44,7 @@ export default function ProjectsPage() {
   );
   const [projectsState, setProjectsState] = useState<ProjectsState | null>(cachedProjectsState);
   const [accessibleUsers, setAccessibleUsers] = useState<UserProfile[]>(cachedAccessibleUsers);
+  const [isLoading, setIsLoading] = useState(!cachedProjectsState);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
@@ -50,6 +52,10 @@ export default function ProjectsPage() {
     let isCancelled = false;
 
     async function loadProjects() {
+      if (!isViewerReady) {
+        return;
+      }
+
       try {
         const [{ data: shellData }, { data: projects }] = await Promise.all([
           workspaceApi.getShellData(viewer),
@@ -68,6 +74,10 @@ export default function ProjectsPage() {
         if (!isCancelled) {
           console.error("Failed to load projects:", err);
         }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
       }
     }
 
@@ -76,7 +86,7 @@ export default function ProjectsPage() {
     return () => {
       isCancelled = true;
     };
-  }, [viewer]);
+  }, [isViewerReady, viewer]);
 
   const shellData =
     projectsState?.shellData ??
@@ -152,8 +162,9 @@ export default function ProjectsPage() {
             ? "Toàn bộ dự án công ty"
             : roleLabel(viewer.role)
       }
+      fillViewport
     >
-      <section className="two-up" style={{ gridTemplateColumns: "1fr" }}>
+      <section className="filtered-list-page">
         <ProjectList
           projects={projectList}
           selectedProjectId={selectedProject?.id ?? null}
@@ -164,6 +175,7 @@ export default function ProjectsPage() {
           viewerDepartment={viewer.department}
           onAddProjectClick={canCreateProject ? handleOpenCreateProject : undefined}
           onEditProjectClick={handleOpenEditProject}
+          isLoading={isLoading || !isViewerReady}
         />
       </section>
 

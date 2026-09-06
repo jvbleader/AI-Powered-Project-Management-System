@@ -18,6 +18,7 @@ export interface TaskLogworkEntry {
   userName: string;
   workDate: string;
   hoursSpent: number;
+  title: string;
   workContent: string;
   comment?: string;
   progressPercent: number;

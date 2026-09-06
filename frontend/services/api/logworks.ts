@@ -4,12 +4,14 @@ export interface PendingLogWork {
   id: number;
   task_id: number;
   project_member_id: number;
+  user_id?: number;
   user_name: string;
   project_id?: number;
   project_name?: string;
   task_title?: string;
   work_date: string;
   hours_spent: number;
+  title: string;
   work_content: string;
   comment?: string;
   progress_percent: number;

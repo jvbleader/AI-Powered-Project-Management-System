@@ -6,5 +6,4 @@ export * from "./logwork";
 export * from "./users";
 export * from "./dashboard";
 export * from "./workspace";
-export * from "./ai";
 export * from "./core";

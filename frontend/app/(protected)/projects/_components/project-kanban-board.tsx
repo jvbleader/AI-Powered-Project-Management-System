@@ -5,6 +5,8 @@ import { EnrichedTask, Sprint } from "@/types";
 import { StatusPill } from "@/components/ui";
 import { UserAvatar } from "@/components/user-avatar";
 import { FilterSelect, type FilterOption } from "@/components/filter-select";
+import { LoadingState } from "@/components/loading-state";
+import { useConfirmDialog } from "@/components/confirm-dialog";
 import { taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
 import styles from "./project-kanban-board.module.css";
 
@@ -18,6 +20,7 @@ interface ProjectKanbanBoardProps {
   onSelectedSprintIdChange?: (sprintId: string | null) => void;
   onSprintUpdated?: () => void;
   onEditSprint?: (sprintId: string) => void;
+  isLoading?: boolean;
 }
 
 const KANBAN_COLUMNS = [
@@ -122,7 +125,9 @@ export function ProjectKanbanBoard({
   onSelectedSprintIdChange,
   onSprintUpdated,
   onEditSprint,
+  isLoading = false,
 }: ProjectKanbanBoardProps) {
+  const { confirm } = useConfirmDialog();
   const searchParams = useSearchParams();
   const highlightTaskId = searchParams.get("highlightTaskId");
   const highlightColor = searchParams.get("highlightColor") || "green";
@@ -365,6 +370,19 @@ export function ProjectKanbanBoard({
     </div>
   );
 
+  if (isLoading) {
+    return (
+      <div className={styles.splitViewContainer}>
+        <div className={styles.kanbanPanel}>
+          <div className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>Kanban Board</h2>
+          </div>
+          <LoadingState variant="cards" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.splitViewContainer}>
       {/* Left Panel: Kanban */}
@@ -409,8 +427,14 @@ export function ProjectKanbanBoard({
                       type="button" 
                       className="secondary-button" 
                       style={{ padding: "0.6rem 1.25rem", fontSize: "0.875rem", borderColor: "var(--critical)", color: "var(--critical)" }}
-                      onClick={() => {
-                        if (window.confirm("Bạn có chắc muốn hoàn thành Sprint này?")) {
+                      onClick={async () => {
+                        const confirmed = await confirm({
+                          title: "Kết thúc Sprint",
+                          message: "Bạn có chắc muốn hoàn thành Sprint này?",
+                          confirmLabel: "Kết thúc",
+                          tone: "danger",
+                        });
+                        if (confirmed) {
                           handleUpdateSprintStatus("CLOSED");
                         }
                       }}

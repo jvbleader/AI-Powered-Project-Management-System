@@ -15,7 +15,7 @@ export function Surface({
   style,
   children,
 }: {
-  title: string;
+  title?: string;
   kicker?: string;
   aside?: ReactNode;
   className?: string;
@@ -25,16 +25,19 @@ export function Surface({
   const isFlexColumn =
     style?.display === "flex" &&
     (style.flexDirection === "column" || style.flexDirection === undefined);
+  const hasHeader = Boolean(title || kicker || aside);
 
   return (
     <section className={classNames("surface", className)} style={style}>
-      <div className="surface-header" style={isFlexColumn ? { flexShrink: 0 } : undefined}>
-        <div>
-          {kicker ? <span className="kicker">{kicker}</span> : null}
-          <h2>{title}</h2>
+      {hasHeader ? (
+        <div className="surface-header" style={isFlexColumn ? { flexShrink: 0 } : undefined}>
+          <div>
+            {kicker ? <span className="kicker">{kicker}</span> : null}
+            {title ? <h2>{title}</h2> : null}
+          </div>
+          {aside ? <div>{aside}</div> : null}
         </div>
-        {aside ? <div>{aside}</div> : null}
-      </div>
+      ) : null}
       {isFlexColumn ? (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           {children}

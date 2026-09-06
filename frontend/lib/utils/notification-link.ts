@@ -16,7 +16,11 @@ export function resolveNotificationLink(link: string | null | undefined): string
 
   const logworkMatch = raw.match(/^\/projects\/([^/?#]+)\/logworks\/?$/i);
   if (logworkMatch) {
-    return "/logwork-approvals";
+    return "/logwork";
+  }
+
+  if (raw === "/logwork-approvals" || raw.startsWith("/logwork-approvals?")) {
+    return raw.replace("/logwork-approvals", "/logwork");
   }
 
   const projectOnlyHighlight = raw.match(

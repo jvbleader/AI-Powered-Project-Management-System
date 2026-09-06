@@ -70,6 +70,7 @@ def get_pending_logworks(
             user = db.query(User).filter(User.id == member.user_id).first()
             if user:
                 lw.user_name = user.full_name
+                lw.user_id = user.id
             project = db.query(Project).filter(Project.id == member.project_id).first()
             if project:
                 lw.project_name = project.name
@@ -279,6 +280,8 @@ def update_logwork(
         
     if data.hours_spent is not None:
         logwork.hours_spent = data.hours_spent
+    if data.title is not None:
+        logwork.title = data.title
     if data.work_content is not None:
         logwork.work_content = data.work_content
     if data.comment is not None:

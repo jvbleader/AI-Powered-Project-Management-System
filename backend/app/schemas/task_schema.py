@@ -64,9 +64,19 @@ class TaskAttachmentResponse(TaskAttachmentBase):
         from_attributes = True
 
 
+def _normalize_logwork_title(value: str) -> str:
+    cleaned = " ".join((value or "").split())
+    if not cleaned:
+        raise ValueError("Tên logwork không được để trống.")
+    if len(cleaned) > 255:
+        raise ValueError("Tên logwork tối đa 255 ký tự.")
+    return cleaned
+
+
 class LogWorkBase(BaseModel):
     work_date: date
     hours_spent: float
+    title: str
     work_content: str
     comment: Optional[str] = None
     progress_percent: float
@@ -78,6 +88,11 @@ class LogWorkBase(BaseModel):
             raise ValueError("Số giờ logwork không được âm.")
         return value
 
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        return _normalize_logwork_title(value)
+
 
 class LogWorkCreate(LogWorkBase):
     pass
@@ -85,6 +100,7 @@ class LogWorkCreate(LogWorkBase):
 
 class LogWorkUpdate(BaseModel):
     hours_spent: Optional[float] = None
+    title: Optional[str] = None
     work_content: Optional[str] = None
     comment: Optional[str] = None
     progress_percent: Optional[float] = None
@@ -95,6 +111,13 @@ class LogWorkUpdate(BaseModel):
         if value is not None and value < 0:
             raise ValueError("Số giờ logwork không được âm.")
         return value
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return _normalize_logwork_title(value)
 
 
 class LogWorkResponse(LogWorkBase):

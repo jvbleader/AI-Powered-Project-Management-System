@@ -68,6 +68,7 @@ export interface DashboardRecentLogwork {
   userName: string;
   workDate: string;
   hours: number;
+  title?: string;
   note: string;
   progressPercent: number;
   status?: "PENDING" | "APPROVED" | "REJECTED" | string;

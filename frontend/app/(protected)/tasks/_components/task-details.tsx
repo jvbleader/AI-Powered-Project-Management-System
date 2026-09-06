@@ -6,6 +6,7 @@ import type { EnrichedTask } from "@/types";
 import { LogworkModal } from "./logwork-modal";
 import { useRouter } from "next/navigation";
 import { taskApi } from "@/services/api";
+import { useConfirmDialog } from "@/components/confirm-dialog";
 
 interface TaskDetailsProps {
   task: EnrichedTask;
@@ -14,11 +15,12 @@ interface TaskDetailsProps {
 
 export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
   const router = useRouter();
+  const { confirm, alert } = useConfirmDialog();
   const [isLogworkModalOpen, setIsLogworkModalOpen] = useState(false);
 
   return (
     <>
-      <Surface title={task.title} kicker={`Nhiệm vụ: ${task.key} - Dự án: ${task.project.name}`}>
+      <Surface title={task.title}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1.5rem" }}>
           <div style={{ display: "flex", gap: "1rem" }}>
             <StatusPill label={taskStatusLabel(task.status)} tone={taskStatusTone(task.status)} />
@@ -28,23 +30,21 @@ export function TaskDetails({ task, viewerId }: TaskDetailsProps) {
             <button
               type="button"
               className="secondary-button"
-              onClick={() => router.push("/tasks")}
-            >
-              Quay lại
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
               style={{ color: "var(--critical-fg)", borderColor: "var(--critical-border)" }}
               onClick={async () => {
-                if (confirm("Bạn có chắc chắn muốn xoá task này không?")) {
-                  try {
-                    await taskApi.remove(task.id);
-                    router.push("/tasks");
-                    router.refresh();
-                  } catch (e) {
-                    alert("Lỗi khi xoá task");
-                  }
+                const confirmed = await confirm({
+                  title: "Xóa task",
+                  message: "Bạn có chắc chắn muốn xoá task này không?",
+                  confirmLabel: "Xóa",
+                  tone: "danger",
+                });
+                if (!confirmed) return;
+                try {
+                  await taskApi.remove(task.id);
+                  router.push("/tasks");
+                  router.refresh();
+                } catch {
+                  await alert({ title: "Không thể xóa", message: "Lỗi khi xoá task" });
                 }
               }}
             >

@@ -24,6 +24,12 @@ def get_by_email(db: Session, email: str) -> User | None:
     return _base_query(db).filter(User.email == email).first()
 
 
+def _csv_values(value: str | None) -> list[str]:
+    if not value or value == "ALL":
+        return []
+    return [part.strip() for part in value.split(",") if part.strip() and part.strip() != "ALL"]
+
+
 def get_users(
     db: Session,
     search: str | None = None,
@@ -50,20 +56,31 @@ def get_users(
             )
         )
 
-    if status and status != "ALL":
-        if status == "ACTIVE":
+    statuses = _csv_values(status)
+    if statuses:
+        wants_active = "ACTIVE" in statuses
+        wants_inactive = "INACTIVE" in statuses
+        if wants_active and not wants_inactive:
             query = query.filter(User.is_active.is_(True))
-        elif status == "INACTIVE":
+        elif wants_inactive and not wants_active:
             query = query.filter(User.is_active.is_(False))
 
-    if role and role != "ALL":
-        query = query.join(User.role_ref).filter(Role.name == role)
+    roles = _csv_values(role)
+    if roles:
+        query = query.join(User.role_ref).filter(Role.name.in_(roles))
 
-    if department and department != "ALL":
-        if department == "UNASSIGNED":
+    departments = _csv_values(department)
+    if departments:
+        include_unassigned = "UNASSIGNED" in departments
+        names = [name for name in departments if name != "UNASSIGNED"]
+        if include_unassigned and names:
+            query = query.outerjoin(User.department).filter(
+                or_(User.department_id.is_(None), Department.name.in_(names))
+            )
+        elif include_unassigned:
             query = query.filter(User.department_id.is_(None))
         else:
-            query = query.join(User.department).filter(Department.name == department)
+            query = query.join(User.department).filter(Department.name.in_(names))
 
     total = query.count()
     total_pages = math.ceil(total / page_size) if total > 0 else 1

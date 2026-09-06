@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
     "frontend",
     "host.docker.internal",
   ],
+  async redirects() {
+    return [
+      {
+        source: "/logwork-approvals",
+        destination: "/logwork",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

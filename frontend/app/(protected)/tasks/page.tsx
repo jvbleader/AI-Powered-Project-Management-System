@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, Surface } from "@/components/ui";
+import { LoadingState } from "@/components/loading-state";
 import {
   getTasksPageCache,
   primeTasksPageData,
@@ -13,17 +14,17 @@ import {
   type TaskPageState,
 } from "@/services/page-cache/tasks-page";
 import { hasCompanywideProjectAccess } from "@/lib/utils/format";
-import { useAuthSession } from "@/hooks/use-session";
-import type { UserProfile, WorkspaceShellData } from "@/types";
+import { useAuthSession, PENDING_USER } from "@/hooks/use-session";
+import type { WorkspaceShellData } from "@/types";
 import { TaskDetailModal } from "./_components/task-detail-modal";
 import { GroupedTaskList } from "./_components/grouped-task-list";
 
 function TasksPageContent() {
   const session = useAuthSession();
-  const viewer = session?.currentUser as UserProfile;
-  const cachedTaskState = getTasksPageCache(viewer.id);
+  const viewer = session?.currentUser ?? PENDING_USER;
+  const cachedTaskState = viewer.id ? getTasksPageCache(viewer.id) : null;
   const [taskState, setTaskState] = useState<TaskPageState | null>(cachedTaskState);
-  const [isBoardLoading, setIsBoardLoading] = useState(false);
+  const [isBoardLoading, setIsBoardLoading] = useState(!cachedTaskState);
   const [taskOpenNotice, setTaskOpenNotice] = useState<string | null>(null);
 
   const router = useRouter();
@@ -40,6 +41,10 @@ function TasksPageContent() {
     let isCancelled = false;
 
     async function loadBoard() {
+      if (!viewer.id) {
+        return null;
+      }
+
       setIsBoardLoading(true);
       try {
         const nextState = await primeTasksPageData(viewer);
@@ -99,18 +104,21 @@ function TasksPageContent() {
         selectedTask.project.managerId === viewer.id),
   );
 
+  const openTaskCount = filteredTasks.filter((task) => task.status !== "DONE").length;
+
   return (
     <WorkspaceShell
       shellData={shellData}
       heading="Tiến độ cá nhân"
       subheading="Danh sách nhiệm vụ được giao cho bạn trên tất cả dự án."
       highlightLabel="Task đang mở"
-      highlightValue={`${filteredTasks.filter((task) => task.status !== "DONE").length}`}
+      highlightValue={`${openTaskCount}`}
+      fillViewport
+      stickyTopbar
     >
-      <div
-        style={{ display: "flex", flexDirection: "column", gap: "2rem", marginTop: "0.25rem" }}
-      >
+      <div className="page-section-stack">
         <GroupedTaskList
+          isLoading={isBoardLoading || !viewer.id}
           projects={taskState?.projects ?? []}
           tasks={filteredTasks}
           selectedProjectId={selectedProjectId}
@@ -128,19 +136,6 @@ function TasksPageContent() {
             />
           </Surface>
         ) : null}
-
-        {filteredTasks.length === 0 && selectedProjectId === "ALL" && (
-          <Surface title="Chưa có nhiệm vụ">
-            <EmptyState
-              title={isBoardLoading ? "Đang tải nhiệm vụ" : "Trống"}
-              description={
-                isBoardLoading
-                  ? "Hệ thống đang đồng bộ danh sách nhiệm vụ của bạn."
-                  : "Bạn chưa có bất kỳ nhiệm vụ nào."
-              }
-            />
-          </Surface>
-        )}
       </div>
 
       <TaskDetailModal
@@ -150,6 +145,7 @@ function TasksPageContent() {
         users={taskState?.users || []}
         viewerId={viewer.id}
         canManage={canManageSelectedTask}
+        hideDeleteTask
         onTaskUpdated={(updatedTask) => {
           setTaskState((current) => {
             if (!current) return null;
@@ -181,7 +177,27 @@ function TasksPageContent() {
 
 export default function TasksPage() {
   return (
-    <Suspense fallback={<div>Đang tải...</div>}>
+    <Suspense
+      fallback={
+        <WorkspaceShell
+          shellData={{
+            currentUser: PENDING_USER,
+            activeProjects: 0,
+            openTasks: 0,
+            missingLogwork: 0,
+            alertCount: 0,
+          }}
+          heading="Tiến độ cá nhân"
+          subheading="Danh sách nhiệm vụ được giao cho bạn trên tất cả dự án."
+          highlightLabel="Task đang mở"
+          highlightValue="0"
+          fillViewport
+          stickyTopbar
+        >
+          <LoadingState variant="cards" />
+        </WorkspaceShell>
+      }
+    >
       <TasksPageContent />
     </Suspense>
   );

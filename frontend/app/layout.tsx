@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { AppProviders } from "@/components/app-providers";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "AI-Powered Project Management System",
+  title: "Backlog",
   description:
     "AI-powered project management UI with real backend service contracts.",
 };
@@ -19,7 +20,9 @@ export default function RootLayout({
       <head>
         <meta name="color-scheme" content="light only" />
       </head>
-      <body>{children}</body>
+      <body>
+        <AppProviders>{children}</AppProviders>
+      </body>
     </html>
   );
 }

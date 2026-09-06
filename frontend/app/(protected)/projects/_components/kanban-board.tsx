@@ -4,6 +4,7 @@ import { EnrichedTask } from "@/types";
 import { StatusPill } from "@/components/ui";
 import { UserAvatar } from "@/components/user-avatar";
 import { formatDate, taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
+import { useConfirmDialog } from "@/components/confirm-dialog";
 
 interface KanbanBoardProps {
   tasks: EnrichedTask[];
@@ -18,6 +19,7 @@ const COLUMNS = [
 ];
 
 export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardProps) {
+  const { alert } = useConfirmDialog();
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
 
@@ -57,7 +59,10 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
         onTaskUpdated();
       } catch (err: unknown) {
         setLocalTasks(tasks); // Revert on error
-        alert(err instanceof Error ? err.message : "Lỗi khi cập nhật trạng thái");
+        await alert({
+          title: "Cập nhật thất bại",
+          message: err instanceof Error ? err.message : "Lỗi khi cập nhật trạng thái",
+        });
       }
     }
   };

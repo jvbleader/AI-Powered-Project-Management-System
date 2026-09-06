@@ -68,8 +68,8 @@ export interface UpdateProfilePayload {
 
 export interface UserDirectoryFilters {
   search?: string;
-  status?: UserStatus | "ALL";
-  role?: UserRole | "ALL";
+  status?: UserStatus | "ALL" | string;
+  role?: UserRole | "ALL" | string;
   department?: string | "ALL";
   page?: number;
   pageSize?: number;

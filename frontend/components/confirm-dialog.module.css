@@ -1,0 +1,114 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background:
+    radial-gradient(circle at top, rgba(37, 99, 235, 0.14), transparent 30%),
+    rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(12px);
+}
+
+.surface {
+  width: min(var(--modal-width-sm), 100%);
+  background: var(--modal-surface, #ffffff);
+  border: 1px solid var(--modal-border, rgba(148, 163, 184, 0.22));
+  border-radius: var(--modal-radius, 28px);
+  box-shadow: var(--modal-shadow, 0 24px 48px rgba(15, 23, 42, 0.18));
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.15rem 1.25rem 0.35rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.closeButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background: rgba(241, 245, 249, 0.95);
+  color: var(--ink);
+}
+
+.message {
+  margin: 0;
+  padding: 0.35rem 1.25rem 1.15rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding: 0.85rem 1.25rem 1.1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(248, 250, 252, 0.84);
+}
+
+.cancelButton,
+.confirmButton,
+.dangerButton {
+  min-height: 40px;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cancelButton {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #ffffff;
+  color: #475569;
+}
+
+.cancelButton:hover {
+  background: #f8fafc;
+  color: var(--ink);
+}
+
+.confirmButton {
+  border: 0;
+  color: #eff6ff;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--support) 100%);
+  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.22);
+}
+
+.dangerButton {
+  border: 0;
+  color: #fff7f7;
+  background: var(--critical);
+  box-shadow: 0 12px 22px rgba(220, 38, 38, 0.2);
+}
+
+.confirmButton:hover,
+.dangerButton:hover {
+  transform: translateY(-1px);
+}

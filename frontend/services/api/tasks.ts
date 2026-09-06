@@ -17,6 +17,7 @@ import {
   wrapBackendResponse,
 } from "./core";
 import { resolveAvatarUrl } from "@/lib/utils/avatar";
+import { resolveLogworkTitle } from "@/lib/utils/logwork";
 import { projectApi } from "./projects";
 import { userApi } from "./users";
 type BoardContext = {
@@ -388,6 +389,7 @@ export const taskApi = {
       userName: item.user_name || "Chưa rõ",
       workDate: item.work_date,
       hoursSpent: Number(item.hours_spent || 0),
+      title: resolveLogworkTitle(item.title, item.work_content),
       workContent: item.work_content || "",
       comment: item.comment || "",
       progressPercent: Number(item.progress_percent || 0),
@@ -403,6 +405,7 @@ export const taskApi = {
     payload: {
       workDate: string;
       hoursSpent: number;
+      title: string;
       workContent: string;
       comment?: string | null;
       progressPercent?: number;
@@ -416,6 +419,7 @@ export const taskApi = {
       body: JSON.stringify({
         work_date: payload.workDate,
         hours_spent: payload.hoursSpent,
+        title: payload.title,
         work_content: payload.workContent,
         comment: payload.comment ?? null,
         progress_percent: payload.progressPercent ?? 0,
@@ -430,6 +434,7 @@ export const taskApi = {
         userName: item.user_name || "Chưa rõ",
         workDate: item.work_date,
         hoursSpent: Number(item.hours_spent || 0),
+        title: resolveLogworkTitle(item.title, item.work_content),
         workContent: item.work_content || "",
         comment: item.comment || "",
         progressPercent: Number(item.progress_percent || 0),

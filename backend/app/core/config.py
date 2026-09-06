@@ -43,7 +43,6 @@ class Settings(BaseSettings):
 
     # Secrets / integrations
     secret_key: str
-    openai_api_key: str
     azure_storage_connection_string: str
 
     # Browser origins allowed to call the API
@@ -79,7 +78,6 @@ class Settings(BaseSettings):
         "mysql_host",
         "redis_host",
         "secret_key",
-        "openai_api_key",
         "azure_storage_connection_string",
         "cors_origins",
     )

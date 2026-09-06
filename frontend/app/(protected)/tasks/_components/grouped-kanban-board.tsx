@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { taskApi } from "@/services/api";
 import { EnrichedTask, Project } from "@/types";
 import { EmptyState, Surface, StatusPill } from "@/components/ui";
+import { AsyncContent } from "@/components/loading-state";
 import { formatDate, taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
+import { useConfirmDialog } from "@/components/confirm-dialog";
 
 interface GroupedKanbanBoardProps {
   projects: Project[];
@@ -12,6 +14,7 @@ interface GroupedKanbanBoardProps {
   onTaskUpdated: () => void;
   selectedProjectId: string;
   onTaskClick?: (taskId: string) => void;
+  isLoading?: boolean;
 }
 
 const COLUMNS = [
@@ -30,8 +33,10 @@ export function GroupedKanbanBoard({
   onTaskUpdated,
   selectedProjectId,
   onTaskClick,
+  isLoading = false,
 }: GroupedKanbanBoardProps) {
   const router = useRouter();
+  const { alert } = useConfirmDialog();
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [localTasks, setLocalTasks] = useState<EnrichedTask[]>(tasks);
 
@@ -77,7 +82,10 @@ export function GroupedKanbanBoard({
         onTaskUpdated();
       } catch (err: unknown) {
         setLocalTasks(tasks); // Revert on error
-        alert(err instanceof Error ? err.message : "Lỗi khi cập nhật trạng thái");
+        await alert({
+          title: "Cập nhật thất bại",
+          message: err instanceof Error ? err.message : "Lỗi khi cập nhật trạng thái",
+        });
       }
     }
   };
@@ -87,7 +95,6 @@ export function GroupedKanbanBoard({
       ? null
       : projects.find((project) => project.id === selectedProjectId);
   const boardTitle = selectedProject ? `Kanban - ${selectedProject.name}` : "Kanban theo dự án";
-  const boardKicker = selectedProject?.code ?? "Task workflow";
 
   const projectBoards = useMemo(() => {
     if (selectedProject) {
@@ -162,7 +169,6 @@ export function GroupedKanbanBoard({
     <section key={project.id} className="project-task-section">
       <div className="project-task-section-head">
         <div className="project-task-section-copy">
-          <span className="project-task-section-kicker">{project.code}</span>
           <h3>{project.name}</h3>
           <p>
             {project.managerName
@@ -213,19 +219,24 @@ export function GroupedKanbanBoard({
   );
 
   return (
-    <Surface title={boardTitle} kicker={boardKicker}>
-      {projectBoards.length ? (
+    <Surface title={boardTitle}>
+      <AsyncContent
+        isLoading={isLoading}
+        isEmpty={projectBoards.length === 0}
+        skeleton="cards"
+        empty={
+          <EmptyState
+            title="Chưa có task trong phạm vi hiện tại"
+            description="Khi có nhiệm vụ thuộc các dự án bạn tham gia, từng dự án sẽ được tách thành một khu riêng ở đây."
+          />
+        }
+      >
         <div className="project-task-board-list">
           {projectBoards.map(({ project, tasks: projectTasks }) =>
             renderProjectBoard(project, projectTasks),
           )}
         </div>
-      ) : (
-        <EmptyState
-          title="Chưa có task trong phạm vi hiện tại"
-          description="Khi có nhiệm vụ thuộc các dự án bạn tham gia, từng dự án sẽ được tách thành một khu riêng ở đây."
-        />
-      )}
+      </AsyncContent>
     </Surface>
   );
 }

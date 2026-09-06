@@ -1,0 +1,92 @@
+.row {
+  --section-control-height: 36px;
+  --section-control-radius: 999px;
+  --section-control-font-size: 14px;
+  --section-control-weight: 500;
+  --section-control-pad-x: 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.tablist {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: var(--radius, var(--section-control-radius));
+  background: rgba(255, 255, 255, 0.78);
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--section-control-height);
+  padding: 0 var(--section-control-pad-x);
+  border-radius: var(--section-control-radius);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--section-control-font-size);
+  font-weight: var(--section-control-weight);
+  line-height: 1;
+  font-family: inherit;
+  text-decoration: none;
+  box-shadow: none;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tabActive {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(239, 246, 255, 0.96));
+  color: var(--accent-strong);
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.06);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.actions :global(.primary-button),
+.actions :global(.secondary-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: var(--section-control-height);
+  padding: 0 var(--section-control-pad-x);
+  font-size: var(--section-control-font-size);
+  font-weight: var(--section-control-weight);
+  line-height: 1;
+  border-radius: var(--section-control-radius);
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.actions :global(.primary-button):hover,
+.actions :global(.secondary-button):hover {
+  transform: none;
+}
+
+.actions :global(.primary-button) svg,
+.actions :global(.secondary-button) svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}

@@ -108,6 +108,7 @@ function mapRecentLogwork(item: BackendRecord): DashboardRecentLogwork {
     userName: asString(item.userName),
     workDate: asString(item.workDate),
     hours: asNumber(item.hours),
+    title: asString(item.title),
     note: asString(item.note),
     progressPercent: asNumber(item.progressPercent),
     status,

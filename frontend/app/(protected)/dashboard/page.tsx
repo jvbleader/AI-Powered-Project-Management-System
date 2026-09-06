@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { useAuthSession } from "@/hooks/use-session";
+import { useAuthSession, PENDING_USER } from "@/hooks/use-session";
 import {
   canManageProjectsByRole,
   hasCompanywideProjectAccess,
@@ -19,8 +19,9 @@ type DashboardState = {
 
 export default function DashboardPage() {
   const session = useAuthSession();
-  const viewer = useMemo(() => session?.currentUser as any, [session?.currentUser]);
+  const viewer = session?.currentUser ?? PENDING_USER;
   const [dashboardState, setDashboardState] = useState<DashboardState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let isCancelled = false;
@@ -39,6 +40,10 @@ export default function DashboardPage() {
       } catch (err) {
         if (!isCancelled) {
           console.error("Failed to load dashboard:", err);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
         }
       }
     }
@@ -78,9 +83,8 @@ export default function DashboardPage() {
               ? "Dự án quản lý"
               : "Cá nhân"
       }
-      assistantProjectId={null}
     >
-      <GlobalDashboardOverview overview={overview} />
+      <GlobalDashboardOverview overview={overview} isLoading={isLoading} />
     </WorkspaceShell>
   );
 }

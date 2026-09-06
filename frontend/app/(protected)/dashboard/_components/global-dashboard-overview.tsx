@@ -9,26 +9,17 @@ import type {
   GlobalDashboardOverview as GlobalDashboardOverviewType,
   ProjectHealthPreview,
 } from "@/types";
-import { Surface, DonutChart, ColumnChart, type ColumnChartTone } from "@/components/ui";
+import { Surface, DonutChart, ColumnChart, EmptyState, type ColumnChartTone } from "@/components/ui";
+import { LoadingState } from "@/components/loading-state";
 import { logworkApi } from "@/services/api/logworks";
 import { FilterSelect } from "@/components/filter-select";
+import { useConfirmDialog } from "@/components/confirm-dialog";
 import { formatDate } from "@/lib/utils/format";
+import { resolveLogworkTitle } from "@/lib/utils/logwork";
 
 type GlobalDashboardOverviewProps = {
   overview: GlobalDashboardOverviewType | null;
-};
-
-const kpiBaseStyle: CSSProperties = {
-  padding: "0.65rem 0.85rem",
-  borderRadius: "12px",
-  boxShadow: "0 2px 8px -4px rgba(15, 23, 42, 0.08)",
-  cursor: "pointer",
-  transition: "transform 0.2s ease, box-shadow 0.2s ease",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.12rem",
-  minHeight: "78px",
-  justifyContent: "center",
+  isLoading?: boolean;
 };
 
 const surfaceCardStyle: CSSProperties = {
@@ -39,6 +30,47 @@ const surfaceCardStyle: CSSProperties = {
 };
 
 const HEALTH_RANK = { critical: 0, watch: 1, "on-track": 2 } as const;
+
+function KpiIcon({ name }: { name: "projects" | "open" | "overdue" }) {
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  if (name === "projects") {
+    return (
+      <svg {...common}>
+        <path d="M4 8l8-4 8 4-8 4-8-4Z" />
+        <path d="M4 12l8 4 8-4" />
+        <path d="M4 16l8 4 8-4" />
+      </svg>
+    );
+  }
+
+  if (name === "open") {
+    return (
+      <svg {...common}>
+        <rect x="4" y="4" width="6" height="16" rx="1" />
+        <rect x="14" y="4" width="6" height="10" rx="1" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...common}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v5" />
+      <path d="M12 16h.01" />
+    </svg>
+  );
+}
 
 function CountBadge({
   value,
@@ -259,7 +291,8 @@ function buildHoursByDay(logs: DashboardRecentLogwork[]) {
   return days;
 }
 
-export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewProps) {
+export function GlobalDashboardOverview({ overview, isLoading = false }: GlobalDashboardOverviewProps) {
+  const { confirm } = useConfirmDialog();
   const [isTotalProjectsModalOpen, setIsTotalProjectsModalOpen] = useState(false);
   const [isCompletedTasksModalOpen, setIsCompletedTasksModalOpen] = useState(false);
   const [isOverdueTasksModalOpen, setIsOverdueTasksModalOpen] = useState(false);
@@ -317,11 +350,16 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
     return upcomingDeadlines.filter((task) => String(task.projectId) === upcomingProjectFilter);
   }, [upcomingDeadlines, upcomingProjectFilter]);
 
+  if (isLoading) {
+    return <LoadingState variant="dashboard" label="Đang tải dữ liệu tổng quan..." />;
+  }
+
   if (!overview || !taskSummary) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center", color: "var(--foreground-muted)" }}>
-        Đang tải dữ liệu tổng quan...
-      </div>
+      <EmptyState
+        title="Không có dữ liệu"
+        description="Không thể tải tổng quan hệ thống. Thử tải lại trang."
+      />
     );
   }
 
@@ -362,6 +400,13 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
 
   const handleRejectLogwork = async () => {
     if (!selectedLogwork) return;
+    const confirmed = await confirm({
+      title: "Từ chối logwork",
+      message: "Bạn có chắc muốn từ chối bản ghi logwork này?",
+      confirmLabel: "Từ chối",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     setLogworkActionLoading(true);
     setLogworkActionError(null);
     try {
@@ -406,104 +451,56 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
   return (
     <div className="global-dash" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
       {/* Row 1 — KPI */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "0.65rem",
-        }}
-      >
-        <div
-          role="button"
-          tabIndex={0}
+      <div className="global-dash-kpi-grid">
+        <button
+          type="button"
+          className="global-dash-kpi"
           onClick={() => setIsTotalProjectsModalOpen(true)}
-          onKeyDown={(e) => e.key === "Enter" && setIsTotalProjectsModalOpen(true)}
-          style={{
-            ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
-            border: "1px solid rgba(37, 99, 235, 0.12)",
-          }}
         >
-          <div
-            style={{
-              color: "#1e3a8a",
-              fontSize: "0.68rem",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-            }}
-          >
-            Dự án
-          </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#1d4ed8", lineHeight: 1.05 }}>
-            {activeProjects}
-            <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#3b82f6" }}>
-              {" "}
-              / {totalProjects}
+          <span className="global-dash-kpi-label">
+            <span className="global-dash-kpi-icon is-accent">
+              <KpiIcon name="projects" />
             </span>
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "#3b82f6" }}>
+            Dự án
+          </span>
+          <strong className="global-dash-kpi-value is-accent">
+            {activeProjects}
+            <span> / {totalProjects}</span>
+          </strong>
+          <p className="global-dash-kpi-note">
             Đang chạy · {completedProjects} hoàn thành
-          </div>
-        </div>
+          </p>
+        </button>
 
-        <div
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
+          className="global-dash-kpi"
           onClick={() => setIsCompletedTasksModalOpen(true)}
-          onKeyDown={(e) => e.key === "Enter" && setIsCompletedTasksModalOpen(true)}
-          style={{
-            ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
-            border: "1px solid rgba(217, 119, 6, 0.18)",
-          }}
         >
-          <div
-            style={{
-              color: "#92400e",
-              fontSize: "0.68rem",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-            }}
-          >
+          <span className="global-dash-kpi-label">
+            <span className="global-dash-kpi-icon is-watch">
+              <KpiIcon name="open" />
+            </span>
             Việc đang mở
-          </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#78350f", lineHeight: 1.05 }}>
-            {openTasks}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "#b45309" }}>
-            trên {totalTasks} tasks toàn hệ thống
-          </div>
-        </div>
+          </span>
+          <strong className="global-dash-kpi-value is-watch">{openTasks}</strong>
+          <p className="global-dash-kpi-note">trên {totalTasks} tasks toàn hệ thống</p>
+        </button>
 
-        <div
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
+          className="global-dash-kpi"
           onClick={() => setIsOverdueTasksModalOpen(true)}
-          onKeyDown={(e) => e.key === "Enter" && setIsOverdueTasksModalOpen(true)}
-          style={{
-            ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
-            border: "1px solid rgba(220, 38, 38, 0.12)",
-          }}
         >
-          <div
-            style={{
-              color: "#7f1d1d",
-              fontSize: "0.68rem",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-            }}
-          >
+          <span className="global-dash-kpi-label">
+            <span className="global-dash-kpi-icon is-critical">
+              <KpiIcon name="overdue" />
+            </span>
             Quá hạn
-          </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#b91c1c", lineHeight: 1.05 }}>
-            {taskSummary.overdue}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "#dc2626" }}>Cần xử lý gấp →</div>
-        </div>
+          </span>
+          <strong className="global-dash-kpi-value is-critical">{taskSummary.overdue}</strong>
+          <p className="global-dash-kpi-note is-critical">Cần xử lý gấp →</p>
+        </button>
       </div>
 
       {/* Row 2 — Task mix + portfolio side by side */}
@@ -1042,9 +1039,9 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
                           }}
-                          title={log.taskTitle}
+                          title={resolveLogworkTitle(log.title, log.note)}
                         >
-                          {log.taskTitle}
+                          {resolveLogworkTitle(log.title, log.note)}
                         </div>
                         <div style={{ fontSize: "0.7rem", color: "var(--foreground-muted)", marginTop: "0.1rem" }}>
                           {log.userName} · {log.taskKey}
@@ -1405,6 +1402,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
                   }}
                 >
                   {selectedLogwork.taskKey}
+                  {selectedLogwork.taskTitle ? ` · ${selectedLogwork.taskTitle}` : ""}
                   {selectedLogwork.projectName ? ` · ${selectedLogwork.projectName}` : ""}
                 </div>
                 <h3
@@ -1417,7 +1415,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
                     lineHeight: 1.35,
                   }}
                 >
-                  {selectedLogwork.taskTitle}
+                  {resolveLogworkTitle(selectedLogwork.title, selectedLogwork.note)}
                 </h3>
               </div>
               <button
@@ -1592,13 +1590,13 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
                     onClick={() => void handleApproveLogwork()}
                     style={{
                       border: "none",
-                      background: "#16a34a",
-                      color: "#fff",
+                      background: "linear-gradient(135deg, var(--accent) 0%, var(--support) 100%)",
+                      color: "#eff6ff",
                       borderRadius: "12px",
                       padding: "0.7rem 1.35rem",
                       fontWeight: 700,
                       fontSize: "0.9rem",
-                      boxShadow: "0 8px 18px -8px rgba(22, 163, 74, 0.55)",
+                      boxShadow: "0 8px 18px -8px rgba(37, 99, 235, 0.45)",
                       cursor: logworkActionLoading ? "wait" : "pointer",
                     }}
                   >

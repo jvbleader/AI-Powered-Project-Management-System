@@ -6,9 +6,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { markIntentionalLogout, signOut } from "@/services/auth/session";
 import { primeTasksPageData } from "@/services/page-cache/tasks-page";
-import { AssistantBubble } from "@/components/assistant-bubble";
 import { UserAvatar } from "@/components/user-avatar";
-import { useAuthSession } from "@/hooks/use-session";
+import { useAuthSession, PENDING_USER } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
 import { ChangePasswordModal } from "@/components/change-password-modal";
 import { useNotifications } from "@/contexts/notification-context";
@@ -25,7 +24,7 @@ const navigation = [
   { href: "/dashboard", label: "Tổng quan", icon: "grid" },
   { href: "/projects", label: "Dự án", icon: "layers" },
   { href: "/tasks", label: "Nhiệm vụ", icon: "kanban" },
-  { href: "/logwork-approvals", label: "Duyệt log work", icon: "check-circle" },
+  { href: "/logwork", label: "Logwork", icon: "check-circle" },
   { href: "/team", label: "Nhân sự", icon: "users" },
 ];
 
@@ -36,12 +35,12 @@ function classNames(...values: Array<string | false | null | undefined>) {
 export function WorkspaceShell({
   shellData,
   heading,
-  subheading,
   highlightLabel,
   highlightValue = "",
   headerAction,
-  assistantProjectId,
   noBottomPadding,
+  fillViewport,
+  stickyTopbar,
   children,
 }: {
   shellData: WorkspaceShellData;
@@ -50,8 +49,9 @@ export function WorkspaceShell({
   highlightLabel: string;
   highlightValue: string;
   headerAction?: ReactNode;
-  assistantProjectId?: string | null;
   noBottomPadding?: boolean;
+  fillViewport?: boolean;
+  stickyTopbar?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -80,9 +80,9 @@ export function WorkspaceShell({
       currentUser: session.currentUser,
     }
     : shellData;
-  const currentUser = activeShellData.currentUser;
-  const currentUserId = activeShellData.currentUser.id;
-  const isAdminViewer = isAdminRole(currentUser.role);
+  const currentUser = activeShellData.currentUser ?? PENDING_USER;
+  const currentUserId = currentUser.id;
+  const isAdminViewer = Boolean(currentUserId) && isAdminRole(currentUser.role);
   const canViewTeamNavigation = canAccessTeamDirectoryRole(
     currentUser.role,
     currentUser.department,
@@ -94,11 +94,11 @@ export function WorkspaceShell({
 
   const filteredNavigation = navigation.filter((item) => {
     if (isAdminViewer) {
-      if (item.href === "/logwork-approvals") return false;
+      if (item.href === "/logwork") return false;
       return item.href === "/team";
     }
 
-    if (item.href === "/logwork-approvals") {
+    if (item.href === "/logwork") {
       return canViewLogworkApprovals;
     }
 
@@ -110,6 +110,10 @@ export function WorkspaceShell({
   });
 
   useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
     if (
       isAdminViewer &&
       pathname &&
@@ -118,19 +122,27 @@ export function WorkspaceShell({
     ) {
       router.replace("/team");
     }
-  }, [isAdminViewer, pathname, router]);
+  }, [currentUserId, isAdminViewer, pathname, router]);
 
   useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
     if (
       !isAdminViewer &&
-      pathname?.startsWith("/logwork-approvals") &&
+      pathname?.startsWith("/logwork") &&
       !canViewLogworkApprovals
     ) {
       router.replace("/dashboard");
     }
-  }, [canViewLogworkApprovals, isAdminViewer, pathname, router]);
+  }, [canViewLogworkApprovals, currentUserId, isAdminViewer, pathname, router]);
 
   useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
     if (
       !isAdminViewer &&
       pathname?.startsWith("/team") &&
@@ -138,7 +150,7 @@ export function WorkspaceShell({
     ) {
       router.replace("/dashboard");
     }
-  }, [canViewTeamNavigation, isAdminViewer, pathname, router]);
+  }, [canViewTeamNavigation, currentUserId, isAdminViewer, pathname, router]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -201,9 +213,9 @@ export function WorkspaceShell({
   };
 
   return (
-    <div className="app-shell">
+    <div className={classNames("app-shell", fillViewport && "app-shell-fill")}>
       <aside className="sidebar">
-        <div className="sidebar-logo-container" style={{ display: "flex", alignItems: "center", marginTop: "0.5rem", marginBottom: "1.5rem", padding: "0.5rem 0.5rem" }}>
+        <div className="sidebar-logo-container" style={{ display: "flex", alignItems: "center" }}>
           {/* Typographic Logo */}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", userSelect: "none" }}>
             <div style={{ fontSize: "2rem", lineHeight: 1, fontFamily: "var(--font-inter), system-ui, sans-serif", display: "flex", alignItems: "center", letterSpacing: "0.04em" }}>
@@ -233,13 +245,16 @@ export function WorkspaceShell({
           </div>
         </div>
 
-        <nav className="sidebar-nav" aria-label="Primary" style={{ marginTop: "0.5rem" }}>
+        <nav className="sidebar-nav" aria-label="Primary">
           {filteredNavigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               data-testid={`nav-${item.href.slice(1)}`}
-              className={classNames("nav-link", pathname === item.href && "nav-link-active")}
+              className={classNames(
+                "nav-link",
+                (pathname === item.href || pathname.startsWith(`${item.href}/`)) && "nav-link-active",
+              )}
               onPointerEnter={item.href === "/tasks" ? warmTasksPage : undefined}
               onFocus={item.href === "/tasks" ? warmTasksPage : undefined}
               onPointerDown={item.href === "/tasks" ? warmTasksPage : undefined}
@@ -251,11 +266,17 @@ export function WorkspaceShell({
         </nav>
       </aside>
 
-      <main className="workspace-main" style={noBottomPadding ? { paddingBottom: 0 } : undefined}>
+      <main
+        className={classNames(
+          "workspace-main",
+          fillViewport && "workspace-main-fill",
+          stickyTopbar && "workspace-main-sticky-topbar",
+        )}
+        style={!fillViewport && noBottomPadding ? { paddingBottom: 0 } : undefined}
+      >
         <header className="topbar">
           <div>
             <h1>{heading}</h1>
-            {/* <p>{subheading}</p> */}
           </div>
           <div className="topbar-actions">
             {headerAction}
@@ -453,8 +474,6 @@ export function WorkspaceShell({
         </header>
         <div className="page-stack">{children}</div>
       </main>
-
-      <AssistantBubble alertCount={activeShellData.alertCount} projectId={assistantProjectId} />
 
       {isPasswordModalOpen ? (
         <ChangePasswordModal session={session} onClose={() => setIsPasswordModalOpen(false)} />

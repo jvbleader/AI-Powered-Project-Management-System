@@ -3,7 +3,21 @@
 import { useMemo, useSyncExternalStore } from "react";
 
 import { readSession, readSessionSnapshot, SESSION_CHANGE_EVENT } from "@/services/auth/session";
-import type { AuthSession } from "@/types";
+import type { AuthSession, UserProfile } from "@/types";
+
+export const PENDING_USER: UserProfile = {
+  id: "",
+  name: "",
+  email: "",
+  role: "",
+  title: "",
+  initials: "",
+  presence: "offline",
+  capacityHours: 0,
+  workloadHours: 0,
+  focusScore: 0,
+  isActive: true,
+};
 
 function subscribeToSession(onStoreChange: () => void) {
   window.addEventListener("storage", onStoreChange);

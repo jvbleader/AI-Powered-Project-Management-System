@@ -392,7 +392,7 @@ def create_logwork(
                 type="LOGWORK_SUBMITTED",
                 title="Có nhật ký công việc mới",
                 content=f"{current_user.full_name} đã gửi logwork {logwork_in.hours_spent}h chờ duyệt trong dự án '{project.name}'",
-                link=f"/logwork-approvals?highlightLogworkId={lw.id}",
+                link=f"/logwork?highlightLogworkId={lw.id}",
             )
             db.add(notification)
             db.commit()

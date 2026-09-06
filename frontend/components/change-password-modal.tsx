@@ -71,7 +71,6 @@ export function ChangePasswordModal({ session, onClose }: ChangePasswordModalPro
       >
         <div className="password-modal-header">
           <div>
-            <span className="eyebrow">Bảo mật</span>
             <h2 id="change-password-title">Đổi mật khẩu</h2>
           </div>
           <button type="button" className="icon-button" onClick={handleClose} aria-label="Đóng">

@@ -2,7 +2,7 @@ import { Surface } from "@/components/ui";
 import { FilterSelect } from "@/components/filter-select";
 
 import { roleLabel, userStatusLabel, ROLE_DIRECTOR } from "@/lib/utils/format";
-import { SYSTEM_ROLE_OPTIONS, type UserDirectoryFilters, type UserStatus } from "@/types";
+import { SYSTEM_ROLE_OPTIONS, type UserStatus } from "@/types";
 import styles from "../styles/team.module.css";
 
 const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INACTIVE"];
@@ -10,16 +10,17 @@ const STATUS_OPTIONS: UserStatus[] = ["ACTIVE", "INACTIVE"];
 interface TeamFilterProps {
   search: string;
   onSearchChange: (value: string) => void;
-  statusFilter: UserDirectoryFilters["status"];
-  onStatusFilterChange: (value: UserDirectoryFilters["status"]) => void;
-  roleFilter: UserDirectoryFilters["role"];
-  onRoleFilterChange: (value: UserDirectoryFilters["role"]) => void;
-  departmentFilter: UserDirectoryFilters["department"];
-  onDepartmentFilterChange: (value: UserDirectoryFilters["department"]) => void;
+  statusFilter: string[];
+  onStatusFilterChange: (value: string[]) => void;
+  roleFilter: string[];
+  onRoleFilterChange: (value: string[]) => void;
+  departmentFilter: string[];
+  onDepartmentFilterChange: (value: string[]) => void;
   departments: { id: number; name: string }[];
   canFilterDepartment?: boolean;
   currentDepartment?: string;
   hideDirectorRoles?: boolean;
+  onReset: () => void;
 }
 
 export function TeamFilter({
@@ -35,6 +36,7 @@ export function TeamFilter({
   canFilterDepartment = true,
   currentDepartment = "",
   hideDirectorRoles = false,
+  onReset,
 }: TeamFilterProps) {
   const roleOptions = hideDirectorRoles
     ? SYSTEM_ROLE_OPTIONS.filter(
@@ -42,8 +44,14 @@ export function TeamFilter({
       )
     : SYSTEM_ROLE_OPTIONS;
 
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    statusFilter.length > 0 ||
+    roleFilter.length > 0 ||
+    (canFilterDepartment && departmentFilter.length > 0);
+
   return (
-    <Surface title="Bộ lọc danh sách" kicker="Search & Pagination" className={styles.filterSurface}>
+    <Surface className={styles.filterSurface}>
       <div className={styles.filterGrid}>
         <label className={styles.filterField}>
           <span>Tìm nhanh</span>
@@ -54,51 +62,49 @@ export function TeamFilter({
           />
         </label>
 
-        <label className={styles.filterField}>
+        <div className={styles.filterField}>
           <span>Trạng thái</span>
           <FilterSelect
-            value={statusFilter ?? "ALL"}
-            onChange={(value) => onStatusFilterChange(value as UserDirectoryFilters["status"])}
-            options={[
-              { value: "ALL", label: "Tất cả trạng thái" },
-              ...STATUS_OPTIONS.map((status) => ({
-                value: status,
-                label: userStatusLabel(status),
-              })),
-            ]}
+            multiple
+            value={statusFilter}
+            onChange={onStatusFilterChange}
+            placeholder="Chọn trạng thái"
+            showSelectAll={false}
+            options={STATUS_OPTIONS.map((status) => ({
+              value: status,
+              label: userStatusLabel(status),
+            }))}
           />
-        </label>
+        </div>
 
-        <label className={styles.filterField}>
+        <div className={styles.filterField}>
           <span>Vai trò</span>
           <FilterSelect
-            value={roleFilter ?? "ALL"}
-            onChange={(value) => onRoleFilterChange(value as UserDirectoryFilters["role"])}
-            options={[
-              { value: "ALL", label: "Tất cả vai trò" },
-              ...roleOptions.map((role) => ({
-                value: role,
-                label: roleLabel(role),
-              })),
-            ]}
+            multiple
+            value={roleFilter}
+            onChange={onRoleFilterChange}
+            placeholder="Chọn vai trò"
+            showSelectAll={false}
+            options={roleOptions.map((role) => ({
+              value: role,
+              label: roleLabel(role),
+            }))}
           />
-        </label>
+        </div>
 
-        <label className={styles.filterField}>
+        <div className={styles.filterField}>
           <span>Phòng ban</span>
           {canFilterDepartment ? (
             <FilterSelect
-              value={departmentFilter ?? "ALL"}
-              onChange={(value) =>
-                onDepartmentFilterChange(value as UserDirectoryFilters["department"])
-              }
-              options={[
-                { value: "ALL", label: "Tất cả phòng ban" },
-                ...departments.map((dept) => ({
-                  value: dept.name,
-                  label: dept.name,
-                })),
-              ]}
+              multiple
+              value={departmentFilter}
+              onChange={onDepartmentFilterChange}
+              placeholder="Chọn phòng ban"
+              showSelectAll={false}
+              options={departments.map((dept) => ({
+                value: dept.name,
+                label: dept.name,
+              }))}
             />
           ) : (
             <input
@@ -112,7 +118,18 @@ export function TeamFilter({
               }}
             />
           )}
-        </label>
+        </div>
+
+        <div className={styles.filterActions}>
+          <button
+            type="button"
+            className={styles.resetButton}
+            disabled={!hasActiveFilters}
+            onClick={onReset}
+          >
+            Xóa lọc
+          </button>
+        </div>
       </div>
     </Surface>
   );

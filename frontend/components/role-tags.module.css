@@ -1,0 +1,12 @@
+.stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+  gap: 0.3rem;
+}
+
+.stack :global(.pill) {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

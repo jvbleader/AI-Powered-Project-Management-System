@@ -35,7 +35,7 @@ export function LogworkEntryDetailModal({
 
   const handleGoToApprovals = () => {
     onClose();
-    router.push(`/logwork-approvals?highlightLogworkId=${encodeURIComponent(entry.id)}`);
+    router.push(`/logwork?highlightLogworkId=${encodeURIComponent(entry.id)}`);
   };
 
   return (
@@ -53,9 +53,8 @@ export function LogworkEntryDetailModal({
       >
         <div className={`${modalStyles.modalHeader} ${styles.header}`}>
           <div>
-            <p className={styles.kicker}>Chi tiết logwork</p>
             <h2 id="logwork-entry-title" className={styles.title}>
-              {entry.userName}
+              {entry.title || entry.userName}
             </h2>
           </div>
           <button type="button" onClick={onClose} aria-label="Đóng popup" className={styles.closeButton}>
@@ -68,6 +67,10 @@ export function LogworkEntryDetailModal({
         <div className={`${modalStyles.modalBody} ${styles.body}`}>
           <div className={styles.metaPanel}>
             <dl className={styles.metaGrid}>
+              <div className={styles.metaItem}>
+                <dt>Nhân sự</dt>
+                <dd>{entry.userName}</dd>
+              </div>
               <div className={styles.metaItem}>
                 <dt>Ngày làm việc</dt>
                 <dd>{formatDate(entry.workDate)}</dd>

@@ -3,6 +3,8 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AssigneeSelect } from "@/components/assignee-select";
 import { taskApi } from "@/services/api";
 import { CustomSelect } from "@/components/custom-select";
+import { LoadingState } from "@/components/loading-state";
+import { useConfirmDialog } from "@/components/confirm-dialog";
 import { formatDateTime, canAccessLogworkApprovalsRole } from "@/lib/utils/format";
 import { resolveAvatarUrl } from "@/lib/utils/avatar";
 import type { EnrichedTask, Task, TaskLogworkEntry, UserProfile, TaskLog } from "@/types";
@@ -22,7 +24,7 @@ function logworkStatusLabel(status: TaskLogworkEntry["status"]) {
 }
 
 function logworkSummary(entry: TaskLogworkEntry) {
-  return `${entry.hoursSpent}h · ${logworkStatusLabel(entry.status)} · ${truncateText(entry.workContent)}`;
+  return `${entry.hoursSpent}h · ${logworkStatusLabel(entry.status)} · ${truncateText(entry.title || entry.workContent)}`;
 }
 
 const ESTIMATE_SAVE_DELAY_MS = 2_000;
@@ -67,6 +69,30 @@ interface TaskDetailModalProps {
   users: UserProfile[];
   viewerId: string;
   canManage: boolean;
+  hideProjectLink?: boolean;
+  hideDeleteTask?: boolean;
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  );
 }
 
 export function TaskDetailModal({
@@ -78,9 +104,12 @@ export function TaskDetailModal({
   users,
   viewerId,
   canManage,
+  hideProjectLink = false,
+  hideDeleteTask = false,
 }: TaskDetailModalProps) {
+  const { confirm, alert } = useConfirmDialog();
   const [task, setTask] = useState<EnrichedTask | Task | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -167,11 +196,12 @@ export function TaskDetailModal({
       setLogworks(logworkResponse.data);
       setTaskLogs(logsResponse.data);
     } catch (error: unknown) {
-      alert(
-        `Không thể tải thông tin công việc: ${
+      await alert({
+        title: "Không thể tải công việc",
+        message: `Không thể tải thông tin công việc: ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
-      );
+      });
       onClose();
     } finally {
       setIsLoading(false);
@@ -227,7 +257,10 @@ export function TaskDetailModal({
       setTaskLogs(newLogs.data);
       onTaskUpdated(refreshed.data);
     } catch (error: unknown) {
-      alert(`Cập nhật thất bại: ${error instanceof Error ? error.message : "Unknown error"}`);
+      await alert({
+        title: "Cập nhật thất bại",
+        message: `Cập nhật thất bại: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
     } finally {
       setIsSaving(false);
     }
@@ -300,11 +333,12 @@ export function TaskDetailModal({
       setTaskLogs(newLogs.data);
       onTaskUpdated(refreshed.data);
     } catch (error: unknown) {
-      alert(
-        `Cập nhật người thực hiện thất bại: ${
+      await alert({
+        title: "Cập nhật thất bại",
+        message: `Cập nhật người thực hiện thất bại: ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
-      );
+      });
     } finally {
       setIsSaving(false);
     }
@@ -332,7 +366,13 @@ export function TaskDetailModal({
 
   async function handleDeleteTask() {
     if (!task) return;
-    if (!confirm("Bạn có chắc chắn muốn xoá task này không?")) {
+    const confirmed = await confirm({
+      title: "Xóa task",
+      message: "Bạn có chắc chắn muốn xoá task này không?",
+      confirmLabel: "Xóa",
+      tone: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -345,7 +385,7 @@ export function TaskDetailModal({
         onClose();
       }
     } catch {
-      alert("Lỗi khi xoá task");
+      await alert({ title: "Không thể xóa", message: "Lỗi khi xoá task" });
     } finally {
       setIsSaving(false);
     }
@@ -424,26 +464,24 @@ export function TaskDetailModal({
                 onClick={() => canEditTask && setIsEditingTitle(true)}
                 title={canEditTask ? "Bấm để sửa tiêu đề" : undefined}
               >
-                {isLoading ? "Đang tải..." : task?.title}
+                {task?.title}
               </h2>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <button
-              type="button"
-              className="secondary-button"
-              style={{
-                color: "var(--critical-fg)",
-                borderColor: "var(--critical-border)",
-                padding: "0.5rem 1rem",
-                fontSize: "0.85rem",
-              }}
-              onClick={() => void handleDeleteTask()}
-              disabled={isLoading || isSaving}
-            >
-              Xoá task
-            </button>
-            {task?.projectId ? (
+          {(!hideDeleteTask || (!hideProjectLink && task?.projectId)) ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+            {!hideDeleteTask ? (
+              <button
+                type="button"
+                className="task-detail-delete-button"
+                onClick={() => void handleDeleteTask()}
+                disabled={isLoading || isSaving}
+              >
+                <TrashIcon />
+                Xoá task
+              </button>
+            ) : null}
+            {!hideProjectLink && task?.projectId ? (
               <a
                 href={`/projects/${task.projectId}?tab=${isWaterfall ? "gantt" : "kanban"}&highlightTaskId=${task.id}&highlightColor=green`}
                 className="secondary-button"
@@ -459,31 +497,8 @@ export function TaskDetailModal({
                 Chuyển tới dự án
               </a>
             ) : null}
-            {canLogwork ? (
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => setIsLogworkModalOpen(true)}
-                disabled={isLoading}
-                style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}
-              >
-                + Logwork
-              </button>
-            ) : null}
-            <button
-              onClick={handleClose}
-              style={{
-                background: "none",
-                border: "none",
-                fontSize: "1.35rem",
-                cursor: "pointer",
-                color: "var(--foreground-muted)",
-                padding: "0.25rem 0.5rem",
-              }}
-            >
-              &times;
-            </button>
           </div>
+          ) : null}
         </div>
 
         <div className="task-detail-layout task-detail-body">
@@ -534,40 +549,6 @@ export function TaskDetailModal({
                           : ""
                     }
                     options={assigneeOptions}
-                  />
-                </label>
-
-                <label className="task-detail-field">
-                  <span className="task-detail-field-label">Ưu tiên</span>
-                  <CustomSelect
-                    className="task-detail-control"
-                    value={task?.priority || "MEDIUM"}
-                    onChange={(val) => void handleUpdate({ priority: val as Task["priority"] })}
-                    disabled={isLoading || isSaving || !canEditTask}
-                    style={{
-                      color:
-                        task?.priority === "CRITICAL"
-                          ? "#b91c1c"
-                          : task?.priority === "HIGH"
-                            ? "#b45309"
-                            : task?.priority === "MEDIUM"
-                              ? "#15803d"
-                              : "#0369a1",
-                      backgroundColor:
-                        task?.priority === "CRITICAL"
-                          ? "rgba(220, 38, 38, 0.15)"
-                          : task?.priority === "HIGH"
-                            ? "rgba(217, 119, 6, 0.15)"
-                            : task?.priority === "MEDIUM"
-                              ? "rgba(22, 163, 74, 0.15)"
-                              : "rgba(2, 132, 199, 0.15)",
-                    }}
-                    options={[
-                      { value: "LOW", label: "Thấp" },
-                      { value: "MEDIUM", label: "Trung bình" },
-                      { value: "HIGH", label: "Cao" },
-                      { value: "CRITICAL", label: "Khẩn cấp" },
-                    ]}
                   />
                 </label>
 
@@ -638,6 +619,40 @@ export function TaskDetailModal({
                 </label>
 
                 <label className="task-detail-field">
+                  <span className="task-detail-field-label">Ưu tiên</span>
+                  <CustomSelect
+                    className="task-detail-control"
+                    value={task?.priority || "MEDIUM"}
+                    onChange={(val) => void handleUpdate({ priority: val as Task["priority"] })}
+                    disabled={isLoading || isSaving || !canEditTask}
+                    style={{
+                      color:
+                        task?.priority === "CRITICAL"
+                          ? "#b91c1c"
+                          : task?.priority === "HIGH"
+                            ? "#b45309"
+                            : task?.priority === "MEDIUM"
+                              ? "#15803d"
+                              : "#0369a1",
+                      backgroundColor:
+                        task?.priority === "CRITICAL"
+                          ? "rgba(220, 38, 38, 0.15)"
+                          : task?.priority === "HIGH"
+                            ? "rgba(217, 119, 6, 0.15)"
+                            : task?.priority === "MEDIUM"
+                              ? "rgba(22, 163, 74, 0.15)"
+                              : "rgba(2, 132, 199, 0.15)",
+                    }}
+                    options={[
+                      { value: "LOW", label: "Thấp" },
+                      { value: "MEDIUM", label: "Trung bình" },
+                      { value: "HIGH", label: "Cao" },
+                      { value: "CRITICAL", label: "Khẩn cấp" },
+                    ]}
+                  />
+                </label>
+
+                <label className="task-detail-field">
                   <span className="task-detail-field-label">Thời gian ước tính</span>
                   <input
                     className="task-detail-control"
@@ -690,7 +705,7 @@ export function TaskDetailModal({
                   flexShrink: 0,
                 }}
               >
-                Nhật ký thay đổi (Task Log)
+                Nhật ký thay đổi
               </span>
               <div
                 style={{
@@ -759,16 +774,19 @@ export function TaskDetailModal({
                 paddingTop: "0.75rem",
               }}
             >
-              <span
-                className="task-detail-field-label"
-                style={{
-                  marginBottom: "0.75rem",
-                  display: "block",
-                  flexShrink: 0,
-                }}
-              >
-                Logwork đã ghi nhận
-              </span>
+              <div className="task-detail-logwork-heading">
+                <span className="task-detail-field-label">Logwork đã ghi nhận</span>
+                {canLogwork ? (
+                  <button
+                    type="button"
+                    className="task-detail-logwork-button"
+                    onClick={() => setIsLogworkModalOpen(true)}
+                    disabled={isLoading}
+                  >
+                    + Logwork
+                  </button>
+                ) : null}
+              </div>
               <div
                 style={{
                   display: "flex",
@@ -781,9 +799,7 @@ export function TaskDetailModal({
                 }}
               >
                 {isLoading ? (
-                  <div style={{ color: "var(--foreground-muted)", fontSize: "0.9rem" }}>
-                    Đang tải logwork...
-                  </div>
+                  <LoadingState variant="cards" />
                 ) : logworks.length ? (
                   logworks.map((entry) => (
                     <button

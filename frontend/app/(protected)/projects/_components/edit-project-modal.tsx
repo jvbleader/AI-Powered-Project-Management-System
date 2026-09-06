@@ -5,6 +5,7 @@ import { projectApi, userApi } from "@/services/api";
 import type { ProjectMemberResponse, ProjectRoleResponse } from "@/services/api/projects";
 import { Department } from "@/types/user";
 import { CustomSelect } from "@/components/custom-select";
+import { LoadingState } from "@/components/loading-state";
 import styles from "./create-project-modal.module.css";
 
 interface EditProjectModalProps {
@@ -358,7 +359,11 @@ export function EditProjectModal({
                   </thead>
                   <tbody>
                     {isLoadingMembers ? (
-                      <tr><td colSpan={3} style={{ padding: "20px", textAlign: "center", color: "var(--text-secondary)" }}>Đang tải...</td></tr>
+                      <tr>
+                        <td colSpan={3} style={{ padding: "12px 16px" }}>
+                          <LoadingState variant="spinner" label="Đang tải thành viên..." />
+                        </td>
+                      </tr>
                     ) : members.length === 0 ? (
                       <tr><td colSpan={3} style={{ padding: "20px", textAlign: "center", color: "var(--text-secondary)" }}>Chưa có thành viên.</td></tr>
                     ) : (

@@ -50,7 +50,13 @@ def _prepare_fresh_database(engine) -> None:
     with engine.begin() as conn:
         conn.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
         # Clear debris from a previous failed first migration, if any.
-        for table in ("ai_messages", "ai_conversations", "alembic_version"):
+        for table in (
+            "ai_messages",
+            "ai_usage_logs",
+            "ai_memory",
+            "ai_conversations",
+            "alembic_version",
+        ):
             conn.execute(text(f"DROP TABLE IF EXISTS `{table}`"))
         conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
 

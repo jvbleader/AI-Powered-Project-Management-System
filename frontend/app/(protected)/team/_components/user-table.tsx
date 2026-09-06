@@ -1,11 +1,10 @@
 import { UserAvatar } from "@/components/user-avatar";
 import { EmptyState, Surface, StatusPill } from "@/components/ui";
-import {
-  roleLabel,
-  userStatusLabel,
-  getRoleTone,
-} from "@/lib/utils/format";
+import { RoleTags } from "@/components/role-tags";
+import { TableBodySkeleton } from "@/components/loading-state";
+import { userStatusLabel } from "@/lib/utils/format";
 import type { PaginatedUsers, UserStatus, UserProfile } from "@/types";
+import { TablePagination } from "@/components/table-pagination";
 import styles from "../styles/team.module.css";
 
 interface UserTableProps {
@@ -26,8 +25,6 @@ function getStatusTone(status: UserStatus) {
   return "critical" as const;
 }
 
-
-
 export function UserTable({
   directory,
   taskSummaryByUserId,
@@ -40,9 +37,7 @@ export function UserTable({
 }: UserTableProps) {
   return (
     <Surface
-      title="Bảng người dùng"
-      kicker="Directory Table"
-      className={styles.tableSurface}
+      className={`${styles.tableSurface} filtered-list-table`}
       aside={
         canManageUsers && (
           <button type="button" className="primary-button" onClick={onAddUserClick}>
@@ -51,16 +46,16 @@ export function UserTable({
         )
       }
     >
-      {directory.items.length ? (
+      {isLoading || directory.items.length > 0 ? (
         <>
-          <div className={styles.tableWrap}>
+          <div className={`${styles.tableWrap} table-scroll`}>
             <table className={styles.table}>
               <thead>
                 <tr>
                   <th>Người dùng</th>
                   <th>Mã</th>
                   <th>Email</th>
-                  <th>Vai trò</th>
+                  <th className={styles.roleCell}>Vai trò</th>
                   <th>Trạng thái</th>
                   <th>Phòng ban</th>
                   <th>Số điện thoại</th>
@@ -68,7 +63,10 @@ export function UserTable({
                 </tr>
               </thead>
               <tbody>
-                {directory.items.map((user) => {
+                {isLoading ? (
+                  <TableBodySkeleton rows={8} columns={8} />
+                ) : (
+                  directory.items.map((user) => {
                   return (
                     <tr key={user.id}>
                       <td>
@@ -97,16 +95,11 @@ export function UserTable({
                           <span>{user.email}</span>
                         </div>
                       </td>
-                      <td>
-                        <div className={styles.roleStack}>
-                          {(user.roles?.length ? user.roles : [user.role]).map((role) => (
-                            <StatusPill
-                              key={role}
-                              label={roleLabel(role)}
-                              tone={getRoleTone(role)}
-                            />
-                          ))}
-                        </div>
+                      <td className={styles.roleCell}>
+                        <RoleTags
+                          className={styles.roleStack}
+                          roles={user.roles?.length ? user.roles : user.role}
+                        />
                       </td>
                       <td>
                         <StatusPill
@@ -131,45 +124,27 @@ export function UserTable({
                       </td>
                     </tr>
                   );
-                })}
+                })
+                )}
               </tbody>
             </table>
           </div>
 
-          <div className={styles.paginationBar}>
-            <p>
-              Hiển thị {(directory.page - 1) * directory.pageSize + 1} -{" "}
-              {Math.min(directory.page * directory.pageSize, directory.total)} trên tổng{" "}
-              {directory.total} người dùng.
-            </p>
-            <div className={styles.paginationActions}>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => onPageChange(Math.max(1, page - 1))}
-                disabled={directory.page <= 1}
-              >
-                Trang trước
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => onPageChange(Math.min(directory.totalPages, page + 1))}
-                disabled={directory.page >= directory.totalPages}
-              >
-                Trang sau
-              </button>
-            </div>
-          </div>
+          {!isLoading && directory.total > 0 ? (
+            <TablePagination
+              page={page}
+              pageSize={directory.pageSize}
+              total={directory.total}
+              totalPages={directory.totalPages}
+              onPageChange={onPageChange}
+              itemLabel="người dùng"
+            />
+          ) : null}
         </>
       ) : (
         <EmptyState
-          title={isLoading ? "Đang tải danh sách người dùng" : "Không tìm thấy người dùng phù hợp"}
-          description={
-            isLoading
-              ? "Hệ thống đang dựng dữ liệu preview cho màn quản lý người dùng."
-              : "Thử đổi từ khóa tìm kiếm hoặc bỏ bớt bộ lọc để xem nhiều kết quả hơn."
-          }
+          title="Không tìm thấy người dùng phù hợp"
+          description="Thử đổi từ khóa tìm kiếm hoặc bỏ bớt bộ lọc để xem nhiều kết quả hơn."
         />
       )}
     </Surface>

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { taskApi } from "@/services/api";
 import type { Task } from "@/types";
 import { TaskDetailModal } from "./task-detail-modal";
@@ -58,15 +59,17 @@ describe("TaskDetailModal estimated hours", () => {
 
   it("saves only the final ET value after two seconds without input", async () => {
     render(
-      <TaskDetailModal
-        taskId={task.id}
-        isOpen
-        onClose={jest.fn()}
-        onTaskUpdated={jest.fn()}
-        users={[]}
-        viewerId="usr-1"
-        canManage
-      />,
+      <ConfirmDialogProvider>
+        <TaskDetailModal
+          taskId={task.id}
+          isOpen
+          onClose={jest.fn()}
+          onTaskUpdated={jest.fn()}
+          users={[]}
+          viewerId="usr-1"
+          canManage
+        />
+      </ConfirmDialogProvider>,
     );
 
     const input = await screen.findByLabelText("Thời gian ước tính");

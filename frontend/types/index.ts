@@ -5,7 +5,6 @@ export * from "./project";
 export * from "./sprint";
 export * from "./task";
 export * from "./logwork";
-export * from "./ai";
 export * from "./dashboard";
 
 export interface TaskLog {

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { taskApi, userApi, workspaceApi } from "@/services/api";
 import { updateSessionCurrentUser } from "@/services/auth/session";
-import { useAuthSession } from "@/hooks/use-session";
+import { useAuthSession, PENDING_USER } from "@/hooks/use-session";
 import {
   canAccessTeamDirectoryRole,
   canManageUsers as canManageUsersByRole,
@@ -18,7 +18,6 @@ import {
 import type {
   EnrichedTask,
   PaginatedUsers,
-  UserDirectoryFilters,
   UserProfile,
   UserRole,
   UserStatus,
@@ -40,12 +39,13 @@ const EMPTY_DIRECTORY: PaginatedUsers = {
   totalPages: 1,
 };
 
+function toDirectoryFilterParam(values: string[]): string {
+  return values.length === 0 ? "ALL" : values.join(",");
+}
+
 export default function TeamPage() {
   const session = useAuthSession();
-  const currentActor = useMemo(
-    () => session?.currentUser as any,
-    [session?.currentUser],
-  );
+  const currentActor = session?.currentUser ?? PENDING_USER;
   const [shellData, setShellData] = useState<WorkspaceShellData>({
     currentUser: currentActor,
     activeProjects: 0,
@@ -58,13 +58,12 @@ export default function TeamPage() {
   const [taskBoard, setTaskBoard] = useState<EnrichedTask[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<UserDirectoryFilters["status"]>("ALL");
-  const [roleFilter, setRoleFilter] = useState<UserDirectoryFilters["role"]>("ALL");
-  const [departmentFilter, setDepartmentFilter] =
-    useState<UserDirectoryFilters["department"]>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [roleFilter, setRoleFilter] = useState<string[]>([]);
+  const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
   const [pageSize] = useState(15);
   const [page, setPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isDirectoryLoading, setIsDirectoryLoading] = useState(true);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
   const [isSavingRoles, setIsSavingRoles] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -84,7 +83,9 @@ export default function TeamPage() {
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [canAccessTeamPage, setCanAccessTeamPage] = useState<boolean | null>(
-    canAccessTeamDirectoryRole(currentActor.role, currentActor.department) ? true : null,
+    currentActor.id
+      ? canAccessTeamDirectoryRole(currentActor.role, currentActor.department) ? true : null
+      : null,
   );
   const canManageUsers = canManageUsersByRole(currentActor.role);
   const canFilterDepartment = hasCompanywideProjectAccess(currentActor.role, currentActor.department) || canManageUsers;
@@ -96,6 +97,10 @@ export default function TeamPage() {
   const router = useRouter();
 
   useEffect(() => {
+    if (!currentActor.id) {
+      return;
+    }
+
     setCanAccessTeamPage(canAccessTeamDirectoryRole(currentActor.role, currentActor.department));
   }, [currentActor]);
 
@@ -135,8 +140,6 @@ export default function TeamPage() {
           setError(
             loadError instanceof Error ? loadError.message : "Không thể tải danh sách người dùng.",
           );
-      } finally {
-        if (!isCancelled) setIsLoading(false);
       }
     }
     void loadStaticData();
@@ -156,9 +159,11 @@ export default function TeamPage() {
         const { data } = await userApi.listDirectory(
           {
             search,
-            status: statusFilter,
-            role: roleFilter,
-            department: canFilterDepartment ? departmentFilter : (currentActor.department ?? "ALL"),
+            status: toDirectoryFilterParam(statusFilter),
+            role: toDirectoryFilterParam(roleFilter),
+            department: canFilterDepartment
+              ? toDirectoryFilterParam(departmentFilter)
+              : (currentActor.department ?? "ALL"),
             page,
             pageSize,
           },
@@ -172,6 +177,8 @@ export default function TeamPage() {
           setError(
             loadError instanceof Error ? loadError.message : "Không thể tải bảng người dùng.",
           );
+      } finally {
+        if (!isCancelled) setIsDirectoryLoading(false);
       }
     }
     void loadDirectory();
@@ -325,8 +332,9 @@ export default function TeamPage() {
       subheading="Giao diện bảng hỗ trợ tìm kiếm nhanh, phân trang và thao tác quản trị tài khoản theo đúng luồng vận hành."
       highlightLabel="Users"
       highlightValue={`${directory.total}`}
+      fillViewport
     >
-      <div className={styles.pageStack}>
+      <div className={`${styles.pageStack} filtered-list-page`}>
         <TeamFilter
           search={search}
           onSearchChange={(v) => {
@@ -352,12 +360,19 @@ export default function TeamPage() {
           canFilterDepartment={canFilterDepartment}
           currentDepartment={currentActor.department || ""}
           hideDirectorRoles={isHeadOfDevViewer}
+          onReset={() => {
+            setSearch("");
+            setStatusFilter([]);
+            setRoleFilter([]);
+            if (canFilterDepartment) setDepartmentFilter([]);
+            setPage(1);
+          }}
         />
 
         <UserTable
           directory={directory}
           taskSummaryByUserId={taskSummaryByUserId}
-          isLoading={isLoading}
+          isLoading={isDirectoryLoading}
           canManageUsers={canManageUsers}
           page={page}
           onPageChange={setPage}

@@ -11,8 +11,6 @@ import {
 import { NETWORK_ERROR_MESSAGE } from "@/services/api/core";
 import { useAuthSession } from "@/hooks/use-session";
 
-import styles from "./styles/auth-shell.module.css";
-
 type GuardStatus = "checking" | "ready";
 
 function redirectWhenUnauthenticated() {
@@ -95,19 +93,6 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
       rejectSession();
     }
   }, [guardStatus, session]);
-
-  if (guardStatus !== "ready" || !session) {
-    return (
-      <main className={styles.screen}>
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <strong>Đang kiểm tra đăng nhập</strong>
-            <p>Hệ thống đang xác minh phiên làm việc trước khi mở không gian quản lý.</p>
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   return <>{children}</>;
 }

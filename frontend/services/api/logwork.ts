@@ -1,3 +1,4 @@
+import { resolveLogworkTitle } from "@/lib/utils/logwork";
 import { LogworkFilters, UserProfile, TaskLogworkEntry, ApiResponse } from "@/types";
 import { apiEndpoints, requestApi, wrapBackendResponse } from "./core";
 
@@ -38,6 +39,7 @@ export const logworkApi = {
         userName: item.user_name || "",
         workDate: item.work_date,
         hoursSpent: item.hours_spent,
+        title: resolveLogworkTitle(item.title, item.work_content),
         workContent: item.work_content,
         comment: item.comment,
         progressPercent: item.progress_percent,
@@ -70,6 +72,7 @@ export const logworkApi = {
       const body = {
         work_date: payload.date || payload.workDate || new Date().toISOString().split('T')[0],
         hours_spent: payload.hours || payload.hoursSpent,
+        title: payload.title || payload.name || "",
         work_content: payload.note || payload.workContent || "",
         comment: payload.comment || "",
         progress_percent: payload.progressPercent || 0
@@ -94,6 +97,7 @@ export const logworkApi = {
       const body: Record<string, any> = {};
       if (payload.hours !== undefined) body.hours_spent = payload.hours;
       if (payload.hoursSpent !== undefined) body.hours_spent = payload.hoursSpent;
+      if (payload.title !== undefined) body.title = payload.title;
       if (payload.note !== undefined) body.work_content = payload.note;
       if (payload.workContent !== undefined) body.work_content = payload.workContent;
       if (payload.comment !== undefined) body.comment = payload.comment;

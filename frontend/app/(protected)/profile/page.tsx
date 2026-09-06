@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { StatusPill } from "@/components/ui";
+import { LoadingState } from "@/components/loading-state";
 import { updateSessionCurrentUser } from "@/services/auth/session";
 import { workspaceApi, userApi } from "@/services/api";
-import { useAuthSession } from "@/hooks/use-session";
+import { useAuthSession, PENDING_USER } from "@/hooks/use-session";
 import type { UserProfile, WorkspaceShellData } from "@/types";
 import { ProfileHero } from "./_components/profile-hero";
 import { PersonalInfo } from "./_components/personal-info";
@@ -16,7 +17,7 @@ import styles from "./styles/profile.module.css";
 
 export default function ProfilePage() {
   const session = useAuthSession();
-  const currentActor = useMemo(() => session?.currentUser as UserProfile, [session?.currentUser]);
+  const currentActor = session?.currentUser ?? PENDING_USER;
   const [shellData, setShellData] = useState<WorkspaceShellData>({
     currentUser: currentActor,
     activeProjects: 0,
@@ -31,6 +32,10 @@ export default function ProfilePage() {
     let isCancelled = false;
 
     async function loadPageData() {
+      if (!currentActor.id) {
+        return;
+      }
+
       try {
         const [{ data: nextShellData }, { data: nextProfile }] = await Promise.all([
           workspaceApi.getShellData(currentActor),
@@ -75,11 +80,16 @@ export default function ProfilePage() {
       highlightValue={activeUser?.employeeCode ?? "PERSONAL"}
     >
       <div className={styles.profilePage}>
-        {activeUser && <ProfileHero user={activeUser} onUpdate={syncCurrentUser} />}
-
-        <div className={styles.detailsColumn}>
-          {activeUser && <PersonalInfo user={activeUser} onUpdate={syncCurrentUser} />}
-        </div>
+        {isLoadingProfile ? (
+          <LoadingState variant="profile" />
+        ) : (
+          <>
+            {activeUser && <ProfileHero user={activeUser} onUpdate={syncCurrentUser} />}
+            <div className={styles.detailsColumn}>
+              {activeUser && <PersonalInfo user={activeUser} onUpdate={syncCurrentUser} />}
+            </div>
+          </>
+        )}
       </div>
     </WorkspaceShell>
   );

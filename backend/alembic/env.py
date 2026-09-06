@@ -12,7 +12,6 @@ import app.models.sprint_model
 import app.models.task_model
 import app.models.logworks
 import app.models.notification_model
-import app.models.ai_model
 import app.models.task_log_model
 import app.models.refresh_token_model
 

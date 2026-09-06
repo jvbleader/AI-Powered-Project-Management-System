@@ -70,11 +70,26 @@ export function toVietnamDateInputValue(date: Date = new Date()) {
   return formatter.format(date);
 }
 
+export function formatDateNumeric(date: string) {
+  if (!date) return "(Chưa có)";
+  const d = new Date(normalizeApiDateString(date));
+  if (isNaN(d.getTime())) return "(Không hợp lệ)";
+  const [year, month, day] = toVietnamDateInputValue(d).split("-");
+  return `${day}/${month}/${year}`;
+}
+
 export function formatRange(start: string, end: string) {
   if (!start && !end) return "Chưa xác định";
   if (!end) return `${formatDate(start)} - (Chưa có)`;
   if (!start) return `(Chưa có) - ${formatDate(end)}`;
   return `${formatDate(start)} - ${formatDate(end)}`;
+}
+
+export function formatRangeNumeric(start: string, end: string) {
+  if (!start && !end) return "Chưa xác định";
+  if (!end) return `${formatDateNumeric(start)} - (Chưa có)`;
+  if (!start) return `(Chưa có) - ${formatDateNumeric(end)}`;
+  return `${formatDateNumeric(start)} - ${formatDateNumeric(end)}`;
 }
 
 export function formatHours(hours: number) {
@@ -109,6 +124,68 @@ export function roleLabel(role: UserRole) {
   };
 
   return labels[normalized] ?? normalized;
+}
+
+const COMPOUND_ROLE_TAGS: Record<string, string[]> = {
+  [ROLE_PM]: ["Manager", "Group Manager"],
+  "Manager / Group Manager": ["Manager", "Group Manager"],
+  "Project Manager / Product Owner / Group Member": ["Manager", "Group Manager"],
+};
+
+export function splitSlashLabels(label: string): string[] {
+  const trimmed = (label || "").trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const mapped = COMPOUND_ROLE_TAGS[trimmed];
+  if (mapped) {
+    return mapped;
+  }
+
+  return trimmed
+    .split(/\s*[/／]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+export function toRoleList(
+  roles: UserRole | readonly UserRole[] | null | undefined,
+  fallback?: UserRole,
+): UserRole[] {
+  if (Array.isArray(roles)) {
+    return roles.filter((role) => typeof role === "string" && role.trim().length > 0);
+  }
+
+  if (typeof roles === "string" && roles.trim()) {
+    return [roles];
+  }
+
+  if (fallback && fallback.trim()) {
+    return [fallback];
+  }
+
+  return [];
+}
+
+export function roleDisplayLabels(
+  roles: UserRole | readonly UserRole[] | null | undefined,
+  fallback?: UserRole,
+): string[] {
+  const labels: string[] = [];
+  const seen = new Set<string>();
+
+  for (const role of toRoleList(roles, fallback)) {
+    for (const label of splitSlashLabels(roleLabel(role))) {
+      if (seen.has(label)) {
+        continue;
+      }
+      seen.add(label);
+      labels.push(label);
+    }
+  }
+
+  return labels;
 }
 
 export function isAdminRole(role: UserRole) {

@@ -1,8 +1,5 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import type {
-  AiMessage,
-  AiReport,
-  AiWorkspaceBrief,
   AdminDeactivateUserPayload,
   ApiResponse,
   AuthSession,
@@ -265,23 +262,6 @@ export const apiEndpoints = {
     updateProfile: { method: "PUT" as EndpointMethod, path: "/me/profile" },
     updatePhone: { method: "PUT" as EndpointMethod, path: "/me/phone" },
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
-  },
-  ai: {
-    classifyIntent: { path: "/api/ai/classify-intent", method: "POST" },
-    chat: { path: "/api/ai/chat", method: "POST" },
-    sessions: { path: "/api/ai/sessions", method: "GET" },
-    sessionMessages: (id: string) => ({
-      path: `/api/ai/sessions/${id}/messages`,
-      method: "GET" as EndpointMethod,
-    }),
-    updateSession: (id: string) => ({
-      path: `/api/ai/sessions/${id}`,
-      method: "PUT" as EndpointMethod,
-    }),
-    clearSession: (id: string) => ({
-      path: `/api/ai/sessions/${id}`,
-      method: "DELETE" as EndpointMethod,
-    }),
   },
 } as const;
 

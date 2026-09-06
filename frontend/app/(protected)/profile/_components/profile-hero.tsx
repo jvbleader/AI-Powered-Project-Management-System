@@ -3,7 +3,7 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { StatusPill } from "@/components/ui";
 import { UserAvatar } from "@/components/user-avatar";
-import { hasCompanywideProjectAccess, isAdminRole, isLeaderRole, isManagerRole, roleLabel } from "@/lib/utils/format";
+import { RoleTags } from "@/components/role-tags";
 import { userApi } from "@/services/api";
 import { markIntentionalLogout, signOutAll } from "@/services/auth/session";
 import type { UserProfile } from "@/types";
@@ -20,13 +20,6 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
   const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [isSigningOutAll, setIsSigningOutAll] = useState(false);
-  const roleTone = isAdminRole(user.role)
-    ? "critical"
-    : hasCompanywideProjectAccess(user.role, user.department)
-      ? "on-track"
-      : isManagerRole(user.role) || isLeaderRole(user.role)
-        ? "accent"
-        : "neutral";
 
   function handleSelectAvatar() {
     setAvatarNotice(null);
@@ -131,10 +124,7 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
         <h1 className={styles.heroName}>{user.name}</h1>
         <span className={styles.heroEmail}>{user.email}</span>
         <div className={styles.heroBadges}>
-          <StatusPill
-            label={roleLabel(user.role)}
-            tone={roleTone}
-          />
+          <RoleTags roles={user.roles?.length ? user.roles : user.role} />
           <StatusPill
             label={user.isActive ? "Hoạt động" : "Tạm dừng"}
             tone={user.isActive ? "on-track" : "watch"}

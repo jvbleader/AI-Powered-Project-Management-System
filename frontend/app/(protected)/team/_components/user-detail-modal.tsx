@@ -192,7 +192,6 @@ export function UserDetailModal({
               <section className={styles.detailPanel}>
                 <div className={styles.panelHeader}>
                   <div>
-                    <span className="kicker">Truy cập & bảo mật</span>
                     <h3>Trạng thái và mật khẩu</h3>
                   </div>
                 </div>
@@ -236,7 +235,6 @@ export function UserDetailModal({
               <section className={`${styles.detailPanel} ${styles.detailPanelRoles}`}>
                 <div className={styles.panelHeader}>
                   <div>
-                    <span className="kicker">Phân quyền</span>
                     <h3>Phòng ban & vai trò</h3>
                   </div>
                 </div>

@@ -1,0 +1,67 @@
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--filtered-list-gap);
+  margin-top: 0;
+  flex: 0 0 auto;
+  font-size: var(--table-font-size);
+  line-height: var(--table-line-height);
+}
+
+.bar p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.pageStatus {
+  min-width: 5.5rem;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.actions :global(.primary-button).pageButton,
+.actions :global(.secondary-button).pageButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 38px;
+  padding: 0.5rem 0.9rem;
+  font-size: var(--table-font-size);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.actions :global(.primary-button).pageButton:hover,
+.actions :global(.secondary-button).pageButton:hover {
+  transform: none;
+}
+
+.pageButton svg {
+  flex-shrink: 0;
+  display: block;
+}
+
+@media (max-width: 780px) {
+  .bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions {
+    justify-content: flex-end;
+  }
+}

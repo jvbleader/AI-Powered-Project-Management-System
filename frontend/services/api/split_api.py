@@ -9,12 +9,8 @@ with open(index_file, 'r') as f:
 
 # I will just write a simple script to extract the objects and create files, but first I need a generic core.ts
 core_content = """import {
-  aiInsights,
-  aiMessages,
-  aiReports,
   logworkEntries,
   projects,
-  suggestedPrompts,
   sprints,
   taskAttachments,
   taskComments,
@@ -47,9 +43,6 @@ import {
   updateDirectoryUserStatus,
 } from "@/services/users/directory";
 import type {
-  AiMessage,
-  AiReport,
-  AiWorkspaceBrief,
   AdminDeactivateUserPayload,
   ApiResponse,
   AuthSession,
@@ -277,11 +270,6 @@ export const apiEndpoints = {
     updateStatus: (userId: string) => ({ method: "PATCH" as EndpointMethod, path: `/api/users/${userId.replace("usr-", "")}/status` }),
     updatePhone: { method: "PUT" as EndpointMethod, path: "/me/phone" },
     updateAvatar: { method: "PUT" as EndpointMethod, path: "/me/avatar" },
-  },
-  ai: {
-    classifyIntent: { method: "POST" as EndpointMethod, path: "/api/ai/classify-intent" },
-    chat: { method: "POST" as EndpointMethod, path: "/api/ai/chat" },
-    sessions: { method: "GET" as EndpointMethod, path: "/api/ai/sessions" },
   },
 } as const;
 
