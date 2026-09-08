@@ -6,16 +6,15 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { markIntentionalLogout, signOut } from "@/services/auth/session";
 import { primeTasksPageData } from "@/services/page-cache/tasks-page";
-import { AssistantBubble } from "@/components/assistant-bubble";
 import { UserAvatar } from "@/components/user-avatar";
 import { useAuthSession } from "@/hooks/use-session";
 import { NavIcon } from "@/components/nav-icon";
 import { ChangePasswordModal } from "@/components/change-password-modal";
-import { useNotifications } from "@/contexts/notification-context";
+import { useNotifications, type Notification as AppNotification } from "@/contexts/notification-context";
 import {
   canAccessLogworkApprovalsRole,
   canAccessTeamDirectoryRole,
-  isAdminRole,
+  canManageUsers,
   roleLabel,
 } from "@/lib/utils/format";
 import { resolveNotificationLink } from "@/lib/utils/notification-link";
@@ -25,8 +24,10 @@ const navigation = [
   { href: "/dashboard", label: "Tổng quan", icon: "grid" },
   { href: "/projects", label: "Dự án", icon: "layers" },
   { href: "/tasks", label: "Nhiệm vụ", icon: "kanban" },
-  { href: "/logwork-approvals", label: "Duyệt log work", icon: "check-circle" },
+  { href: "/logwork-approvals", label: "Log work", icon: "check-circle" },
   { href: "/team", label: "Nhân sự", icon: "users" },
+  { href: "/departments", label: "Phòng ban", icon: "building" },
+  { href: "/roles", label: "Vai trò", icon: "badge" },
 ];
 
 function classNames(...values: Array<string | false | null | undefined>) {
@@ -40,8 +41,8 @@ export function WorkspaceShell({
   highlightLabel,
   highlightValue = "",
   headerAction,
-  assistantProjectId,
   noBottomPadding,
+  noScroll,
   children,
 }: {
   shellData: WorkspaceShellData;
@@ -50,8 +51,8 @@ export function WorkspaceShell({
   highlightLabel: string;
   highlightValue: string;
   headerAction?: ReactNode;
-  assistantProjectId?: string | null;
   noBottomPadding?: boolean;
+  noScroll?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -61,8 +62,10 @@ export function WorkspaceShell({
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [liveNotice, setLiveNotice] = useState<AppNotification | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const liveNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -74,6 +77,28 @@ export function WorkspaceShell({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    function handleNewNotification(event: Event) {
+      const detail = (event as CustomEvent<AppNotification>).detail;
+      if (!detail?.id) return;
+      setLiveNotice(detail);
+      if (liveNoticeTimerRef.current) {
+        clearTimeout(liveNoticeTimerRef.current);
+      }
+      liveNoticeTimerRef.current = setTimeout(() => {
+        setLiveNotice((current) => (current?.id === detail.id ? null : current));
+      }, 6000);
+    }
+
+    window.addEventListener("new_notification", handleNewNotification);
+    return () => {
+      window.removeEventListener("new_notification", handleNewNotification);
+      if (liveNoticeTimerRef.current) {
+        clearTimeout(liveNoticeTimerRef.current);
+      }
+    };
+  }, []);
+
   const activeShellData = session
     ? {
       ...shellData,
@@ -82,10 +107,11 @@ export function WorkspaceShell({
     : shellData;
   const currentUser = activeShellData.currentUser;
   const currentUserId = activeShellData.currentUser.id;
-  const isAdminViewer = isAdminRole(currentUser.role);
+  const isAdminViewer = canManageUsers(currentUser.role, currentUser.isAdmin);
   const canViewTeamNavigation = canAccessTeamDirectoryRole(
     currentUser.role,
     currentUser.department,
+    currentUser.isAdmin,
   );
   const canViewLogworkApprovals = canAccessLogworkApprovalsRole(currentUser.role);
   const sidebarUserTitle = currentUser.department
@@ -93,6 +119,10 @@ export function WorkspaceShell({
     : roleLabel(currentUser.role) || currentUser.title;
 
   const filteredNavigation = navigation.filter((item) => {
+    if (item.href === "/departments" || item.href === "/roles") {
+      return isAdminViewer;
+    }
+
     if (isAdminViewer) {
       if (item.href === "/logwork-approvals") return false;
       return item.href === "/team";
@@ -114,9 +144,20 @@ export function WorkspaceShell({
       isAdminViewer &&
       pathname &&
       !pathname.startsWith("/team") &&
-      !pathname.startsWith("/profile")
+      !pathname.startsWith("/profile") &&
+      !pathname.startsWith("/departments") &&
+      !pathname.startsWith("/roles")
     ) {
       router.replace("/team");
+    }
+  }, [isAdminViewer, pathname, router]);
+
+  useEffect(() => {
+    if (
+      !isAdminViewer &&
+      (pathname?.startsWith("/departments") || pathname?.startsWith("/roles"))
+    ) {
+      router.replace("/dashboard");
     }
   }, [isAdminViewer, pathname, router]);
 
@@ -203,15 +244,15 @@ export function WorkspaceShell({
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-logo-container" style={{ display: "flex", alignItems: "center", marginTop: "0.5rem", marginBottom: "1.5rem", padding: "0.5rem 0.5rem" }}>
+        <div className="sidebar-logo-container">
           {/* Typographic Logo */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", userSelect: "none" }}>
-            <div style={{ fontSize: "2rem", lineHeight: 1, fontFamily: "var(--font-inter), system-ui, sans-serif", display: "flex", alignItems: "center", letterSpacing: "0.04em" }}>
-              <span style={{ color: "#ffffff", fontWeight: 800 }}>AP</span>
-              <span style={{ color: "#60a5fa", fontWeight: 500 }}>MS</span>
-              
+          <Link href="/dashboard" className="sidebar-logo-brand" title="Về trang tổng quan">
+            <div className="sidebar-logo-wordmark">
+              <span className="sidebar-logo-ap">AP</span>
+              <span className="sidebar-logo-ms">MS</span>
+
               {/* AI Sparks Accent */}
-              <div style={{ display: "flex", gap: "0.1rem", marginLeft: "0.2rem", alignSelf: "flex-start", marginTop: "0.15rem" }}>
+              <div className="sidebar-logo-sparks" aria-hidden="true">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="spark-grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -221,37 +262,50 @@ export function WorkspaceShell({
                   </defs>
                   <path d="M12 0C12 6.62742 17.3726 12 24 12C17.3726 12 12 17.3726 12 24C12 17.3726 6.62742 12 0 12C6.62742 12 12 6.62742 12 0Z" fill="url(#spark-grad)"/>
                 </svg>
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginTop: "0.45rem" }}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="sidebar-logo-spark-sm">
                   <path d="M12 0C12 6.62742 17.3726 12 24 12C17.3726 12 12 17.3726 12 24C12 17.3726 6.62742 12 0 12C6.62742 12 12 6.62742 12 0Z" fill="#60a5fa"/>
                 </svg>
               </div>
             </div>
-            
-            <span style={{ fontSize: "0.55rem", color: "#94a3b8", fontWeight: 600, letterSpacing: "0.15em", textTransform: "uppercase", lineHeight: 1, fontFamily: "var(--font-inter), system-ui, sans-serif", marginLeft: "0.1rem" }}>
+
+            <span className="sidebar-logo-tagline">
               Smart Projects Management
             </span>
-          </div>
+          </Link>
         </div>
 
-        <nav className="sidebar-nav" aria-label="Primary" style={{ marginTop: "0.5rem" }}>
-          {filteredNavigation.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              data-testid={`nav-${item.href.slice(1)}`}
-              className={classNames("nav-link", pathname === item.href && "nav-link-active")}
-              onPointerEnter={item.href === "/tasks" ? warmTasksPage : undefined}
-              onFocus={item.href === "/tasks" ? warmTasksPage : undefined}
-              onPointerDown={item.href === "/tasks" ? warmTasksPage : undefined}
-            >
-              <NavIcon icon={item.icon} />
-              <span>{item.label}</span>
-            </Link>
-          ))}
+        <nav className="sidebar-nav" aria-label="Primary">
+          {filteredNavigation.map((item) => {
+            const isItemActive =
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : pathname?.startsWith(item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                data-testid={`nav-${item.href.slice(1)}`}
+                className={classNames("nav-link", isItemActive && "nav-link-active")}
+                onPointerEnter={item.href === "/tasks" ? warmTasksPage : undefined}
+                onFocus={item.href === "/tasks" ? warmTasksPage : undefined}
+                onPointerDown={item.href === "/tasks" ? warmTasksPage : undefined}
+              >
+                <NavIcon icon={item.icon} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
       </aside>
 
-      <main className="workspace-main" style={noBottomPadding ? { paddingBottom: 0 } : undefined}>
+      <main 
+        className="workspace-main" 
+        style={{ 
+          ...(noBottomPadding ? { paddingBottom: 0 } : {}),
+          ...(noScroll ? { overflow: 'hidden' } : {})
+        }}
+      >
         <header className="topbar">
           <div>
             <h1>{heading}</h1>
@@ -451,13 +505,26 @@ export function WorkspaceShell({
             </div>
           </div>
         </header>
-        <div className="page-stack">{children}</div>
+        <div className="page-stack" style={noScroll ? { flex: 1, minHeight: 0 } : {}}>{children}</div>
       </main>
-
-      <AssistantBubble alertCount={activeShellData.alertCount} projectId={assistantProjectId} />
 
       {isPasswordModalOpen ? (
         <ChangePasswordModal session={session} onClose={() => setIsPasswordModalOpen(false)} />
+      ) : null}
+
+      {liveNotice ? (
+        <button
+          type="button"
+          className="notification-live-toast"
+          onClick={() => {
+            markAsRead(liveNotice.id);
+            router.push(resolveNotificationLink(liveNotice.link));
+            setLiveNotice(null);
+          }}
+        >
+          <strong>{liveNotice.title}</strong>
+          <span>{liveNotice.content}</span>
+        </button>
       ) : null}
     </div>
   );

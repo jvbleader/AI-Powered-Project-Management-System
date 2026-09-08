@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { taskApi } from "@/services/api";
 import { EnrichedTask, Project } from "@/types";
 import { EmptyState, Surface, StatusPill } from "@/components/ui";
-import { formatDate, taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
+import { formatAssigneeNames, formatDate, taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
 
 interface GroupedKanbanBoardProps {
   projects: Project[];
@@ -146,7 +146,7 @@ export function GroupedKanbanBoard({
 
       <div className="task-kanban-card-meta">
         <span>
-          <strong>Người phụ trách:</strong> {task.assignee?.name || "Chưa phân công"}
+          <strong>Người phụ trách:</strong> {formatAssigneeNames(task, "Chưa phân công")}
         </span>
         <span>
           <strong>Bắt đầu:</strong> {formatDate(task.startDate)}

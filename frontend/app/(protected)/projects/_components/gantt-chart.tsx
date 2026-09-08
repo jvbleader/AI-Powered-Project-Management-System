@@ -3,10 +3,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   differenceInDays,
   generateDateRange,
+  formatAssigneeNames,
   taskPriorityLabel,
   taskStatusLabel,
 } from "@/lib/utils/format";
-import type { EnrichedTask } from "@/types";
+import type { EnrichedTask, UserProfile } from "@/types";
 import styles from "../styles/gantt.module.css";
 
 function SignalIcon({ level }: { level: "low" | "medium" | "high" | "critical" }) {
@@ -18,14 +19,17 @@ function SignalIcon({ level }: { level: "low" | "medium" | "high" | "critical" }
   };
   const activeBars = bars[level];
   const color = level === "critical" ? "#e11d48" : level === "high" ? "#d97706" : level === "medium" ? "#059669" : "#2563eb";
-  
+
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '14px' }}>
-      <div style={{ width: '3px', height: '6px', borderRadius: '1px', backgroundColor: activeBars[0] ? color : '#e2e8f0' }} />
-      <div style={{ width: '3px', height: '10px', borderRadius: '1px', backgroundColor: activeBars[1] ? color : '#e2e8f0' }} />
-      <div style={{ width: '3px', height: '14px', borderRadius: '1px', backgroundColor: activeBars[2] ? color : '#e2e8f0' }} />
-      {level === "critical" && (
-        <svg style={{ marginLeft: '2px', color: '#e11d48' }} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', height: '14px' }}>
+      {level !== "critical" ? (
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '14px' }}>
+          <div style={{ width: '3px', height: '6px', borderRadius: '1px', backgroundColor: activeBars[0] ? color : '#e2e8f0' }} />
+          <div style={{ width: '3px', height: '10px', borderRadius: '1px', backgroundColor: activeBars[1] ? color : '#e2e8f0' }} />
+          <div style={{ width: '3px', height: '14px', borderRadius: '1px', backgroundColor: activeBars[2] ? color : '#e2e8f0' }} />
+        </div>
+      ) : (
+        <svg style={{ color: '#e11d48' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
       )}
     </div>
   );
@@ -43,8 +47,9 @@ interface WbsNode {
   level: number;
 }
 
-const MIN_NAME_COL_WIDTH = 160;
-const DEFAULT_NAME_COL_WIDTH = 420;
+const MIN_NAME_COL_WIDTH = 140;
+const DEFAULT_NAME_COL_WIDTH = 220;
+const MAX_NAME_COL_WIDTH = 400;
 const STATUS_COL_WIDTH = 180;
 const PRIORITY_COL_WIDTH = 150;
 const DEFAULT_ASSIGNEE_COL_WIDTH = 180;
@@ -91,22 +96,74 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
   const router = useRouter();
   const searchParams = useSearchParams();
   const highlightTaskId = searchParams.get("highlightTaskId");
-  const highlightColor = searchParams.get("highlightColor") || "blue";
+  const highlightColor = searchParams.get("highlightColor") || "yellow";
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightTaskId);
+  const [activeHighlightColor, setActiveHighlightColor] = useState<string>(highlightColor || "yellow");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [nameColWidth, setNameColWidth] = useState(DEFAULT_NAME_COL_WIDTH);
   const [assigneeColWidth, setAssigneeColWidth] = useState(DEFAULT_ASSIGNEE_COL_WIDTH);
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+  const [tooltipData, setTooltipData] = useState<{
+    task: EnrichedTask;
+    isEpic: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (highlightTaskId) {
+      setActiveHighlightId(highlightTaskId);
+      setActiveHighlightColor(highlightColor || "yellow");
+    }
+  }, [highlightTaskId, highlightColor]);
+
+  useEffect(() => {
+    const handleCustomHighlight = (
+      e: CustomEvent<{ taskId: string | number; projectId?: string | number }>,
+    ) => {
+      if (e.detail?.taskId) {
+        setActiveHighlightId(String(e.detail.taskId));
+        setActiveHighlightColor("yellow");
+      }
+    };
+    window.addEventListener("flowpilot-highlight-task", handleCustomHighlight as EventListener);
+    return () => {
+      window.removeEventListener("flowpilot-highlight-task", handleCustomHighlight as EventListener);
+    };
+  }, []);
+
+  const handleMouseMoveTooltip = useCallback((e: React.MouseEvent, task: EnrichedTask, isEpic: boolean) => {
+    setTooltipData({ task, isEpic, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleMouseLeaveTooltip = useCallback(() => {
+    setTooltipData(null);
+  }, []);
   const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
   const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
+  const leftPaneRef = useRef<HTMLDivElement>(null);
+  const rightPaneRef = useRef<HTMLDivElement>(null);
+  const syncingScroll = useRef(false);
+  const didInitTodayScroll = useRef(false);
 
-  const fixedPaneWidth = STATUS_COL_WIDTH + PRIORITY_COL_WIDTH + assigneeColWidth + START_COL_WIDTH + END_COL_WIDTH + ET_COL_WIDTH;
+  const fixedPaneWidth = STATUS_COL_WIDTH + PRIORITY_COL_WIDTH + assigneeColWidth + START_COL_WIDTH + ET_COL_WIDTH;
   const leftPaneWidth = nameColWidth + fixedPaneWidth;
+
+  const clampNameColWidth = useCallback((width: number) => {
+    let max = MAX_NAME_COL_WIDTH;
+    const pane = leftPaneRef.current;
+    if (pane) {
+      max = Math.min(max, Math.floor(pane.clientWidth * 0.65));
+    }
+    return Math.min(max, Math.max(MIN_NAME_COL_WIDTH, Math.round(width)));
+  }, []);
 
   // ── Resize handlers ────────────────────────────────────────────────────────
   const onResizeMouseMove = useCallback((e: MouseEvent) => {
     if (!dragState.current) return;
     const delta = e.clientX - dragState.current.startX;
-    setNameColWidth(Math.max(MIN_NAME_COL_WIDTH, dragState.current.startWidth + delta));
-  }, []);
+    setNameColWidth(clampNameColWidth(dragState.current.startWidth + delta));
+  }, [clampNameColWidth]);
 
   const onResizeMouseUp = useCallback(() => {
     dragState.current = null;
@@ -125,61 +182,16 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
     document.body.style.userSelect = "none";
   }, [nameColWidth, onResizeMouseMove, onResizeMouseUp]);
 
-  // ── Auto-fit: measure longest task title and assignee ──────────────────────
-  const measureColumns = useCallback((currentTasks: EnrichedTask[]) => {
-    if (currentTasks.length === 0) return;
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.font = "13px Inter, system-ui, sans-serif";
-    
-    let maxNameWidth = DEFAULT_NAME_COL_WIDTH;
-    let maxAssigneeWidth = DEFAULT_ASSIGNEE_COL_WIDTH;
-    
-    // We compute simple level indentation heuristically by finding parents
-    const getLevel = (taskId: string, tasksMap: Map<string, EnrichedTask>): number => {
-      let level = 0;
-      let curr = tasksMap.get(taskId);
-      while (curr && curr.parentTaskId) {
-        level++;
-        curr = tasksMap.get(curr.parentTaskId);
-      }
-      return level;
-    };
-    
-    const map = new Map(currentTasks.map(t => [t.id, t]));
-
-    currentTasks.forEach((task) => {
-      const level = getLevel(task.id, map);
-      const indent = level * 24;
-      const iconWidth = 30; // expand btn + icon
-      const measuredName = ctx.measureText(task.title).width + indent + iconWidth + 40;
-      if (measuredName > maxNameWidth) maxNameWidth = measuredName;
-      
-      const assigneeName = task.assignee?.name || "Chưa giao";
-      const measuredAssignee = ctx.measureText(assigneeName).width + 32;
-      if (measuredAssignee > maxAssigneeWidth) maxAssigneeWidth = measuredAssignee;
-    });
-    
-    setNameColWidth(Math.ceil(maxNameWidth));
-    setAssigneeColWidth(Math.ceil(maxAssigneeWidth));
-  }, []);
-
-  // Run auto-fit once when tasks load
-  useEffect(() => {
-    measureColumns(tasks);
-  }, [tasks, measureColumns]);
-  
   const onResizeDblClick = useCallback(() => {
-    measureColumns(tasks);
-  }, [tasks, measureColumns]);
+    setNameColWidth(DEFAULT_NAME_COL_WIDTH);
+  }, []);
 
   const rootNodes = useMemo(() => {
     const taskMap = new Map<string, WbsNode>();
     const roots: WbsNode[] = [];
 
     tasks.forEach((task) => {
-      taskMap.set(task.id, { task, children: [], level: 0 });
+      taskMap.set(task.id, { task: { ...task }, children: [], level: 0 });
     });
 
     tasks.forEach((task) => {
@@ -193,13 +205,88 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
       }
     });
 
-    function setLevels(nodes: WbsNode[], currentLevel: number) {
+    function collectLeafAssignees(n: WbsNode): UserProfile[] {
+      if (n.children.length === 0) {
+        if (n.task.assignees && n.task.assignees.length > 0) return n.task.assignees;
+        if (n.task.assignee) return [n.task.assignee];
+        if (n.task.assigneeName) {
+          return [{
+            id: String(n.task.id) + "-assignee",
+            name: n.task.assigneeName,
+            email: "",
+            role: "MEMBER",
+            title: "",
+            initials: n.task.assigneeName.slice(0, 2).toUpperCase(),
+            presence: "offline",
+          } as UserProfile];
+        }
+        return [];
+      }
+      const list: UserProfile[] = [];
+      n.children.forEach((c) => {
+        list.push(...collectLeafAssignees(c));
+      });
+      return list;
+    }
+
+    function setLevelsAndDates(nodes: WbsNode[], currentLevel: number) {
       nodes.forEach((node) => {
         node.level = currentLevel;
-        setLevels(node.children, currentLevel + 1);
+        setLevelsAndDates(node.children, currentLevel + 1);
+
+        if (node.children.length > 0) {
+          let minStart = Infinity;
+          let maxEnd = -Infinity;
+
+          node.children.forEach((child) => {
+            const start = child.task.startDate ? new Date(child.task.startDate).getTime() : Infinity;
+            const end = child.task.dueDate
+              ? new Date(child.task.dueDate).getTime()
+              : child.task.startDate
+                ? new Date(child.task.startDate).getTime()
+                : -Infinity;
+
+            if (start !== Infinity && start < minStart) minStart = start;
+            if (end !== -Infinity && end > maxEnd) maxEnd = end;
+          });
+
+          if (minStart !== Infinity) {
+            node.task.startDate = new Date(minStart).toISOString();
+          }
+          if (maxEnd !== -Infinity) {
+            node.task.dueDate = new Date(maxEnd).toISOString();
+          }
+
+          const sumEstimate = node.children.reduce((acc, c) => acc + (c.task.estimateHours || 0), 0);
+          const sumSpent = node.children.reduce((acc, c) => acc + (c.task.spentHours || 0), 0);
+          if (sumEstimate > 0) {
+            node.task.estimateHours = sumEstimate;
+          }
+          node.task.spentHours = sumSpent;
+
+          const leafAssignees = collectLeafAssignees(node);
+          const seen = new Set<string>();
+          const uniqueAssignees = leafAssignees.filter((a) => {
+            const key = String(a.id || a.name || "");
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          if (uniqueAssignees.length > 0) {
+            node.task.assignees = uniqueAssignees;
+            node.task.assignee = uniqueAssignees[0];
+            node.task.assigneeName = uniqueAssignees.map((a) => a.name).filter(Boolean).join(", ");
+          }
+        }
+      });
+
+      nodes.sort((a, b) => {
+        const startA = a.task.startDate ? new Date(a.task.startDate).getTime() : Infinity;
+        const startB = b.task.startDate ? new Date(b.task.startDate).getTime() : Infinity;
+        return startB - startA;
       });
     }
-    setLevels(roots, 0);
+    setLevelsAndDates(roots, 0);
     return roots;
   }, [tasks]);
 
@@ -208,26 +295,24 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
       return { dates: [], minDateStr: "", months: [] };
     }
 
-    let min = Infinity;
-    let max = -Infinity;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    let min = today.getTime() - 90 * dayMs;
+    let max = today.getTime() + 180 * dayMs;
 
     tasks.forEach((task) => {
       const start = task.startDate ? new Date(task.startDate).getTime() : NaN;
       const end = task.dueDate ? new Date(task.dueDate).getTime() : (isNaN(start) ? NaN : start);
-      
+
       if (!isNaN(start) && start < min) min = start;
       if (!isNaN(end) && end > max) max = end;
     });
 
-    if (min === Infinity || max === -Infinity) {
-      min = Date.now();
-      max = Date.now();
-    }
-
     const minDate = new Date(min);
-    minDate.setDate(minDate.getDate() - 15); // Add padding before
+    minDate.setDate(minDate.getDate() - 7);
     const maxDate = new Date(max);
-    maxDate.setDate(maxDate.getDate() + 180); // Add 180 days to ensure grid fills screen
+    maxDate.setDate(maxDate.getDate() + 14);
 
     const minDateStr = minDate.toISOString().split("T")[0];
     const maxDateStr = maxDate.toISOString().split("T")[0];
@@ -255,6 +340,39 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
     return diff * DAY_COLUMN_WIDTH + DAY_COLUMN_WIDTH / 2;
   }, [minDateStr, todayStr, dates.length]);
 
+  const onLeftScroll = useCallback(() => {
+    if (syncingScroll.current || !leftPaneRef.current || !rightPaneRef.current) return;
+    syncingScroll.current = true;
+    rightPaneRef.current.scrollTop = leftPaneRef.current.scrollTop;
+    requestAnimationFrame(() => {
+      syncingScroll.current = false;
+    });
+  }, []);
+
+  const onRightScroll = useCallback(() => {
+    if (syncingScroll.current || !leftPaneRef.current || !rightPaneRef.current) return;
+    syncingScroll.current = true;
+    leftPaneRef.current.scrollTop = rightPaneRef.current.scrollTop;
+    requestAnimationFrame(() => {
+      syncingScroll.current = false;
+    });
+  }, []);
+
+  useEffect(() => {
+    didInitTodayScroll.current = false;
+  }, [minDateStr, todayStr, dates.length]);
+
+  useEffect(() => {
+    if (didInitTodayScroll.current || todayOffset == null) return;
+    const frame = requestAnimationFrame(() => {
+      if (!rightPaneRef.current) return;
+      // Trừ đi 50px để đường "Hôm nay" không bị sát vào mép trái màn hình
+      rightPaneRef.current.scrollLeft = Math.max(0, todayOffset - 50);
+      didInitTodayScroll.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [todayOffset, timelineWidth]);
+
   const toggleExpand = (taskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpanded((prev) => ({
@@ -271,7 +389,7 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
     }
   };
 
-  const renderTree = (nodes: WbsNode[]): React.ReactNode => {
+  const renderTree = (nodes: WbsNode[], pane: "left" | "right"): React.ReactNode => {
     return nodes.map((node) => {
       const isExpanded = expanded[node.task.id] !== false;
       const hasChildren = node.children.length > 0;
@@ -290,7 +408,22 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
         circleClass = styles.circleBlue;
       }
 
-      const rowClass = `${styles.ganttRow} ${isRoot ? styles.ganttRowRoot : ""}`;
+      const isHovered = hoveredTaskId === node.task.id;
+      const isHighlighted =
+        Boolean(activeHighlightId) &&
+        (String(node.task.id) === String(activeHighlightId) ||
+          `task-${node.task.id}` === String(activeHighlightId) ||
+          String(node.task.id).replace(/^task-/, "") === String(activeHighlightId).replace(/^task-/, ""));
+      const highlightClass = isHighlighted
+        ? activeHighlightColor === "red"
+          ? styles.flashHighlightRed
+          : activeHighlightColor === "yellow"
+            ? styles.flashHighlightYellow
+            : activeHighlightColor === "green"
+              ? styles.flashHighlightGreen
+              : styles.flashHighlightBlue
+        : "";
+      const rowClass = `${styles.ganttRow} ${isRoot ? styles.ganttRowRoot : ""} ${isHovered ? styles.ganttRowHovered : ""} ${highlightClass}`;
 
       // Triangle icon
       const ToggleIcon = isExpanded ? (
@@ -338,185 +471,247 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
       })();
 
       return (
-        <React.Fragment key={node.task.id}>
-          <div 
-            id={`gantt-row-${node.task.id}`}
-            className={`${rowClass} ${String(node.task.id) === String(highlightTaskId) ? (highlightColor === "red" ? styles.flashHighlightRed : highlightColor === "green" ? styles.flashHighlightGreen : styles.flashHighlightBlue) : ""}`}
-            style={{ position: "relative" }}
+        <React.Fragment key={`${pane}-${node.task.id}`}>
+          <div
+            id={pane === "left" ? `gantt-row-${node.task.id}` : undefined}
+            className={rowClass}
+            style={{ position: "relative", width: pane === "right" ? timelineWidth : undefined }}
+            onMouseEnter={() => setHoveredTaskId(node.task.id)}
+            onMouseLeave={() => setHoveredTaskId((current) => (current === node.task.id ? null : current))}
           >
-            {/* Left Cell */}
-            <div className={styles.ganttLeftCell} style={{ width: `${leftPaneWidth}px` }} onClick={() => handleRowClick(node.task.id)}>
-              <div className={styles.ganttLeftCol} style={{ width: `${nameColWidth}px` }}>
-                <div style={{ width: `${node.level * 28}px`, flexShrink: 0 }} />
-                {hasChildren ? (
-                  <button className={styles.expandBtn} onClick={(e) => toggleExpand(node.task.id, e)}>
-                    {ToggleIcon}
-                  </button>
-                ) : (
-                  <span className={styles.expandPlaceholder} />
-                )}
-                <span className={styles.taskIcon}>{taskIcon}</span>
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {node.task.title}
-                </span>
-                {onAddSubtask ? (
-                  <button
-                    type="button"
-                    className={styles.expandBtn}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onAddSubtask(node.task.id);
-                    }}
-                    title="Tạo subtask"
-                    style={{ marginLeft: "auto" }}
-                  >
-                    +
-                  </button>
-                ) : null}
-              </div>
-              <div className={styles.ganttLeftCol} style={{ width: `${STATUS_COL_WIDTH}px` }}>
-                <div className={styles.statusIndicator}>
-                  <div className={`${styles.statusCircle} ${circleClass}`} />
-                  <span className={styles.statusText}>{stateText}</span>
+            {pane === "left" ? (
+              <>
+                <div className={`${styles.ganttLeftCol} ${styles.stickyCol}`} style={{ width: `${nameColWidth}px`, minWidth: `${nameColWidth}px`, maxWidth: `${nameColWidth}px` }} onClick={() => handleRowClick(node.task.id)}>
+                  <div style={{ width: `${node.level * 28}px`, flexShrink: 0 }} />
+                  {hasChildren ? (
+                    <button className={styles.expandBtn} onClick={(e) => toggleExpand(node.task.id, e)}>
+                      {ToggleIcon}
+                    </button>
+                  ) : (
+                    <span className={styles.expandPlaceholder} />
+                  )}
+                  <span className={styles.taskIcon}>{taskIcon}</span>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {node.task.title}
+                  </span>
+                  {onAddSubtask ? (
+                    <button
+                      type="button"
+                      className={styles.expandBtn}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAddSubtask(node.task.id);
+                      }}
+                      title="Tạo subtask"
+                      style={{ marginLeft: "auto" }}
+                    >
+                      +
+                    </button>
+                  ) : null}
                 </div>
-              </div>
-              <div
-                className={`${styles.ganttLeftCol} ${styles.priorityCol}`}
-                style={{ width: `${PRIORITY_COL_WIDTH}px` }}
-              >
-                <div className={styles.priorityIndicatorWrapper}>
-                  {priorityPresentation.icon}
-                  <span className={priorityPresentation.textClass}>
-                    {priorityPresentation.label}
+                <div className={styles.ganttLeftCol} style={{ width: `${STATUS_COL_WIDTH}px`, minWidth: `${STATUS_COL_WIDTH}px` }} onClick={() => handleRowClick(node.task.id)}>
+                  <div className={styles.statusIndicator}>
+                    <div className={`${styles.statusCircle} ${circleClass}`} />
+                    <span className={styles.statusText}>{stateText}</span>
+                  </div>
+                </div>
+                <div
+                  className={`${styles.ganttLeftCol} ${styles.priorityCol}`}
+                  style={{ width: `${PRIORITY_COL_WIDTH}px`, minWidth: `${PRIORITY_COL_WIDTH}px` }}
+                  onClick={() => handleRowClick(node.task.id)}
+                >
+                  <div className={styles.priorityIndicatorWrapper}>
+                    {priorityPresentation.icon}
+                    <span className={priorityPresentation.textClass}>
+                      {priorityPresentation.label}
+                    </span>
+                  </div>
+                </div>
+                <div className={styles.ganttLeftCol} style={{ width: `${assigneeColWidth}px`, minWidth: `${assigneeColWidth}px`, maxWidth: `${assigneeColWidth}px` }} onClick={() => handleRowClick(node.task.id)}>
+                  <span className={styles.ganttMetaText} title={formatAssigneeNames(node.task)}>
+                    {formatAssigneeNames(node.task)}
                   </span>
                 </div>
-              </div>
-              <div className={styles.ganttLeftCol} style={{ width: `${assigneeColWidth}px` }}>
-                <span className={styles.ganttMetaText}>
-                  {node.task.assignee?.name || "Chưa giao"}
-                </span>
-              </div>
-              <div className={styles.ganttLeftCol} style={{ width: `${START_COL_WIDTH}px` }}>
-                <span className={styles.ganttMetaText}>
-                  {new Date(node.task.startDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                </span>
-              </div>
-              <div className={styles.ganttLeftCol} style={{ width: `${END_COL_WIDTH}px` }}>
-                <span className={styles.ganttMetaText}>
-                  {new Date(effectiveDueDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                </span>
-              </div>
-              <div className={styles.ganttLeftCol} style={{ width: `${ET_COL_WIDTH}px` }}>
-                <span className={styles.ganttMetaText} style={{ fontWeight: 500 }}>
-                  {node.task.spentHours || 0}h / {node.task.estimateHours || 0}h
-                </span>
-              </div>
-            </div>
+                <div className={styles.ganttLeftCol} style={{ width: `${START_COL_WIDTH}px`, minWidth: `${START_COL_WIDTH}px`, flexDirection: "column", justifyContent: "center", alignItems: "flex-start", gap: "2px" }} onClick={() => handleRowClick(node.task.id)}>
+                  <span className={styles.ganttMetaText}>
+                    {new Date(node.task.startDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  </span>
+                  <span className={styles.ganttMetaText} style={{ fontSize: "0.85em", color: "var(--foreground-muted)" }}>
+                    {new Date(effectiveDueDate).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  </span>
+                </div>
+                <div className={styles.ganttLeftCol} style={{ width: `${ET_COL_WIDTH}px`, minWidth: `${ET_COL_WIDTH}px` }} onClick={() => handleRowClick(node.task.id)}>
+                  <span className={styles.ganttMetaText} style={{ fontWeight: 500 }}>
+                    {node.task.spentHours || 0}h / {node.task.estimateHours || 0}h
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div
+                className={styles.ganttRightCell}
+                style={{
+                  width: `${timelineWidth}px`,
+                  minWidth: `${timelineWidth}px`,
+                  gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`,
+                  cursor: "pointer",
+                }}
+                onClick={() => handleRowClick(node.task.id)}
+              >
+                {(() => {
+                  const isLeaf = !hasChildren;
+                  const isEpic = hasChildren && isRoot;
+                  const isIntermediateParent = hasChildren && !isRoot;
+                  const safeStartCol = Number.isFinite(startCol) ? Math.max(1, startCol) : 1;
+                  const safeEndCol = Number.isFinite(endCol)
+                    ? Math.max(safeStartCol + 1, endCol)
+                    : safeStartCol + 1;
 
-            {/* Right Cell */}
-            <div
-              className={styles.ganttRightCell}
-              style={{
-                width: `${timelineWidth}px`,
-                minWidth: `${timelineWidth}px`,
-                gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`,
-                cursor: "pointer",
-              }}
-              onClick={() => handleRowClick(node.task.id)}
-            >
-              {(() => {
-                const isLeaf = !hasChildren;
-                const isEpic = hasChildren && isRoot;
-                const isIntermediateParent = hasChildren && !isRoot;
-                const safeStartCol = Number.isFinite(startCol) ? Math.max(1, startCol) : 1;
-                const safeEndCol = Number.isFinite(endCol)
-                  ? Math.max(safeStartCol + 1, endCol)
-                  : safeStartCol + 1;
+                  if (isEpic) {
+                    return (
+                      <div
+                        style={{
+                          gridColumnStart: safeStartCol,
+                          gridColumnEnd: safeEndCol,
+                          position: "relative",
+                          marginTop: "12px",
+                        }}
+                        onMouseMove={(e) => handleMouseMoveTooltip(e, node.task, true)}
+                        onMouseLeave={handleMouseLeaveTooltip}
+                      >
+                        <div style={{ height: "8px", background: "#1a365d", width: "100%", borderTopLeftRadius: "2px", borderTopRightRadius: "2px" }} />
+                        <div style={{ position: "absolute", left: 0, top: "8px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderRight: "6px solid transparent" }} />
+                        <div style={{ position: "absolute", right: 0, top: "8px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderLeft: "6px solid transparent" }} />
+                      </div>
+                    );
+                  }
 
-                if (isEpic) {
-                  return (
-                    <div
-                      style={{
-                        gridColumnStart: safeStartCol,
-                        gridColumnEnd: safeEndCol,
-                        position: "relative",
-                        marginTop: "8px",
-                        height: "10px",
-                        backgroundColor: "#1a365d",
-                        zIndex: 2,
-                        borderTopLeftRadius: "2px",
-                        borderTopRightRadius: "2px",
-                      }}
-                      title={`[Epic] ${node.task.title}`}
-                    >
-                      <div style={{ position: "absolute", left: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderRight: "6px solid transparent" }} />
-                      <div style={{ position: "absolute", right: 0, top: "10px", width: 0, height: 0, borderTop: "8px solid #1a365d", borderLeft: "6px solid transparent" }} />
-                    </div>
-                  );
-                }
+                  if (isIntermediateParent) {
+                    return null;
+                  }
 
-                if (isIntermediateParent) {
+                  if (isLeaf) {
+                    const progressPct = Math.min(
+                      100,
+                      Math.round(((node.task.spentHours || 0) / (node.task.estimateHours || 1)) * 100),
+                    );
+                    const hasEstimate = (node.task.estimateHours || 0) > 0;
+
+                    return (
+                      <div
+                        className={`${styles.ganttBar} ${priorityPresentation.barClass}`}
+                        style={{
+                          gridColumnStart: safeStartCol,
+                          gridColumnEnd: safeEndCol,
+                        }}
+                        onMouseMove={(e) => handleMouseMoveTooltip(e, node.task, false)}
+                        onMouseLeave={handleMouseLeaveTooltip}
+                      >
+                        <div className={styles.ganttBarInner}>
+                          {hasEstimate && (
+                            <div
+                              className={`${styles.ganttBarProgress} ${progressPct >= 100
+                                  ? styles.ganttBarProgressComplete
+                                  : styles.ganttBarProgressPartial
+                                }`}
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          )}
+                          <div className={styles.ganttBarLabel}>{node.task.title}</div>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return null;
-                }
-
-                if (isLeaf) {
-                  return (
-                    <div
-                      className={`${styles.ganttBar} ${priorityPresentation.barClass}`}
-                      style={{
-                        gridColumnStart: safeStartCol,
-                        gridColumnEnd: safeEndCol,
-                        position: "relative",
-                        overflow: "hidden",
-                      }}
-                      title={`Mức độ cấp thiết: ${priorityPresentation.label}\nTiến độ: ${node.task.spentHours || 0}h / ${node.task.estimateHours || 0}h`}
-                    >
-                      {(node.task.estimateHours || 0) > 0 && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: "25%",
-                            left: 0,
-                            height: "50%",
-                            width: `${Math.min(100, Math.round(((node.task.spentHours || 0) / node.task.estimateHours) * 100))}%`,
-                            background: "#1c4a7e",
-                            borderRight: "1px solid #102a47",
-                          }}
-                        />
-                      )}
-                    </div>
-                  );
-                }
-
-                return null;
-              })()}
-            </div>
+                })()}
+              </div>
+            )}
           </div>
-          {isExpanded && hasChildren && renderTree(node.children)}
+          {isExpanded && hasChildren && renderTree(node.children, pane)}
         </React.Fragment>
       );
     });
   };
 
   useEffect(() => {
-    if (highlightTaskId) {
-      setTimeout(() => {
-        const el = document.getElementById(`gantt-row-${highlightTaskId}`);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!activeHighlightId || tasks.length === 0) return;
+
+    const normalizedHighlightId = activeHighlightId.startsWith("task-")
+      ? activeHighlightId
+      : `task-${activeHighlightId}`;
+    const rawHighlightId = activeHighlightId.replace(/^task-/, "");
+
+    // Find the target task to expand all its parent ancestors
+    const targetTask = tasks.find(
+      (t) =>
+        String(t.id) === String(activeHighlightId) ||
+        String(t.id) === normalizedHighlightId ||
+        String(t.id) === rawHighlightId,
+    );
+
+    if (targetTask) {
+      const toExpand: Record<string, boolean> = {};
+      let currentParentId: string | null | undefined = targetTask.parentTaskId;
+
+      while (currentParentId) {
+        toExpand[currentParentId] = true;
+        toExpand[`task-${currentParentId}`] = true;
+        toExpand[String(currentParentId).replace(/^task-/, "")] = true;
+
+        const parentTask = tasks.find(
+          (t) =>
+            String(t.id) === String(currentParentId) ||
+            String(t.id) === `task-${currentParentId}` ||
+            String(t.id) === String(currentParentId).replace(/^task-/, ""),
+        );
+        currentParentId = parentTask?.parentTaskId;
+      }
+
+      if (Object.keys(toExpand).length > 0) {
+        setExpanded((prev) => ({ ...prev, ...toExpand }));
+      }
+    }
+  }, [activeHighlightId, tasks]);
+
+  useEffect(() => {
+    if (activeHighlightId) {
+      const normalizedHighlightId = activeHighlightId.startsWith("task-")
+        ? activeHighlightId
+        : `task-${activeHighlightId}`;
+      const rawHighlightId = activeHighlightId.replace(/^task-/, "");
+
+      const scrollTimer = setTimeout(() => {
+        const el =
+          document.getElementById(`gantt-row-${activeHighlightId}`) ||
+          document.getElementById(`gantt-row-${normalizedHighlightId}`) ||
+          document.getElementById(`gantt-row-${rawHighlightId}`);
+
+        const leftPane = leftPaneRef.current;
+        if (el && leftPane) {
+          const elRect = el.getBoundingClientRect();
+          const paneRect = leftPane.getBoundingClientRect();
+          leftPane.scrollTop +=
+            elRect.top - paneRect.top - paneRect.height / 2 + elRect.height / 2;
+          if (rightPaneRef.current) {
+            rightPaneRef.current.scrollTop = leftPane.scrollTop;
+          }
         }
-      }, 500); // Wait a bit for layout to settle
+      }, 350);
 
       const timer = setTimeout(() => {
+        setActiveHighlightId(null);
         const url = new URL(window.location.href);
         url.searchParams.delete("highlightTaskId");
         url.searchParams.delete("highlightColor");
-        window.history.replaceState({}, '', url.pathname + url.search);
+        window.history.replaceState({}, "", url.pathname + url.search);
       }, 5000);
 
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(timer);
+      };
     }
-  }, [highlightTaskId, expanded]);
+  }, [activeHighlightId, expanded]);
 
   if (tasks.length === 0) {
     return (
@@ -528,27 +723,42 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
 
   return (
     <div className={styles.ganttContainer} style={{ flex: 1, width: "100%", height: "100%" }}>
-      <div className={styles.ganttLayout} style={{ height: "100%", minWidth: `${leftPaneWidth + timelineWidth}px` }}>
-        <div className={styles.ganttBody} style={{ minWidth: `${leftPaneWidth + timelineWidth}px` }}>
-          {/* Header */}
+      <div
+        ref={leftPaneRef}
+        className={styles.ganttLeftPane}
+        onScroll={onLeftScroll}
+      >
+        <div className={styles.ganttPaneInner} style={{ width: `${leftPaneWidth}px`, minWidth: `${leftPaneWidth}px` }}>
           <div className={styles.ganttHeaderRow}>
-            <div className={styles.ganttLeftHeader} style={{ width: `${leftPaneWidth}px` }}>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${nameColWidth}px`, position: "relative" }}>
-                Tên công việc
-                <div
-                  className={styles.colResizeHandle}
-                  onMouseDown={onResizeMouseDown}
-                  onDoubleClick={onResizeDblClick}
-                  title="Kéo để thay đổi kích thước. Double-click để tự khớp."
-                />
-              </div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${STATUS_COL_WIDTH}px` }}>Trạng thái</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${PRIORITY_COL_WIDTH}px` }}>Cấp thiết</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${assigneeColWidth}px` }}>Người thực hiện</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${START_COL_WIDTH}px` }}>Bắt đầu</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${END_COL_WIDTH}px` }}>Kết thúc</div>
-              <div className={styles.ganttLeftHeaderCell} style={{ width: `${ET_COL_WIDTH}px` }}>Tiến độ (ET)</div>
+            <div className={`${styles.ganttLeftHeaderCell} ${styles.stickyCol}`} style={{ width: `${nameColWidth}px`, minWidth: `${nameColWidth}px`, maxWidth: `${nameColWidth}px` }}>
+              Tên công việc
+              <div
+                className={styles.colResizeHandle}
+                onMouseDown={onResizeMouseDown}
+                onDoubleClick={onResizeDblClick}
+                title="Kéo để thay đổi kích thước (140–400px). Double-click để đặt lại mặc định."
+              />
             </div>
+            <div className={styles.ganttLeftHeaderCell} style={{ width: `${STATUS_COL_WIDTH}px`, minWidth: `${STATUS_COL_WIDTH}px` }}>Trạng thái</div>
+            <div className={styles.ganttLeftHeaderCell} style={{ width: `${PRIORITY_COL_WIDTH}px`, minWidth: `${PRIORITY_COL_WIDTH}px` }}>Cấp thiết</div>
+            <div className={styles.ganttLeftHeaderCell} style={{ width: `${assigneeColWidth}px`, minWidth: `${assigneeColWidth}px`, maxWidth: `${assigneeColWidth}px` }}>Người thực hiện</div>
+            <div className={styles.ganttLeftHeaderCell} style={{ width: `${START_COL_WIDTH}px`, minWidth: `${START_COL_WIDTH}px`, flexDirection: "column", justifyContent: "center", alignItems: "flex-start", lineHeight: 1.4 }}>
+              <span>Bắt đầu</span>
+              <span>Kết thúc</span>
+            </div>
+            <div className={styles.ganttLeftHeaderCell} style={{ width: `${ET_COL_WIDTH}px`, minWidth: `${ET_COL_WIDTH}px` }}>AT/ET</div>
+          </div>
+          {renderTree(rootNodes, "left")}
+        </div>
+      </div>
+
+      <div
+        ref={rightPaneRef}
+        className={styles.ganttRightPane}
+        onScroll={onRightScroll}
+      >
+        <div className={styles.ganttPaneInner} style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px`, position: "relative" }}>
+          <div className={styles.ganttHeaderRow}>
             <div
               className={styles.ganttRightHeader}
               style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px` }}
@@ -562,11 +772,15 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               </div>
               <div className={styles.ganttRightHeaderBottom} style={{ gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)` }}>
                 {dates.map((date, i) => {
-                  // Show date only every 7 days (e.g. if it's Monday) to match the spaced out dates in screenshot
+                  const dateKey = date.toISOString().split("T")[0];
                   const isMonday = date.getDay() === 1;
+                  const isToday = dateKey === todayStr;
                   return (
-                    <div key={i} className={styles.ganttDayHeader}>
-                      {isMonday ? date.getDate() : ""}
+                    <div
+                      key={i}
+                      className={`${styles.ganttDayHeader} ${isToday ? styles.ganttDayHeaderToday : ""}`}
+                    >
+                      {isMonday || isToday ? date.getDate() : ""}
                     </div>
                   );
                 })}
@@ -574,13 +788,20 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
             </div>
           </div>
 
-          {/* Body Rows */}
+          {todayOffset !== null && (
+            <div
+              className={styles.todayPin}
+              style={{ marginLeft: `${todayOffset}px` }}
+              title={`Hôm nay: ${new Date().toLocaleDateString("vi-VN")}`}
+            >
+              <span className={styles.todayLabel}>Hôm nay</span>
+            </div>
+          )}
+
           <div style={{ position: "relative" }}>
-            {/* Background Grid Lines */}
             <div
               className={styles.ganttGridLines}
               style={{
-                left: `${leftPaneWidth}px`,
                 width: `${timelineWidth}px`,
                 gridTemplateColumns: `repeat(${dates.length}, ${DAY_COLUMN_WIDTH}px)`,
               }}
@@ -590,22 +811,49 @@ export function GanttChart({ tasks, onTaskClick, onAddSubtask }: GanttChartProps
               ))}
             </div>
 
-            {/* Today Line */}
             {todayOffset !== null && (
               <div
                 className={styles.todayLine}
-                style={{ left: `${leftPaneWidth + todayOffset}px` }}
+                style={{ left: `${todayOffset}px` }}
                 title={`Hôm nay: ${new Date().toLocaleDateString("vi-VN")}`}
-              >
-                <span className={styles.todayLabel}>Hôm nay</span>
-              </div>
+              />
             )}
 
-            {/* Task Rows */}
-            {renderTree(rootNodes)}
+            {renderTree(rootNodes, "right")}
           </div>
         </div>
       </div>
+
+      {/* Global Fixed Tooltip */}
+      {tooltipData && (
+        <div
+          className={styles.globalTooltip}
+          style={{
+            left: tooltipData.x,
+            top: tooltipData.y,
+          }}
+        >
+          {tooltipData.isEpic ? (
+            <>
+              <div><strong>[Epic] {tooltipData.task.title}</strong></div>
+              <div style={{ marginTop: "4px" }}>Người thực hiện: {formatAssigneeNames(tooltipData.task)}</div>
+              <div>Bắt đầu: {new Date(tooltipData.task.startDate).toLocaleDateString("vi-VN")}</div>
+              <div>Kết thúc: {new Date(tooltipData.task.dueDate || tooltipData.task.startDate).toLocaleDateString("vi-VN")}</div>
+              <div>Trạng thái: {taskStatusLabel(tooltipData.task.status)}</div>
+            </>
+          ) : (
+            <>
+              <div><strong>{tooltipData.task.title}</strong></div>
+              <div style={{ marginTop: "4px" }}>Người thực hiện: {formatAssigneeNames(tooltipData.task)}</div>
+              <div>Bắt đầu: {new Date(tooltipData.task.startDate).toLocaleDateString("vi-VN")}</div>
+              <div>Kết thúc: {new Date(tooltipData.task.dueDate || tooltipData.task.startDate).toLocaleDateString("vi-VN")}</div>
+              <div>Trạng thái: {taskStatusLabel(tooltipData.task.status)}</div>
+              <div>Mức độ cấp thiết: {taskPriorityLabel(tooltipData.task.priority)}</div>
+              <div>Tiến độ: {tooltipData.task.spentHours || 0}h / {tooltipData.task.estimateHours || 0}h</div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

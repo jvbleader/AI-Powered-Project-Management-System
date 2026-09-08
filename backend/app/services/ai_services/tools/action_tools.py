@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
@@ -5,9 +6,41 @@ from sqlalchemy.orm import Session
 from app.models.task_model import Task
 from app.models.user_model import User
 from app.repositories import project_repository, task_repository
+from app.schemas.sprint_schema import SprintUpdate
+from app.services import sprint_service
 from app.services.ai_services.task_title_rules import validate_meaningful_task_titles
 from app.services.task_service import _get_or_create_actor_member
-from app.utils.project_helpers import user_can_manage_project
+from app.utils.project_helpers import user_can_access_project, user_can_manage_sprints
+
+
+def _normalize_task_description(desc: Any) -> str:
+    if desc is None:
+        return ""
+    if isinstance(desc, str):
+        return desc
+    if not isinstance(desc, dict):
+        return str(desc)
+
+    def format_value(val: Any) -> str:
+        if isinstance(val, list):
+            return "\n" + "\n".join(f"- {str(item).strip()}" for item in val)
+        return str(val).strip()
+
+    parts: list[str] = []
+    mapping = (
+        ("objective", "**1. Mục tiêu:**"),
+        ("criteria", "**2. Tiêu chí / ràng buộc:**"),
+        ("implementation", "**3. Cách làm:**"),
+        ("output", "**4. Đầu ra:**"),
+        ("acceptance_criteria", "**5. Tiêu chí chấp nhận:**"),
+        ("acceptance", "**5. Tiêu chí chấp nhận:**"),
+    )
+    for key, label in mapping:
+        if key == "acceptance" and "acceptance_criteria" in desc:
+            continue
+        if key in desc and desc[key] not in (None, ""):
+            parts.append(f"{label} {format_value(desc[key])}")
+    return "\n\n".join(parts) if parts else json.dumps(desc, ensure_ascii=False)
 
 
 def execute_create_tasks(
@@ -20,7 +53,7 @@ def execute_create_tasks(
 ) -> List[Task]:
     """
     Thực thi việc tạo các task sau khi người dùng đã confirm bản nháp.
-    - Mọi user đăng nhập đều được tạo task ở bất kỳ dự án nào (tự join nếu chưa member).
+    - Mọi người có quyền truy cập dự án đều được tạo task.
     - Assignee phải là member của dự án.
     """
     from datetime import datetime, timezone
@@ -30,20 +63,35 @@ def execute_create_tasks(
     created_tasks = []
 
     for td in tasks_data:
-        pid = project_id or td.get("project_id")
+        # Bản nháp đã được người dùng duyệt là nguồn dữ liệu chính.
+        # project_id của màn hình chỉ là fallback cho draft cũ bị thiếu trường này.
+        pid = td.get("project_id") or project_id
         if not pid:
             raise ValueError(f"Không xác định được dự án (project_id) để tạo task: '{td.get('title')}'.")
 
         pid = int(pid)
-        if not project_repository.get_project_by_id(db, pid):
+        project = project_repository.get_project_by_id(db, pid)
+        if not project:
             raise ValueError(f"Không tìm thấy dự án (ID: {pid}).")
+        if not user_can_access_project(db, pid, current_user):
+            raise ValueError(f"Bạn không có quyền truy cập dự án '{project.name}' để tạo task.")
+
+        is_agile = (project.project_type or "").strip().lower() == "agile"
+        nested = bool(parent_task_id) or (
+            isinstance(td.get("subtasks"), list) and len(td.get("subtasks") or []) > 0
+        )
+        if is_agile and nested:
+            raise ValueError(
+                f"Dự án '{project.name}' là Agile nên không hỗ trợ cây task (WBS). "
+                "Cấu trúc cha-con chỉ dùng cho dự án Waterfall."
+            )
 
         creator_member = _get_or_create_actor_member(db, pid, current_user.id)
 
         task_data = {
             "project_id": pid,
             "title": td.get("title", "Không có tiêu đề"),
-            "description": td.get("description", ""),
+            "description": _normalize_task_description(td.get("description")),
             "created_by_member_id": creator_member.id,
             "status": td.get("status", "todo"),
             "priority": td.get("priority", "medium"),
@@ -74,9 +122,18 @@ def execute_create_tasks(
 
         task = task_repository.create_task(db, task_data)
 
-        assignee_user_id = td.get("assignee_id")
-        assignee_name = td.get("assignee_name")
-        assignee_member = None
+        subtasks_data = td.get("subtasks")
+        has_subtasks = isinstance(subtasks_data, list) and len(subtasks_data) > 0
+
+        # Agile luôn tạo task chưa phân công. Task cha Waterfall cũng không gán trực tiếp:
+        # người phụ trách được lấy từ toàn bộ task lá sau khi tạo xong cây.
+        assignee_user_id = None if is_agile or has_subtasks else td.get("assignee_id")
+        assignee_name = None if is_agile or has_subtasks else td.get("assignee_name")
+        raw_assignee_ids = (
+            td.get("assignee_ids")
+            if not is_agile and not has_subtasks and isinstance(td.get("assignee_ids"), list)
+            else []
+        )
 
         def _resolve_assignee_member(raw_id: int):
             """AI hay nhầm project_member.id với users.id — chấp nhận cả hai."""
@@ -85,17 +142,31 @@ def execute_create_tasks(
                 return by_user
             return project_repository.get_project_member_by_id(db, raw_id, pid)
 
-        if assignee_user_id is not None and str(assignee_user_id).strip() != "":
+        def _to_int_id(value):
             try:
-                raw_assignee_id = int(assignee_user_id)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"assignee_id không hợp lệ: {assignee_user_id!r}."
-                ) from exc
+                return int(value)
+            except (TypeError, ValueError):
+                return None
 
-            assignee_member = _resolve_assignee_member(raw_assignee_id)
+        assignee_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for value in [*raw_assignee_ids, assignee_user_id]:
+            parsed = _to_int_id(value)
+            if parsed is None or parsed in seen_ids:
+                continue
+            seen_ids.add(parsed)
+            assignee_ids.append(parsed)
 
-        if not assignee_member and assignee_name:
+        assigned_members = []
+        unresolved_ids = []
+        for raw_id in assignee_ids:
+            member = _resolve_assignee_member(raw_id)
+            if member:
+                assigned_members.append(member)
+            else:
+                unresolved_ids.append(raw_id)
+
+        if not assigned_members and assignee_name:
             from app.models.project_model import ProjectMember
             from app.models.user_model import User as UserModel
 
@@ -110,16 +181,16 @@ def execute_create_tasks(
                 .first()
             )
             if member_with_user:
-                assignee_member = member_with_user
+                assigned_members.append(member_with_user)
 
-        if assignee_user_id is not None and str(assignee_user_id).strip() != "" and not assignee_member:
+        if assignee_ids and unresolved_ids and not assigned_members:
             raise ValueError(
-                f"Người được giao (id={assignee_user_id}"
+                f"Người được giao (id={unresolved_ids[0]}"
                 f"{f', tên: {assignee_name}' if assignee_name else ''}) "
                 f"không phải thành viên dự án {pid}."
             )
 
-        if assignee_member:
+        for assignee_member in assigned_members:
             task_repository.add_task_assignee(
                 db=db,
                 task_id=task.id,
@@ -129,8 +200,7 @@ def execute_create_tasks(
 
         created_tasks.append(task)
 
-        subtasks_data = td.get("subtasks")
-        if subtasks_data and isinstance(subtasks_data, list):
+        if has_subtasks:
             sub_created = execute_create_tasks(
                 db,
                 current_user,
@@ -140,6 +210,28 @@ def execute_create_tasks(
                 _is_recursive=True,
             )
             created_tasks.extend(sub_created)
+            from app.services.task_service import _sync_task_assignees_from_leaves
+
+            _sync_task_assignees_from_leaves(db, task, creator_member.id)
+            children = task_repository.get_tasks_by_parent_id(db, task.id)
+            if children:
+                total_hours = sum(float(c.estimated_hours or 0) for c in children)
+                starts = [c.start_date for c in children if c.start_date]
+                deadlines = [c.deadline for c in children if c.deadline]
+                update_fields = {}
+                if total_hours > 0:
+                    update_fields["estimated_hours"] = round(total_hours, 1)
+                if starts:
+                    update_fields["start_date"] = min(starts)
+                if deadlines:
+                    update_fields["deadline"] = max(deadlines)
+                if update_fields:
+                    task_repository.update_task(db, task, update_fields)
+
+        if task.parent_task_id:
+            from app.services.task_service import _sync_ancestor_rollups
+
+            _sync_ancestor_rollups(db, task, creator_member.id)
 
     if not _is_recursive:
         db.commit()
@@ -147,6 +239,8 @@ def execute_create_tasks(
 
         for task in created_tasks:
             db.refresh(task)
+            if task_repository.get_tasks_by_parent_id(db, task.id):
+                continue
             assignee_rows = task_repository.list_task_assignee_users(db, [task.id])
             assignee_user_ids = [user_id for _task_id, user_id, _name, _email in assignee_rows]
             if assignee_user_ids:
@@ -167,10 +261,9 @@ def execute_update_sprint_statuses(
     updates: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """Áp dụng đổi trạng thái sprint sau HITL confirm."""
-    from app.models.project_model import Project
     from app.models.sprint_model import Sprint
 
-    allowed = {"planning", "active", "closed"}
+    allowed = {"planned", "planning", "active", "closed"}
     results: List[Dict[str, Any]] = []
 
     for item in updates:
@@ -185,14 +278,19 @@ def execute_update_sprint_statuses(
         if not sprint:
             raise ValueError(f"Không tìm thấy sprint ID {sprint_id}.")
 
-        if not user_can_manage_project(db, sprint.project_id, current_user):
-            raise ValueError(f"Bạn không có quyền cập nhật sprint thuộc dự án {sprint.project_id}.")
+        if not user_can_manage_sprints(db, sprint.project_id, current_user):
+            raise ValueError(
+                f"Chỉ PM/PO/GM hoặc Leader của dự án {sprint.project_id} mới được cập nhật sprint."
+            )
 
-        project = db.query(Project).filter(Project.id == sprint.project_id).first()
-        if not project or (project.project_type or "").lower() != "agile":
-            raise ValueError("Chỉ cập nhật được trạng thái Sprint trên dự án Agile.")
-
-        sprint.status = status
+        normalized_status = "planned" if status == "planning" else status
+        sprint = sprint_service.update_sprint(
+            db,
+            sprint.id,
+            current_user.id,
+            SprintUpdate(status=normalized_status),
+            commit=False,
+        )
         results.append(
             {
                 "sprint_id": sprint.id,

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.core.connection import get_db
+from app.core.connection import SessionLocal, get_db
 from app.core.dependencies import get_current_user
 from app.models.notification_model import Notification
 from app.models.user_model import User
@@ -30,6 +30,16 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
         await websocket.close(code=1008)
         return
 
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+    finally:
+        db.close()
+
+    if not user or not user.is_active:
+        await websocket.close(code=1008)
+        return
+
     await manager.connect(websocket, user_id)
     try:
         while True:
@@ -43,7 +53,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
 @router.get("")
 def get_my_notifications(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(100, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

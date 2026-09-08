@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusPill } from "@/components/ui";
-import { UserAvatar } from "@/components/user-avatar";
-import { taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
-import type { EnrichedTask } from "@/types";
+import { AssigneeAvatars } from "@/components/assignee-avatars";
+import { formatAssigneeNames, taskStatusLabel, taskStatusTone } from "@/lib/utils/format";
+import type { EnrichedTask, UserProfile } from "@/types";
 import styles from "../../team/styles/team.module.css";
 
 interface WbsTableProps {
@@ -39,11 +39,78 @@ export function WbsTable({ tasks }: WbsTableProps) {
     }
   });
 
-  // Calculate levels
+  function collectLeafAssignees(n: WbsNode): UserProfile[] {
+    if (n.children.length === 0) {
+      if (n.task.assignees && n.task.assignees.length > 0) return n.task.assignees;
+      if (n.task.assignee) return [n.task.assignee];
+      if (n.task.assigneeName) {
+        return [{
+          id: String(n.task.id) + "-assignee",
+          name: n.task.assigneeName,
+          email: "",
+          role: "MEMBER",
+          title: "",
+          initials: n.task.assigneeName.slice(0, 2).toUpperCase(),
+          presence: "offline",
+        } as UserProfile];
+      }
+      return [];
+    }
+    const list: UserProfile[] = [];
+    n.children.forEach((c) => {
+      list.push(...collectLeafAssignees(c));
+    });
+    return list;
+  }
+
+  // Calculate levels and rollups
   function setLevels(nodes: WbsNode[], currentLevel: number) {
     nodes.forEach((node) => {
       node.level = currentLevel;
       setLevels(node.children, currentLevel + 1);
+
+      if (node.children.length > 0) {
+        let minStart = Infinity;
+        let maxEnd = -Infinity;
+
+        node.children.forEach((child) => {
+          const start = child.task.startDate ? new Date(child.task.startDate).getTime() : Infinity;
+          const end = child.task.dueDate
+            ? new Date(child.task.dueDate).getTime()
+            : child.task.startDate
+              ? new Date(child.task.startDate).getTime()
+              : -Infinity;
+
+          if (start !== Infinity && start < minStart) minStart = start;
+          if (end !== -Infinity && end > maxEnd) maxEnd = end;
+        });
+
+        if (minStart !== Infinity) {
+          node.task.startDate = new Date(minStart).toISOString().split("T")[0];
+        }
+        if (maxEnd !== -Infinity) {
+          node.task.dueDate = new Date(maxEnd).toISOString().split("T")[0];
+        }
+
+        const sumEstimate = node.children.reduce((acc, c) => acc + (c.task.estimateHours || 0), 0);
+        if (sumEstimate > 0) {
+          node.task.estimateHours = sumEstimate;
+        }
+
+        const leafAssignees = collectLeafAssignees(node);
+        const seen = new Set<string>();
+        const uniqueAssignees = leafAssignees.filter((a) => {
+          const key = String(a.id || a.name || "");
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        if (uniqueAssignees.length > 0) {
+          node.task.assignees = uniqueAssignees;
+          node.task.assignee = uniqueAssignees[0];
+          node.task.assigneeName = uniqueAssignees.map((a) => a.name).filter(Boolean).join(", ");
+        }
+      }
     });
   }
   setLevels(rootNodes, 0);
@@ -163,16 +230,12 @@ export function WbsTable({ tasks }: WbsTableProps) {
             <td>{node.task.dueDate}</td>
             <td>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <UserAvatar
-                  userId={node.task.assignee.id}
-                  email={node.task.assignee.email}
-                  name={node.task.assignee.name}
-                  avatarUrl={node.task.assignee.avatarUrl}
+                <AssigneeAvatars
+                  assignees={node.task.assignees?.length ? node.task.assignees : node.task.assignee ? [node.task.assignee] : []}
                   size={24}
-                  className={styles.avatarToken}
                 />
                 <span className={styles.userCellCopy}>
-                  <small style={{ margin: 0 }}>{node.task.assignee.name}</small>
+                  <small style={{ margin: 0 }}>{formatAssigneeNames(node.task, "Chưa phân công")}</small>
                 </span>
               </div>
             </td>

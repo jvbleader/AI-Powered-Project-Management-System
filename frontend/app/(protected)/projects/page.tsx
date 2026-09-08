@@ -76,7 +76,7 @@ export default function ProjectsPage() {
     return () => {
       isCancelled = true;
     };
-  }, [viewer]);
+  }, [viewer?.id]);
 
   const shellData =
     projectsState?.shellData ??

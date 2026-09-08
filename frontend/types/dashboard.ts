@@ -131,4 +131,5 @@ export interface GlobalDashboardOverview {
   projectHealths: ProjectHealthPreview[];
   activeSprints: DashboardSprintSummary[];
   recentLogworks: DashboardRecentLogwork[];
+  canViewRecentLogworks?: boolean;
 }

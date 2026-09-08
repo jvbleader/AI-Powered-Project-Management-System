@@ -1,5 +1,6 @@
 import { authApi } from "@/services/api";
-import { resolveAvatarUrl } from "@/lib/utils/avatar";
+import { isGeneratedDefaultAvatarUrl } from "@/lib/utils/avatar";
+import { clearAssistantSessionStorage } from "@/lib/assistant-storage";
 import { type AuthSession, LoginPayload } from "@/types";
 
 export const STORAGE_KEY = "flowpilot-session-v1";
@@ -54,6 +55,7 @@ function clearClientSession() {
   window.localStorage.removeItem(STORAGE_KEY);
   window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
   window.localStorage.removeItem("flowpilot-user-directory-v1");
+  clearAssistantSessionStorage();
 }
 
 /** Xóa snapshot client, không gọi API logout / không broadcast sang tab khác. */
@@ -67,16 +69,17 @@ export function clearLocalSession() {
 }
 
 function enrichSession(session: AuthSession) {
+  const storedAvatar = session.currentUser.avatarUrl?.trim();
   return {
     ...session,
     currentUser: {
       ...session.currentUser,
-      avatarUrl: resolveAvatarUrl({
-        userId: session.currentUser.id,
-        email: session.currentUser.email,
-        name: session.currentUser.name,
-        avatarUrl: session.currentUser.avatarUrl,
-      }),
+      // Migrate snapshots written by older clients. A generated fallback must
+      // never become browser-owned profile data; UserAvatar resolves it from ID.
+      avatarUrl:
+        storedAvatar && !isGeneratedDefaultAvatarUrl(storedAvatar)
+          ? storedAvatar
+          : undefined,
     },
   } satisfies AuthSession;
 }

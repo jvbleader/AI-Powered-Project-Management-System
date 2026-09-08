@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { roleLabel } from "@/lib/utils/format";
+import { roleLabel, formatEmployeeCode } from "@/lib/utils/format";
 import { userApi } from "@/services/api";
 import type { UserProfile } from "@/types";
 import styles from "../styles/profile.module.css";
@@ -118,7 +118,7 @@ export function PersonalInfo({ user, onUpdate }: PersonalInfoProps) {
     },
     {
       label: "Mã định danh",
-      value: user.employeeCode ?? user.id,
+      value: user.employeeCode ?? formatEmployeeCode(user.id),
       icon: (
         <svg viewBox="0 0 24 24">
           <rect width="18" height="18" x="3" y="3" rx="2" />

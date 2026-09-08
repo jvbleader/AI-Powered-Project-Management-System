@@ -12,7 +12,8 @@
 }
 
 .modalSurface {
-  width: min(var(--modal-width, var(--modal-width-md)), 100%);
+  --modal-width: var(--modal-width-xl);
+  width: min(var(--modal-width, var(--modal-width-xl)), 100%);
   max-height: min(92vh, 980px);
   background: var(--modal-surface);
   border: 1px solid var(--modal-border);
@@ -131,7 +132,7 @@ select.inputControl {
 
 textarea.inputControl {
   resize: vertical;
-  min-height: 100px;
+  min-height: 180px;
 }
 
 .modalFooter {
@@ -181,6 +182,15 @@ textarea.inputControl {
   border-radius: 16px;
   font-size: 0.875rem;
   border: 1px solid rgba(220, 38, 38, 0.18);
+}
+
+.requiredStar {
+  color: #ef4444;
+  margin-left: 2px;
+  font-weight: 700;
+  font-size: 0.95em;
+  vertical-align: super;
+  line-height: 0;
 }
 
 @media (max-width: 780px) {

@@ -7,7 +7,7 @@ from app.models.project_model import Project
 from app.models.sprint_model import Sprint
 from app.services.ai_services.tools.access import (
     ToolConfig,
-    deny_if_cannot_manage_project,
+    deny_if_cannot_manage_sprints,
     deny_if_project_inaccessible,
     load_current_user,
     tool_db_session,
@@ -42,7 +42,12 @@ def query_sprints(
             if not project:
                 return [{"error": "Project not found"}]
             if (project.project_type or "").lower() != "agile":
-                return [{"error": "Dự án này không phải Agile nên không có Sprint."}]
+                return [{
+                    "error": (
+                        f"Dự án '{project.name}' đang quản lý theo mô hình Waterfall nên không có khái niệm Sprint. "
+                        "Sprint chỉ được tạo và sử dụng cho dự án Agile."
+                    )
+                }]
 
             query = select(Sprint).where(Sprint.project_id == project_id)
             if status:
@@ -103,7 +108,7 @@ def propose_sprint_status_update(
             denied_access = deny_if_project_inaccessible(db, user, sprint.project_id)
             if denied_access:
                 return denied_access
-            denied_manage = deny_if_cannot_manage_project(db, user, sprint.project_id)
+            denied_manage = deny_if_cannot_manage_sprints(db, user, sprint.project_id)
             if denied_manage:
                 return denied_manage
 
@@ -111,7 +116,14 @@ def propose_sprint_status_update(
                 select(Project).where(Project.id == sprint.project_id)
             ).scalar_one_or_none()
             if not project or (project.project_type or "").lower() != "agile":
-                return {"error": "Chỉ được đổi trạng thái Sprint trên dự án Agile."}
+                name = getattr(project, "name", None)
+                loc = f" '{name}'" if name else " này"
+                return {
+                    "error": (
+                        f"Dự án{loc} đang quản lý theo mô hình Waterfall nên không có khái niệm Sprint. "
+                        "Sprint chỉ được tạo và sử dụng cho dự án Agile."
+                    )
+                }
 
             return {
                 "requires_confirmation": True,
@@ -122,6 +134,7 @@ def propose_sprint_status_update(
                 "draft": {
                     "sprint_id": sprint.id,
                     "project_id": sprint.project_id,
+                    "project_name": project.name if project else None,
                     "name": sprint.name,
                     "current_status": sprint.status,
                     "status": normalized,

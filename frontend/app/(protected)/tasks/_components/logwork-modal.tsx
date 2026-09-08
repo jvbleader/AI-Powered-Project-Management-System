@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { toVietnamDateInputValue } from "@/lib/utils/format";
-import { taskApi } from "@/services/api";
+import { logworkApi, taskApi } from "@/services/api";
+import type { TaskLogworkEntry } from "@/types";
 import modalStyles from "../../projects/_components/create-project-modal.module.css";
 import styles from "./logwork-modal.module.css";
 
@@ -9,6 +10,7 @@ interface LogworkModalProps {
   onClose: () => void;
   taskId: string;
   userId: string;
+  entry?: TaskLogworkEntry | null;
   onSuccess?: () => void | Promise<void>;
 }
 
@@ -17,9 +19,11 @@ export function LogworkModal({
   onClose,
   taskId,
   userId,
+  entry = null,
   onSuccess,
 }: LogworkModalProps) {
   void userId;
+  const isEditing = Boolean(entry);
   const [hours, setHours] = useState("0");
   const [description, setDescription] = useState("");
   const [comment, setComment] = useState("");
@@ -27,9 +31,24 @@ export function LogworkModal({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (entry) {
+      setHours(String(entry.hoursSpent ?? 0));
+      setDescription(entry.workContent || "");
+      setComment(entry.comment || "");
+      setDate((entry.workDate || "").slice(0, 10) || toVietnamDateInputValue());
+    } else {
+      setHours("0");
+      setDescription("");
+      setComment("");
+      setDate(toVietnamDateInputValue());
+    }
+    setFormError(null);
+  }, [entry, isOpen]);
+
   const handleClose = () => {
     setFormError(null);
-    setComment("");
     onClose();
   };
 
@@ -57,21 +76,27 @@ export function LogworkModal({
 
     setIsSubmitting(true);
     try {
-      await taskApi.addLogwork(taskId, {
-        workDate: date,
-        hoursSpent: hoursVal,
-        workContent: description.trim(),
-        comment: comment.trim() || null,
-        progressPercent: 0,
-      });
+      if (entry) {
+        await logworkApi.update(entry.id, {
+          workDate: date,
+          hoursSpent: hoursVal,
+          workContent: description.trim(),
+          comment: comment.trim() || null,
+        });
+      } else {
+        await taskApi.addLogwork(taskId, {
+          workDate: date,
+          hoursSpent: hoursVal,
+          workContent: description.trim(),
+          comment: comment.trim() || null,
+          progressPercent: 0,
+        });
+      }
 
       if (onSuccess) {
         await onSuccess();
       }
 
-      setHours("0");
-      setDescription("");
-      setComment("");
       handleClose();
     } catch (error: unknown) {
       setFormError(error instanceof Error ? error.message : "Không thể lưu logwork.");
@@ -92,7 +117,9 @@ export function LogworkModal({
       >
         <div className={`${modalStyles.modalHeader} ${styles.compactHeader}`}>
           <div style={{ flex: 1 }}>
-            <h2 id="logwork-title" className={styles.modalTitle}>Logwork</h2>
+            <h2 id="logwork-title" className={styles.modalTitle}>
+              {isEditing ? "Sửa logwork" : "Logwork"}
+            </h2>
           </div>
           <button
             type="button"
@@ -183,7 +210,7 @@ export function LogworkModal({
               disabled={isSubmitting}
               data-testid="logwork-submit"
             >
-              Lưu Logwork
+              {isSubmitting ? "Đang lưu..." : isEditing ? "Cập nhật logwork" : "Lưu Logwork"}
             </button>
           </div>
         </form>

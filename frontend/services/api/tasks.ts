@@ -15,8 +15,9 @@ import {
   respond,
   toInitials,
   wrapBackendResponse,
+  cleanProjectId,
+  cleanTaskId,
 } from "./core";
-import { resolveAvatarUrl } from "@/lib/utils/avatar";
 import { projectApi } from "./projects";
 import { userApi } from "./users";
 type BoardContext = {
@@ -62,7 +63,16 @@ function normalizeTaskStatus(status: unknown): Task["status"] {
 }
 
 function mapBackendTask(data: any): Task {
-  const primaryAssignee = data.assignees?.[0];
+  const assigneePreviews = Array.isArray(data.assignees)
+    ? data.assignees
+      .map((assignee: any) => ({
+        id: toFrontendUserId(assignee?.user_id),
+        name: assignee?.name || "",
+        email: assignee?.email || "",
+      }))
+      .filter((assignee: { id: string }) => Boolean(assignee.id))
+    : [];
+  const primaryAssignee = assigneePreviews[0];
 
   return {
     id: data.id.toString(),
@@ -73,9 +83,12 @@ function mapBackendTask(data: any): Task {
     description: data.description || "",
     status: normalizeTaskStatus(data.status),
     priority: (data.priority?.toUpperCase() || "MEDIUM") as Task["priority"],
-    assigneeId: primaryAssignee ? toFrontendUserId(primaryAssignee.user_id) : "",
+    assigneeId: primaryAssignee?.id || "",
+    assigneeIds: assigneePreviews.map((assignee: { id: string }) => assignee.id),
     assigneeName: primaryAssignee?.name || "",
     assigneeEmail: primaryAssignee?.email || "",
+    assignees: assigneePreviews,
+    hasChildren: Boolean(data.has_children),
     reporterId: toFrontendUserId(data.created_by_user_id),
     startDate: data.start_date || data.created_at || "",
     dueDate: data.deadline || "",
@@ -108,21 +121,37 @@ function buildSyntheticAssignee(task: Task): UserProfile | null {
     focusScore: 0,
     isActive: true,
     status: "ACTIVE",
-    avatarUrl: resolveAvatarUrl({
-      userId: task.assigneeId,
-      email: task.assigneeEmail,
-      name: task.assigneeName,
-    }),
+    // Fallback avatar is resolved by UserAvatar from this stable user ID.
+    avatarUrl: undefined,
   };
 }
 
 function enrichTaskWithContext(task: Task, project: Project, users: UserProfile[]): EnrichedTask {
-  const assignee =
-    (task.assigneeId ? users.find((user) => user.id === task.assigneeId) : null) ??
-    buildSyntheticAssignee(task);
+  const assigneeIds = task.assigneeIds?.length
+    ? task.assigneeIds
+    : task.assigneeId
+      ? [task.assigneeId]
+      : [];
+  const assignees = assigneeIds
+    .map((assigneeId) => {
+      const fromUsers = users.find((user) => user.id === assigneeId);
+      if (fromUsers) return fromUsers;
+      const preview = task.assignees?.find((assignee) => assignee.id === assigneeId);
+      if (!preview) return null;
+      return buildSyntheticAssignee({
+        ...task,
+        assigneeId: preview.id,
+        assigneeName: preview.name,
+        assigneeEmail: preview.email || "",
+      });
+    })
+    .filter((user): user is UserProfile => Boolean(user));
+  const assignee = assignees[0] ?? buildSyntheticAssignee(task);
 
   return {
     ...task,
+    assigneeIds,
+    assignees,
     project,
     assignee: assignee as any,
     reporter: null as any,
@@ -134,12 +163,12 @@ export const taskApi = {
   async list(filters?: TaskFilters, viewer?: UserProfile | null): Promise<ApiResponse<Task[]>> {
     const params = new URLSearchParams();
     if (filters?.sprintId) {
-      params.append("sprint_id", filters.sprintId);
+      params.append("sprint_id", cleanTaskId(filters.sprintId));
     }
 
     const query = params.toString();
     const path = filters?.projectId
-      ? `/api/projects/${filters.projectId}/tasks${query ? `?${query}` : ""}`
+      ? `/api/projects/${cleanProjectId(filters.projectId)}/tasks${query ? `?${query}` : ""}`
       : `/api/tasks${query ? `?${query}` : ""}`;
     const endpoint = {
       method: "GET" as const,
@@ -160,7 +189,7 @@ export const taskApi = {
   async getLogs(taskId: string): Promise<ApiResponse<TaskLog[]>> {
     const endpoint = {
       method: "GET" as const,
-      path: `/api/tasks/${taskId}/logs`,
+      path: `/api/tasks/${cleanTaskId(taskId)}/logs`,
     };
     const response = await requestApi<TaskLog[]>(endpoint);
     return response;
@@ -169,7 +198,7 @@ export const taskApi = {
   async create(payload: Omit<Task, "id"> & { projectId: string }): Promise<ApiResponse<Task>> {
     const endpoint = {
       method: "POST" as const,
-      path: `/api/projects/${payload.projectId}/tasks`,
+      path: `/api/projects/${cleanProjectId(payload.projectId)}/tasks`,
     };
 
     const backendPayload = {
@@ -182,7 +211,12 @@ export const taskApi = {
       estimated_hours: payload.estimateHours > 0 ? payload.estimateHours : null,
       sprint_id: payload.sprintId ? parseInt(payload.sprintId) : null,
       parent_task_id: payload.parentTaskId ? parseInt(payload.parentTaskId) : null,
-      assignee_user_ids: payload.assigneeId ? [payload.assigneeId.replace("usr-", "")] : [],
+      assignee_user_ids: (payload.assigneeIds?.length
+        ? payload.assigneeIds
+        : payload.assigneeId
+          ? [payload.assigneeId]
+          : []
+      ).map((id) => id.replace("usr-", "")),
     };
 
     const response = await requestApi<any>(endpoint, {
@@ -240,13 +274,17 @@ export const taskApi = {
     return this.update(taskId, { status });
   },
 
-  async updateAssignee(taskId: string, assigneeId: string): Promise<ApiResponse<any>> {
+  async updateAssignee(taskId: string, assigneeId: string | string[]): Promise<ApiResponse<any>> {
     const endpoint = {
       method: "POST" as const,
       path: `/api/tasks/${taskId}/assignees`,
     };
+    const assigneeIds = Array.isArray(assigneeId) ? assigneeId.filter(Boolean) : assigneeId ? [assigneeId] : [];
     const response = await requestApi<any>(endpoint, {
-      body: JSON.stringify({ user_id: assigneeId }),
+      body: JSON.stringify({
+        user_id: assigneeIds[0] || "",
+        user_ids: assigneeIds,
+      }),
     });
     return response;
   },
@@ -308,8 +346,8 @@ export const taskApi = {
       this.list(filters, viewer),
       context?.projects?.length
         ? Promise.resolve({
-            data: context.projects.find((project) => project.id === filters.projectId) ?? null,
-          } as ApiResponse<Project | null>)
+          data: context.projects.find((project) => project.id === filters.projectId) ?? null,
+        } as ApiResponse<Project | null>)
         : projectApi.get(filters.projectId),
       context?.users?.length
         ? Promise.resolve({ data: context.users } as ApiResponse<UserProfile[]>)

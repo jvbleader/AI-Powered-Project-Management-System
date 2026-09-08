@@ -3,8 +3,9 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, RemoveMessage
 from langchain_openai import ChatOpenAI
 
-from app.services.ai_services.state import AgentState
 from app.core.config import get_settings
+from app.services.ai_services.intent_guards import RECENT_HISTORY_LIMIT
+from app.services.ai_services.state import AgentState
 
 settings = get_settings()
 llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.openai_api_key, temperature=0).with_config(tags=["summarizer_llm"])
@@ -14,7 +15,6 @@ def summarizer_node(state: AgentState):
     summary = state.get("summary", "")
     messages = state["messages"]
 
-    # Tìm HumanMessage cuối cùng (bắt đầu của lượt chat hiện tại)
     last_human_idx = -1
     for i in range(len(messages) - 1, -1, -1):
         if messages[i].type == "human":
@@ -22,43 +22,43 @@ def summarizer_node(state: AgentState):
             break
 
     if last_human_idx <= 0:
-        return {}  # Không có gì để tóm tắt hoặc chỉ có 1 lượt
+        return {}
 
+    # Giữ 20 tin gần nhất; chỉ tóm tắt phần cũ hơn. Không cắt giữa lượt hiện tại.
+    keep_from = min(max(0, len(messages) - RECENT_HISTORY_LIMIT), last_human_idx)
+    if keep_from <= 0:
+        return {}
+
+    stale = messages[:keep_from]
     summary_prompt = (
         "Dưới đây là tóm tắt lịch sử cuộc hội thoại trước đó:\n"
         f"{summary}\n\n"
-        "Và đây là các tin nhắn cũ:\n"
+        "Và đây là các tin nhắn cũ (đã vượt quá 20 tin gần nhất):\n"
     )
-    for m in messages[:last_human_idx]:
+    for m in stale:
         if m.content:
-            summary_prompt += f"{m.type}: {m.content}\n"
+            content = str(m.content)
+            if len(content) > 800:
+                content = content[:800] + "…"
+            summary_prompt += f"{m.type}: {content}\n"
 
     summary_prompt += (
-        "\nHãy tóm tắt ngắn gọn lại toàn bộ lịch sử này để làm ngữ cảnh cho AI trong các lượt chat tiếp theo. "
-        "YÊU CẦU QUAN TRỌNG: Những thành phần nào (tên dự án, mã task, tên nhân sự, hoặc chủ đề cụ thể) "
-        "được người dùng nhắc đến nhiều lần hoặc nhấn mạnh thì phải được giữ lại và ghi chú thật chi tiết (giữ nguyên ID, Tên gốc)."
+        "\nHãy tóm tắt NGẮN các thực thể (tên dự án, ID, nhân sự) để làm bối cảnh phụ. "
+        "Đây chỉ là ngữ cảnh phụ (~15%) — KHÔNG viết lại câu trả lời cũ, KHÔNG chép checklist/bản nháp. "
+        "Giữ nguyên ID và tên gốc."
     )
 
     response = llm.invoke([HumanMessage(content=summary_prompt)])
-
-    # Xoá các tin nhắn cũ (chỉ giữ lại toàn bộ lượt chat hiện tại từ last_human_idx)
-    delete_messages = [RemoveMessage(id=m.id) for m in messages[:last_human_idx]]
+    delete_messages = [RemoveMessage(id=m.id) for m in stale if getattr(m, "id", None)]
 
     return {"summary": response.content, "messages": delete_messages}
 
 
 def should_summarize(state: AgentState) -> Literal["summarize_conversation", "__end__"]:
     """
-    Xác định xem có cần tóm tắt lịch sử hội thoại hay không.
-    Nếu lịch sử (messages) dài hơn 20 tin nhắn, luồng sẽ chuyển sang node summarizer.
-
-    Args:
-        state: Trạng thái hiện tại của đồ thị (AgentState).
-
-    Returns:
-        Literal["summarize_conversation", "__end__"]: Node tiếp theo.
+    Tóm tắt khi vượt quá 20 tin gần nhất. 20 tin mới nhất được giữ nguyên trong state.
     """
     messages = state["messages"]
-    if len(messages) > 20:
+    if len(messages) > RECENT_HISTORY_LIMIT:
         return "summarize_conversation"
     return "__end__"

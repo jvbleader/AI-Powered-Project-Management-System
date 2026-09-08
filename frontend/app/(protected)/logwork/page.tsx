@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { EmptyState, ProgressBar, StatCard, StatusPill, Surface } from "@/components/ui";
 import { logworkApi, projectApi, taskApi, userApi, workspaceApi } from "@/services/api";
-import { formatDate, formatHours, hasCompanywideProjectAccess } from "@/lib/utils/format";
+import { formatDate, formatHours, canEditPendingLogwork, logworkStatusClassName, logworkStatusLabel } from "@/lib/utils/format";
 import { useAuthSession } from "@/hooks/use-session";
 import { LogworkEntryDetailModal } from "../tasks/_components/logwork-entry-detail-modal";
 import type { EnrichedTask, TaskLogworkEntry, Project, UserProfile, WorkspaceShellData } from "@/types";
@@ -111,9 +111,6 @@ export default function LogworkPage() {
   const coverage = trackedUsers.length
     ? Math.round((todayUserIds.size / trackedUsers.length) * 100)
     : 0;
-  const canManageScopedLogwork =
-    hasCompanywideProjectAccess(viewer.role, viewer.department) ||
-    (pageState?.projects ?? []).some((project) => project.managerId === viewer.id);
 
   async function refreshLogwork(nextTaskId?: string) {
     const [
@@ -142,6 +139,10 @@ export default function LogworkPage() {
     }
 
     if (editingEntryId) {
+      const existing = (pageState?.entries ?? []).find((entry) => entry.id === editingEntryId);
+      if (existing && !canEditPendingLogwork(existing.status, existing.userId, viewer.id)) {
+        return;
+      }
       await logworkApi.update(editingEntryId, {
         date: entryDate,
         hours: Number(entryHours),
@@ -305,7 +306,7 @@ export default function LogworkPage() {
               const task = (pageState?.tasks ?? []).find(
                 (candidate) => candidate.id === entry.taskId,
               );
-              const canEdit = canManageScopedLogwork || entry.userId === viewer.id;
+              const canEdit = canEditPendingLogwork(entry.status, entry.userId, viewer.id);
 
               return (
                 <div 
@@ -321,6 +322,9 @@ export default function LogworkPage() {
                   <strong>{user?.name ?? viewer.name}</strong>
                   <p>{task?.title ?? "Task đã ẩn"}</p>
                   <span>{formatHours(entry.hoursSpent)}</span>
+                  <span className={`logwork-status-pill ${logworkStatusClassName(entry.status)}`}>
+                    {logworkStatusLabel(entry.status)}
+                  </span>
                   {canEdit ? (
                     <div className="inline-actions">
                       <button
@@ -365,7 +369,11 @@ export default function LogworkPage() {
         entry={viewingEntry}
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
-        canEdit={viewingEntry ? canManageScopedLogwork || viewingEntry.userId === viewer.id : false}
+        canEdit={
+          viewingEntry
+            ? canEditPendingLogwork(viewingEntry.status, viewingEntry.userId, viewer.id)
+            : false
+        }
         onEdit={() => {
           if (!viewingEntry) return;
           setEditingEntryId(viewingEntry.id);

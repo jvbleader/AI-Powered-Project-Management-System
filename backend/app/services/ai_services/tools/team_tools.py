@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session
 
 from app.models.logworks import LogWork
 from app.models.project_model import Project, ProjectMember, Role
@@ -110,15 +111,14 @@ def get_user_workload(
     config: ToolConfig = None,
 ) -> Dict[str, Any]:
     """
-    Đánh giá khối lượng công việc hiện tại của một nhân viên.
-    Kiểm tra xem họ đang làm bao nhiêu task, có quá tải hay không, và TỔNG SỐ GIỜ đã log (chấm công) của họ là bao nhiêu.
-    Rất hữu ích để tính toán số giờ làm việc trung bình của thành viên trong dự án.
+    Đánh giá workload hiện tại của một nhân viên: số task đang mở, tổng giờ ước lượng còn lại,
+    và lịch (start_date–deadline) từng task để phát hiện chồng lịch khi gán việc mới.
 
     Args:
-        user_id: ID của nhân viên. (BẮT BUỘC - Nếu thiếu, PHẢI HỎI LẠI người dùng).
+        user_id: ID của nhân viên. (BẮT BUỘC)
         project_id: (Optional) ID dự án để lọc theo dự án.
-        start_date: (Optional) Chuỗi ngày YYYY-MM-DD. Lọc task bắt đầu từ ngày này.
-        end_date: (Optional) Chuỗi ngày YYYY-MM-DD. Lọc task kết thúc/deadline đến ngày này.
+        start_date: (Optional) YYYY-MM-DD. Lọc task bắt đầu từ ngày này.
+        end_date: (Optional) YYYY-MM-DD. Lọc task deadline đến ngày này.
     """
     with tool_db_session() as db:
         user = load_current_user(db, config)
@@ -172,16 +172,121 @@ def get_user_workload(
             return {
                 "user_id": user_id,
                 "active_tasks_count": len(tasks),
+                "open_estimated_hours": round(
+                    sum(float(t.estimated_hours or 0) for t in tasks), 1
+                ),
                 "total_logged_hours": float(total_logged_hours),
+                "busy_windows": [
+                    {
+                        "task_id": t.id,
+                        "title": t.title,
+                        "status": t.status,
+                        "project_id": t.project_id,
+                        "start_date": t.start_date.isoformat() if t.start_date else None,
+                        "deadline": t.deadline.isoformat() if t.deadline else None,
+                        "estimated_hours": float(t.estimated_hours) if t.estimated_hours else 0,
+                    }
+                    for t in tasks
+                ],
                 "tasks": [
                     {
                         "task_id": t.id,
                         "title": t.title,
                         "status": t.status,
                         "project_id": t.project_id,
+                        "start_date": t.start_date.isoformat() if t.start_date else None,
+                        "deadline": t.deadline.isoformat() if t.deadline else None,
+                        "estimated_hours": float(t.estimated_hours) if t.estimated_hours else 0,
                     }
                     for t in tasks
                 ],
             }
+        except Exception as e:
+            return {"error": str(e)}
+
+
+def query_project_team_workload(db: Session, project_id: int) -> Dict[str, Any]:
+    members = db.execute(
+        select(ProjectMember, User, Role)
+        .join(User, ProjectMember.user_id == User.id)
+        .join(Role, User.role_id == Role.id)
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.is_active.is_(True),
+        )
+    ).all()
+
+    open_tasks = db.execute(
+        select(Task, ProjectMember.user_id)
+        .join(TaskAssignees, Task.id == TaskAssignees.task_id)
+        .join(ProjectMember, TaskAssignees.project_member_id == ProjectMember.id)
+        .where(
+            ProjectMember.project_id == project_id,
+            Task.status.in_(["todo", "in_progress"]),
+        )
+    ).all()
+
+    tasks_by_user: Dict[int, List[Task]] = {}
+    for task, uid in open_tasks:
+        tasks_by_user.setdefault(uid, []).append(task)
+
+    team = []
+    for _pm, member_user, role_obj in members:
+        member_tasks = tasks_by_user.get(member_user.id, [])
+        windows = [
+            {
+                "task_id": t.id,
+                "title": t.title,
+                "status": t.status,
+                "start_date": t.start_date.isoformat() if t.start_date else None,
+                "deadline": t.deadline.isoformat() if t.deadline else None,
+                "estimated_hours": float(t.estimated_hours) if t.estimated_hours else 0,
+            }
+            for t in member_tasks
+        ]
+        team.append(
+            {
+                "user_id": member_user.id,
+                "name": member_user.full_name or member_user.email,
+                "role": role_obj.name if role_obj else "unknown",
+                "active_tasks_count": len(member_tasks),
+                "open_estimated_hours": round(
+                    sum(float(t.estimated_hours or 0) for t in member_tasks), 1
+                ),
+                "busy_windows": windows,
+            }
+        )
+
+    team.sort(key=lambda row: (row["open_estimated_hours"], row["active_tasks_count"]))
+    return {
+        "project_id": project_id,
+        "member_count": len(team),
+        "team": team,
+        "overlap_rule": (
+            "Hai khoảng [start_date, deadline] chồng nhau khi "
+            "start_a <= deadline_b AND start_b <= deadline_a. "
+            "Không gán task mới cho người có busy_windows chồng với lịch task mới."
+        ),
+    }
+
+
+@tool
+def get_project_team_workload(project_id: int, config: ToolConfig = None) -> Dict[str, Any]:
+    """
+    Lấy workload + lịch task đang mở (todo/in_progress) của TOÀN BỘ thành viên dự án.
+    BẮT BUỘC gọi TRƯỚC khi tự gán người: so sánh workload, deadline, phát hiện chồng lịch.
+    Hai task chồng lịch khi khoảng [start_date, deadline] giao nhau.
+
+    Args:
+        project_id: ID của dự án. (BẮT BUỘC)
+    """
+    with tool_db_session() as db:
+        user = load_current_user(db, config)
+        denied = deny_if_project_inaccessible(db, user, project_id)
+        if denied:
+            return denied
+
+        try:
+            return query_project_team_workload(db, project_id)
         except Exception as e:
             return {"error": str(e)}

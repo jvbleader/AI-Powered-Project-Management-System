@@ -1,5 +1,6 @@
 import base64
 import mimetypes
+import re
 import uuid
 
 from azure.storage.blob import BlobServiceClient
@@ -7,6 +8,36 @@ from azure.storage.blob import BlobServiceClient
 from app.core.config import get_settings
 
 settings = get_settings()
+
+MAX_AVATAR_BYTES = 5 * 1024 * 1024
+AVATAR_DATA_URL = re.compile(
+    r"^data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$",
+    re.IGNORECASE,
+)
+
+
+def _decode_avatar(base64_data: str) -> tuple[str, bytes]:
+    match = AVATAR_DATA_URL.fullmatch((base64_data or "").strip())
+    if not match:
+        raise ValueError("Ảnh đại diện phải là dữ liệu JPG, PNG hoặc WebP hợp lệ.")
+
+    mime_type = match.group(1).lower()
+    try:
+        image_data = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, base64.binascii.Error) as exc:
+        raise ValueError("Dữ liệu ảnh đại diện không hợp lệ.") from exc
+
+    if not image_data or len(image_data) > MAX_AVATAR_BYTES:
+        raise ValueError("Ảnh đại diện phải có dung lượng tối đa 5 MB.")
+
+    signatures = {
+        "image/jpeg": image_data.startswith(b"\xff\xd8\xff"),
+        "image/png": image_data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": image_data.startswith(b"RIFF") and image_data[8:12] == b"WEBP",
+    }
+    if not signatures[mime_type]:
+        raise ValueError("Nội dung tệp không phải là ảnh hợp lệ.")
+    return mime_type, image_data
 
 
 class AzureBlobService:
@@ -24,6 +55,7 @@ class AzureBlobService:
                 print(f"Failed to initialize Azure Blob Service Client: {e}")
 
     def upload_base64_avatar(self, base64_data: str, user_id: int) -> str:
+        mime_type, image_data = _decode_avatar(base64_data)
         if not self.blob_service_client:
             return base64_data
 
@@ -36,21 +68,9 @@ class AzureBlobService:
                 "image/gif": ".gif",
             }
 
-            if "base64," in base64_data:
-                header, encoded = base64_data.split("base64,", 1)
-                mime_type = header.split(":")[1].split(";")[0] if ":" in header else "image/jpeg"
-                extension = (
-                    mime_map.get(mime_type.lower())
-                    or mimetypes.guess_extension(mime_type)
-                    or ".jpg"
-                )
-                if extension == ".jfif":
-                    extension = ".jpg"
-            else:
-                encoded = base64_data
+            extension = mime_map.get(mime_type) or mimetypes.guess_extension(mime_type) or ".jpg"
+            if extension == ".jfif":
                 extension = ".jpg"
-
-            image_data = base64.b64decode(encoded)
             file_name = f"avatar_user_{user_id}_{uuid.uuid4().hex[:8]}{extension}"
 
             blob_client = self.blob_service_client.get_blob_client(
@@ -78,10 +98,8 @@ class AzureBlobService:
             blob_url = blob_client.url
             return blob_url
 
-        except Exception as e:
-            print(f"Error uploading avatar to Azure: {e}")
-            # Fallback to the original base64 string if upload fails
-            return base64_data
+        except Exception as exc:
+            raise RuntimeError("Không thể tải ảnh đại diện lên kho lưu trữ.") from exc
 
 
 azure_blob_service = AzureBlobService()

@@ -1,0 +1,4 @@
+# Mount Let's Encrypt / internal CA files here:
+#   fullchain.pem
+#   privkey.pem
+# Then enable nginx/conf.d/tls.conf.example as 30-tls.conf.

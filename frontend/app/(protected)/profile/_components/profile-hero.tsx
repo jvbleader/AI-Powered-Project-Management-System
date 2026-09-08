@@ -1,14 +1,16 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
-import { StatusPill } from "@/components/ui";
 import { UserAvatar } from "@/components/user-avatar";
-import { hasCompanywideProjectAccess, isAdminRole, isLeaderRole, isManagerRole, roleLabel } from "@/lib/utils/format";
+import { expandRoleDisplayLabels } from "@/lib/utils/format";
 import { userApi } from "@/services/api";
 import { markIntentionalLogout, signOutAll } from "@/services/auth/session";
 import type { UserProfile } from "@/types";
 import { AvatarCropper } from "./avatar-cropper";
 import styles from "../styles/profile.module.css";
+
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const ALLOWED_AVATAR_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 interface ProfileHeroProps {
   user: UserProfile;
@@ -20,13 +22,6 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
   const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [isSigningOutAll, setIsSigningOutAll] = useState(false);
-  const roleTone = isAdminRole(user.role)
-    ? "critical"
-    : hasCompanywideProjectAccess(user.role, user.department)
-      ? "on-track"
-      : isManagerRole(user.role) || isLeaderRole(user.role)
-        ? "accent"
-        : "neutral";
 
   function handleSelectAvatar() {
     setAvatarNotice(null);
@@ -40,8 +35,14 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      setAvatarNotice("Vui lòng chọn một tệp ảnh hợp lệ.");
+    if (!ALLOWED_AVATAR_TYPES.has(file.type)) {
+      setAvatarNotice("Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarNotice("Ảnh đại diện không được vượt quá 5 MB.");
       event.target.value = "";
       return;
     }
@@ -111,7 +112,7 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
           onChange={handleAvatarChange}
           className={styles.hiddenFileInput}
         />
@@ -130,15 +131,16 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
       <div className={styles.heroInfo}>
         <h1 className={styles.heroName}>{user.name}</h1>
         <span className={styles.heroEmail}>{user.email}</span>
-        <div className={styles.heroBadges}>
-          <StatusPill
-            label={roleLabel(user.role)}
-            tone={roleTone}
-          />
-          <StatusPill
-            label={user.isActive ? "Hoạt động" : "Tạm dừng"}
-            tone={user.isActive ? "on-track" : "watch"}
-          />
+        <div className={styles.heroBadges} aria-label="Vai trò tài khoản">
+          <div className={styles.heroRoleGroup}>
+            <div className={styles.heroRolePills}>
+              {expandRoleDisplayLabels(user.roles?.length ? user.roles : user.role).map((rolePart) => (
+                <span key={rolePart} className={styles.heroRolePill}>
+                  {rolePart}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
         {avatarNotice ? <p className={styles.avatarNotice}>{avatarNotice}</p> : null}
       </div>
@@ -159,6 +161,10 @@ export function ProfileHero({ user, onUpdate }: ProfileHeroProps) {
           imageSrc={cropImageSrc}
           onSave={handleCropSave}
           onCancel={() => setCropImageSrc(null)}
+          onError={() => {
+            setCropImageSrc(null);
+            setAvatarNotice("Không thể xử lý ảnh đã chọn.");
+          }}
         />
       )}
     </div>

@@ -1,8 +1,11 @@
+import logging
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
-from typing import List
 
 from app.core.connection import get_db
 from app.core.dependencies import get_current_user
@@ -13,20 +16,28 @@ from app.schemas.ai_schema import (
     AiMessageResponse,
     AiSessionResponse,
     ClassifyIntentResponse,
+    ConfirmSprintsRequest,
+    ConfirmSprintsResponse,
     ConfirmSprintStatusRequest,
     ConfirmSprintStatusResponse,
     ConfirmTasksRequest,
     ConfirmTasksResponse,
     CreateAiSessionRequest,
     QuickResponseRequest,
+    RejectDraftRequest,
+    UpdateDraftRequest,
 )
 from app.services.ai_services import service as ai_service
-from app.services.ai_services.tools.action_tools import (
-    execute_create_tasks,
-    execute_update_sprint_statuses,
+from app.services.ai_services.draft_confirm import (
+    confirm_sprint_status_from_message,
+    confirm_sprints_from_message,
+    confirm_tasks_from_message,
+    reject_draft_from_message,
+    update_draft_payload,
 )
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
+logger = logging.getLogger(__name__)
 
 
 class ChatMessageRequest(BaseModel):
@@ -121,13 +132,21 @@ async def clear_chat_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if session_id.isdigit():
-        ai_service.delete_user_session(db, current_user, int(session_id))
+    if not session_id.isdigit() or not ai_service.delete_user_session(
+        db, current_user, int(session_id)
+    ):
+        raise HTTPException(status_code=404, detail="Session not found")
 
-    pattern = f"checkpoint*{session_id}*"
-    keys = redis_client.keys(pattern)
-    if keys:
-        redis_client.delete(*keys)
+    # Redis only stores resumable stream state. The durable session was already
+    # deleted from DB, so a transient Redis outage must not turn this operation
+    # into a false 500 result for the user.
+    try:
+        pattern = f"checkpoint*{session_id}*"
+        keys = redis_client.keys(pattern)
+        if keys:
+            redis_client.delete(*keys)
+    except RedisError:
+        logger.warning("Unable to clear AI checkpoints for session %s", session_id, exc_info=True)
     return {"status": "ok", "message": "Session cleared"}
 
 
@@ -147,25 +166,41 @@ def confirm_tasks(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        created_tasks = execute_create_tasks(
+        created_task_ids = confirm_tasks_from_message(
             db=db,
             current_user=current_user,
+            draft_id=payload.draft_id,
             project_id=payload.project_id,
-            tasks_data=payload.tasks_data,
+            rejected_paths=payload.rejected_paths,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-    if payload.message_id:
-        ai_repository.confirm_draft_message(
-            db, current_user.id, payload.message_id, fence="json_task_draft"
-        )
-    else:
-        ai_repository.confirm_latest_draft_message(db, current_user.id)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return ConfirmTasksResponse(
-        message=f"Tạo thành công {len(created_tasks)} tasks.",
-        created_task_ids=[task.id for task in created_tasks],
+        message=f"Tạo thành công {len(created_task_ids)} tasks.",
+        created_task_ids=created_task_ids,
+    )
+
+
+@router.post("/confirm-sprints", response_model=ConfirmSprintsResponse)
+def confirm_sprints(
+    payload: ConfirmSprintsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        created_sprint_ids = confirm_sprints_from_message(
+            db=db,
+            current_user=current_user,
+            draft_id=payload.draft_id,
+            project_id=payload.project_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ConfirmSprintsResponse(
+        message=f"Tạo thành công {len(created_sprint_ids)} sprint.",
+        created_sprint_ids=created_sprint_ids,
     )
 
 
@@ -176,16 +211,42 @@ def confirm_sprint_status(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        updated = execute_update_sprint_statuses(db, current_user, payload.updates)
+        updated = confirm_sprint_status_from_message(db, current_user, payload.draft_id)
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-    if payload.message_id:
-        ai_repository.confirm_draft_message(
-            db, current_user.id, payload.message_id, fence="json_sprint_status_draft"
-        )
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return ConfirmSprintStatusResponse(
         message=f"Cập nhật thành công {len(updated)} sprint.",
         updated=updated,
     )
+
+
+@router.post("/reject-draft")
+def reject_draft(
+    payload: RejectDraftRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        reject_draft_from_message(db, current_user, payload.draft_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "message": "Đã từ chối bản nháp."}
+
+
+@router.put("/draft")
+def update_draft(
+    payload: UpdateDraftRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        saved_payload = update_draft_payload(
+            db,
+            current_user,
+            payload.draft_id,
+            payload.payload,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "payload": saved_payload}

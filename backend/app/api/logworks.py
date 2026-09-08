@@ -1,7 +1,8 @@
-from typing import List, Optional
 from datetime import date
+from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -33,7 +34,7 @@ def get_pending_logworks(
         pending_logworks = (
             db.query(LogWork)
             .filter(LogWork.status == "PENDING")
-            .order_by(LogWork.created_at.desc())
+            .order_by(LogWork.created_at.desc(), LogWork.work_date.desc(), LogWork.id.desc())
             .all()
         )
     else:
@@ -59,7 +60,7 @@ def get_pending_logworks(
             db.query(LogWork)
             .join(Task, LogWork.task_id == Task.id)
             .filter(LogWork.status == "PENDING", project_filter)
-            .order_by(LogWork.created_at.desc())
+            .order_by(LogWork.created_at.desc(), LogWork.work_date.desc(), LogWork.id.desc())
             .all()
         )
 
@@ -69,7 +70,9 @@ def get_pending_logworks(
         if member:
             user = db.query(User).filter(User.id == member.user_id).first()
             if user:
+                lw.user_id = user.id  # Dùng làm "mã nhân viên" ở UI
                 lw.user_name = user.full_name
+                lw.user_email = user.email
             project = db.query(Project).filter(Project.id == member.project_id).first()
             if project:
                 lw.project_name = project.name
@@ -101,6 +104,12 @@ def approve_logwork(
     if not user_can_manage_project(db, task.project_id, current_user):
         raise HTTPException(status_code=403, detail="Không có quyền duyệt logwork này")
 
+    if (logwork.status or "PENDING").upper() != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Logwork này đã được xử lý trước đó",
+        )
+
     logwork.status = "APPROVED"
     db.commit()
     db.refresh(logwork)
@@ -110,6 +119,8 @@ def approve_logwork(
         user = db.query(User).filter(User.id == member.user_id).first()
         if user:
             logwork.user_name = user.full_name
+            logwork.user_id = user.id
+            logwork.user_email = user.email
 
             if user.id != current_user.id:
                 notification = Notification(
@@ -145,10 +156,15 @@ def approve_logwork(
     return logwork
 
 
+class RejectBody(BaseModel):
+    reason: str = ""
+
+
 @router.patch("/{logwork_id}/reject", response_model=LogWorkResponse)
 def reject_logwork(
     logwork_id: int,
     background_tasks: BackgroundTasks,
+    body: RejectBody = RejectBody(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -164,7 +180,14 @@ def reject_logwork(
     if not user_can_manage_project(db, task.project_id, current_user):
         raise HTTPException(status_code=403, detail="Không có quyền duyệt logwork này")
 
+    if (logwork.status or "PENDING").upper() != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Logwork này đã được xử lý trước đó",
+        )
+
     logwork.status = "REJECTED"
+    logwork.reject_reason = body.reason.strip() if body.reason else None
     db.commit()
     db.refresh(logwork)
 
@@ -173,13 +196,18 @@ def reject_logwork(
         user = db.query(User).filter(User.id == member.user_id).first()
         if user:
             logwork.user_name = user.full_name
+            logwork.user_id = user.id
+            logwork.user_email = user.email
 
             if user.id != current_user.id:
                 notification = Notification(
                     user_id=user.id,
                     type="LOGWORK_REJECTED",
                     title="Logwork bị từ chối",
-                    content=f"Logwork {logwork.hours_spent}h của bạn ở '{task.title}' đã bị từ chối.",
+                    content=(
+                        f"Logwork {logwork.hours_spent}h của bạn ở '{task.title}' đã bị từ chối."
+                        + (f" Lý do: {logwork.reject_reason}" if logwork.reject_reason else "")
+                    ),
                     link=f"/projects/{task.project_id}?highlightTaskId={task.id}",
                 )
                 db.add(notification)
@@ -276,7 +304,15 @@ def update_logwork(
     member = db.query(ProjectMember).filter(ProjectMember.id == logwork.project_member_id).first()
     if not member or member.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Không có quyền sửa logwork này")
-        
+
+    if logwork.status in ("APPROVED", "REJECTED"):
+        raise HTTPException(
+            status_code=403,
+            detail="Không thể sửa logwork đã được duyệt hoặc từ chối.",
+        )
+
+    if data.work_date is not None:
+        logwork.work_date = data.work_date
     if data.hours_spent is not None:
         logwork.hours_spent = data.hours_spent
     if data.work_content is not None:
@@ -313,7 +349,12 @@ def delete_logwork(
     member = db.query(ProjectMember).filter(ProjectMember.id == logwork.project_member_id).first()
     if not member or member.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Không có quyền xóa logwork này")
-        
+
+    if logwork.status in ("APPROVED", "REJECTED"):
+        raise HTTPException(
+            status_code=403,
+            detail="Không thể xóa logwork đã được duyệt hoặc từ chối.",
+        ) 
     # Return deleted object with context so frontend can handle it
     deleted_data = {
         "id": logwork.id,

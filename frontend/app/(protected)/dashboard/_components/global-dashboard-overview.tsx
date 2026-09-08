@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type WheelEvent } from "react";
 import Link from "next/link";
 
 import type {
@@ -10,12 +10,13 @@ import type {
   ProjectHealthPreview,
 } from "@/types";
 import { Surface, DonutChart, ColumnChart, type ColumnChartTone } from "@/components/ui";
-import { logworkApi } from "@/services/api/logworks";
 import { FilterSelect } from "@/components/filter-select";
-import { formatDate } from "@/lib/utils/format";
+import { canAccessLogworkApprovalsRole, formatDate, logworkStatusClassName, logworkStatusLabel } from "@/lib/utils/format";
+import { useAuthSession } from "@/hooks/use-session";
 
 type GlobalDashboardOverviewProps = {
   overview: GlobalDashboardOverviewType | null;
+  canViewRecentLogworks?: boolean;
 };
 
 const kpiBaseStyle: CSSProperties = {
@@ -38,6 +39,72 @@ const surfaceCardStyle: CSSProperties = {
   border: "1px solid rgba(148, 163, 184, 0.14)",
 };
 
+const ATTENTION_LIST_MAX_HEIGHT = 200;
+
+function ScrollChainBox({
+  children,
+  maxHeight = ATTENTION_LIST_MAX_HEIGHT,
+  style,
+}: {
+  children: ReactNode;
+  maxHeight?: number;
+  style?: CSSProperties;
+}) {
+  const scrollParent = (start: HTMLElement | null, deltaY: number) => {
+    let node = start;
+    while (node) {
+      const { overflowY } = window.getComputedStyle(node);
+      if (overflowY === "auto" || overflowY === "scroll") {
+        if (node.scrollHeight > node.clientHeight + 1) {
+          node.scrollTop += deltaY;
+          return;
+        }
+      }
+      node = node.parentElement;
+    }
+    window.scrollBy({ top: deltaY });
+  };
+
+  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    const { deltaY } = event;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const canScrollUp = scrollTop > 0;
+    const canScrollDown = scrollTop + clientHeight < scrollHeight - 1;
+
+    if (scrollHeight <= clientHeight + 1) {
+      event.preventDefault();
+      scrollParent(el.parentElement, deltaY);
+      return;
+    }
+
+    if ((deltaY < 0 && !canScrollUp) || (deltaY > 0 && !canScrollDown)) {
+      event.preventDefault();
+      scrollParent(el.parentElement, deltaY);
+    }
+  };
+
+  return (
+    <div
+      className="dashboard-scroll-panel"
+      onWheel={onWheel}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        marginTop: "0.1rem",
+        maxHeight,
+        minHeight: 0,
+        overflowY: "auto",
+        overscrollBehavior: "auto",
+        paddingRight: "0.1rem",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 const HEALTH_RANK = { critical: 0, watch: 1, "on-track": 2 } as const;
 
 function CountBadge({
@@ -45,9 +112,10 @@ function CountBadge({
   tone,
 }: {
   value: number;
-  tone: "red" | "blue";
+  tone: "red" | "blue" | "yellow";
 }) {
   const isRed = tone === "red";
+  const isYellow = tone === "yellow";
   return (
     <span
       style={{
@@ -62,8 +130,12 @@ function CountBadge({
         fontWeight: 600,
         letterSpacing: "-0.01em",
         fontVariantNumeric: "tabular-nums",
-        color: isRed ? "#b91c1c" : "#1d4ed8",
-        background: isRed ? "rgba(254, 226, 226, 0.75)" : "rgba(219, 234, 254, 0.75)",
+        color: isRed ? "#b91c1c" : isYellow ? "#b45309" : "#1d4ed8",
+        background: isRed
+          ? "rgba(254, 226, 226, 0.75)"
+          : isYellow
+            ? "rgba(254, 243, 199, 0.9)"
+            : "rgba(219, 234, 254, 0.75)",
         flexShrink: 0,
       }}
     >
@@ -78,13 +150,23 @@ function TaskLinkRow({
   highlightColor,
 }: {
   task: DashboardTaskPreview;
-  accent: "red" | "blue";
-  highlightColor: "red" | "blue" | "green";
+  accent: "red" | "blue" | "yellow";
+  highlightColor: "red" | "blue" | "green" | "yellow";
 }) {
-  const accentBar = accent === "red" ? "#f87171" : "#93c5fd";
-  const dateColor = accent === "red" ? "#dc2626" : "var(--foreground-muted)";
+  const accentBar =
+    accent === "red" ? "#f87171" : accent === "yellow" ? "#f59e0b" : "#93c5fd";
+  const dateColor =
+    accent === "red"
+      ? "#dc2626"
+      : accent === "yellow"
+        ? "#b45309"
+        : "var(--foreground-muted)";
   const hoverBg =
-    accent === "red" ? "rgba(254, 242, 242, 0.7)" : "rgba(248, 250, 252, 0.95)";
+    accent === "red"
+      ? "rgba(254, 242, 242, 0.7)"
+      : accent === "yellow"
+        ? "rgba(254, 243, 199, 0.45)"
+        : "rgba(248, 250, 252, 0.95)";
   const isWaterfall = (task.projectType || "").toLowerCase() === "waterfall";
   const tab = isWaterfall ? "gantt" : "kanban";
   const href = task.projectId
@@ -249,24 +331,33 @@ function buildHoursByDay(logs: DashboardRecentLogwork[]) {
   const index = new Map(days.map((d) => [d.key, d]));
   for (const log of logs) {
     if (!log.workDate) continue;
-    const parsed = new Date(log.workDate);
-    if (Number.isNaN(parsed.getTime())) continue;
-    const key = toLocalDateKey(parsed);
-    const bucket = index.get(key);
-    if (bucket) bucket.hours += Number(log.hours) || 0;
+    const rawDateStr = String(log.workDate).slice(0, 10);
+    const bucket = index.get(rawDateStr);
+    if (bucket) {
+      bucket.hours += Number(log.hours) || 0;
+    } else {
+      const parsed = new Date(log.workDate);
+      if (!Number.isNaN(parsed.getTime())) {
+        const fallbackKey = toLocalDateKey(parsed);
+        const fallbackBucket = index.get(fallbackKey);
+        if (fallbackBucket) fallbackBucket.hours += Number(log.hours) || 0;
+      }
+    }
   }
 
   return days;
 }
 
 export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewProps) {
+  const session = useAuthSession();
+  const canApproveLogwork = session?.currentUser
+    ? canAccessLogworkApprovalsRole(session.currentUser.role)
+    : false;
   const [isTotalProjectsModalOpen, setIsTotalProjectsModalOpen] = useState(false);
   const [isCompletedTasksModalOpen, setIsCompletedTasksModalOpen] = useState(false);
   const [isOverdueTasksModalOpen, setIsOverdueTasksModalOpen] = useState(false);
   const [logworkItems, setLogworkItems] = useState<DashboardRecentLogwork[]>([]);
-  const [selectedLogwork, setSelectedLogwork] = useState<DashboardRecentLogwork | null>(null);
-  const [logworkActionLoading, setLogworkActionLoading] = useState(false);
-  const [logworkActionError, setLogworkActionError] = useState<string | null>(null);
+  const [logworkProjectFilter, setLogworkProjectFilter] = useState("");
   const [overdueProjectFilter, setOverdueProjectFilter] = useState("");
   const [upcomingProjectFilter, setUpcomingProjectFilter] = useState("");
   const riskSectionRef = useRef<HTMLDivElement | null>(null);
@@ -317,6 +408,61 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
     return upcomingDeadlines.filter((task) => String(task.projectId) === upcomingProjectFilter);
   }, [upcomingDeadlines, upcomingProjectFilter]);
 
+  const logworkProjectOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const log of logworkItems) {
+      if (log.projectId && log.projectName) {
+        map.set(String(log.projectId), log.projectName);
+      } else if (log.projectName) {
+        map.set(log.projectName, log.projectName);
+      }
+    }
+    return [
+      { value: "", label: "Tất cả dự án" },
+      ...Array.from(map.entries())
+        .sort((a, b) => a[1].localeCompare(b[1], "vi"))
+        .map(([value, label]) => ({ value, label })),
+    ];
+  }, [logworkItems]);
+
+  const filteredLogworkItems = useMemo(() => {
+    if (!logworkProjectFilter) return logworkItems;
+    return logworkItems.filter((log) => {
+      const key = log.projectId ? String(log.projectId) : (log.projectName || "");
+      return key === logworkProjectFilter;
+    });
+  }, [logworkItems, logworkProjectFilter]);
+
+  const groupedLogworks = useMemo(() => {
+    const groups: Array<{
+      projectId: string;
+      projectName: string;
+      totalHours: number;
+      items: DashboardRecentLogwork[];
+    }> = [];
+    const groupMap = new Map<string, (typeof groups)[0]>();
+
+    for (const log of filteredLogworkItems) {
+      const key = log.projectId ? String(log.projectId) : (log.projectName || "other");
+      const name = log.projectName || "Dự án khác";
+      let grp = groupMap.get(key);
+      if (!grp) {
+        grp = {
+          projectId: key,
+          projectName: name,
+          totalHours: 0,
+          items: [],
+        };
+        groupMap.set(key, grp);
+        groups.push(grp);
+      }
+      grp.items.push(log);
+      grp.totalHours += Number(log.hours) || 0;
+    }
+
+    return groups;
+  }, [filteredLogworkItems]);
+
   if (!overview || !taskSummary) {
     return (
       <div style={{ padding: "2rem", textAlign: "center", color: "var(--foreground-muted)" }}>
@@ -337,72 +483,6 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
   const uniqueLoggers = new Set(logworkItems.map((l) => l.userId)).size;
   const maxDayHours = Math.max(...hoursByDay.map((d) => d.hours), 1);
 
-  const updateLogworkLocal = (id: string, patch: Partial<DashboardRecentLogwork>) => {
-    setLogworkItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-    );
-    setSelectedLogwork((prev) => (prev && prev.id === id ? { ...prev, ...patch } : prev));
-  };
-
-  const handleApproveLogwork = async () => {
-    if (!selectedLogwork) return;
-    setLogworkActionLoading(true);
-    setLogworkActionError(null);
-    try {
-      await logworkApi.approve(Number(selectedLogwork.id));
-      updateLogworkLocal(selectedLogwork.id, { status: "APPROVED", canApprove: false });
-    } catch (err) {
-      setLogworkActionError(
-        err instanceof Error ? err.message : "Không thể duyệt logwork",
-      );
-    } finally {
-      setLogworkActionLoading(false);
-    }
-  };
-
-  const handleRejectLogwork = async () => {
-    if (!selectedLogwork) return;
-    setLogworkActionLoading(true);
-    setLogworkActionError(null);
-    try {
-      await logworkApi.reject(Number(selectedLogwork.id));
-      updateLogworkLocal(selectedLogwork.id, { status: "REJECTED", canApprove: false });
-    } catch (err) {
-      setLogworkActionError(
-        err instanceof Error ? err.message : "Không thể từ chối logwork",
-      );
-    } finally {
-      setLogworkActionLoading(false);
-    }
-  };
-
-  const logworkStatusLabel = (status?: string) => {
-    const normalized = (status || "").toUpperCase();
-    if (normalized === "APPROVED") return "Đã duyệt";
-    if (normalized === "REJECTED") return "Từ chối";
-    return "Chờ duyệt";
-  };
-
-  const logworkStatusTone = (status?: string) => {
-    const normalized = (status || "").toUpperCase();
-    if (normalized === "APPROVED") {
-      return {
-        background: "rgba(34, 197, 94, 0.15)",
-        color: "#15803d",
-      };
-    }
-    if (normalized === "REJECTED") {
-      return {
-        background: "rgba(239, 68, 68, 0.15)",
-        color: "#b91c1c",
-      };
-    }
-    return {
-      background: "rgba(234, 179, 8, 0.15)",
-      color: "#b45309",
-    };
-  };
-
   return (
     <div className="global-dash" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
       {/* Row 1 — KPI */}
@@ -420,13 +500,13 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           onKeyDown={(e) => e.key === "Enter" && setIsTotalProjectsModalOpen(true)}
           style={{
             ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
-            border: "1px solid rgba(37, 99, 235, 0.12)",
+            background: "var(--surface)",
+            border: "1px solid var(--surface-border)",
           }}
         >
           <div
             style={{
-              color: "#1e3a8a",
+              color: "var(--foreground-muted)",
               fontSize: "0.68rem",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -435,14 +515,14 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           >
             Dự án
           </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#1d4ed8", lineHeight: 1.05 }}>
+          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "var(--ink)", lineHeight: 1.05 }}>
             {activeProjects}
-            <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#3b82f6" }}>
+            <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--foreground-muted)" }}>
               {" "}
               / {totalProjects}
             </span>
           </div>
-          <div style={{ fontSize: "0.75rem", color: "#3b82f6" }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--foreground-muted)" }}>
             Đang chạy · {completedProjects} hoàn thành
           </div>
         </div>
@@ -454,13 +534,13 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           onKeyDown={(e) => e.key === "Enter" && setIsCompletedTasksModalOpen(true)}
           style={{
             ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
-            border: "1px solid rgba(217, 119, 6, 0.18)",
+            background: "var(--surface)",
+            border: "1px solid var(--surface-border)",
           }}
         >
           <div
             style={{
-              color: "#92400e",
+              color: "var(--foreground-muted)",
               fontSize: "0.68rem",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -469,10 +549,10 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           >
             Việc đang mở
           </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#78350f", lineHeight: 1.05 }}>
+          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "var(--ink)", lineHeight: 1.05 }}>
             {openTasks}
           </div>
-          <div style={{ fontSize: "0.75rem", color: "#b45309" }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--foreground-muted)" }}>
             trên {totalTasks} tasks toàn hệ thống
           </div>
         </div>
@@ -484,13 +564,13 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           onKeyDown={(e) => e.key === "Enter" && setIsOverdueTasksModalOpen(true)}
           style={{
             ...kpiBaseStyle,
-            background: "linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)",
-            border: "1px solid rgba(220, 38, 38, 0.12)",
+            background: "var(--surface)",
+            border: "1px solid var(--surface-border)",
           }}
         >
           <div
             style={{
-              color: "#7f1d1d",
+              color: "var(--foreground-muted)",
               fontSize: "0.68rem",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -499,10 +579,10 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
           >
             Quá hạn
           </div>
-          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#b91c1c", lineHeight: 1.05 }}>
+          <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "var(--ink)", lineHeight: 1.05 }}>
             {taskSummary.overdue}
           </div>
-          <div style={{ fontSize: "0.75rem", color: "#dc2626" }}>Cần xử lý gấp →</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--foreground-muted)" }}>Cần xử lý gấp →</div>
         </div>
       </div>
 
@@ -518,6 +598,133 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
         }}
       >
         <Surface
+          title={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+              <span>Task quá hạn</span>
+              <CountBadge value={filteredOverdueTasks.length} tone="red" />
+            </div>
+          }
+          style={{
+            ...surfaceCardStyle,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+          aside={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+              <div style={{ minWidth: "140px", maxWidth: "180px", width: "min(180px, 26vw)" }}>
+                <FilterSelect
+                  value={overdueProjectFilter}
+                  onChange={setOverdueProjectFilter}
+                  options={riskProjectOptions}
+                  placeholder="Tất cả dự án"
+                  searchable
+                  searchPlaceholder="Tìm tên dự án..."
+                  size="sm"
+                  variant="combobox"
+                />
+              </div>
+            </div>
+          }
+        >
+          <ScrollChainBox>
+            {filteredOverdueTasks.length > 0 ? (
+              filteredOverdueTasks.map((task) => (
+                <TaskLinkRow
+                  key={task.id}
+                  task={task}
+                  accent="red"
+                  highlightColor="red"
+                />
+              ))
+            ) : (
+              <div
+                style={{
+                  padding: "1rem 0.5rem",
+                  textAlign: "center",
+                  color: "var(--foreground-muted)",
+                  fontSize: "0.78rem",
+                }}
+              >
+                Không có nhiệm vụ quá hạn
+                {overdueProjectFilter ? " cho dự án đã chọn" : ""}
+              </div>
+            )}
+          </ScrollChainBox>
+        </Surface>
+
+        <Surface
+          title={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+              <span>Task sắp tới hạn</span>
+              <CountBadge value={filteredUpcomingDeadlines.length} tone="yellow" />
+            </div>
+          }
+          style={{
+            ...surfaceCardStyle,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+          aside={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+              <div style={{ minWidth: "140px", maxWidth: "180px", width: "min(180px, 26vw)" }}>
+                <FilterSelect
+                  value={upcomingProjectFilter}
+                  onChange={setUpcomingProjectFilter}
+                  options={riskProjectOptions}
+                  placeholder="Tất cả dự án"
+                  searchable
+                  searchPlaceholder="Tìm tên dự án..."
+                  size="sm"
+                  variant="combobox"
+                />
+              </div>
+            </div>
+          }
+        >
+          <ScrollChainBox>
+            {filteredUpcomingDeadlines.length > 0 ? (
+              filteredUpcomingDeadlines.map((task) => (
+                <TaskLinkRow
+                  key={task.id}
+                  task={task}
+                  accent="yellow"
+                  highlightColor="yellow"
+                />
+              ))
+            ) : (
+              <div
+                style={{
+                  padding: "1rem 0.5rem",
+                  textAlign: "center",
+                  color: "var(--foreground-muted)",
+                  fontSize: "0.78rem",
+                }}
+              >
+                Không có nhiệm vụ sắp tới hạn trong 7 ngày
+                {upcomingProjectFilter ? " cho dự án đã chọn" : ""}
+              </div>
+            )}
+          </ScrollChainBox>
+        </Surface>
+      </div>
+
+      {/* Row 3 — Overdue + upcoming + activity */}
+      <div
+        ref={riskSectionRef}
+        className="global-dash-risk"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
+          gridTemplateRows: "minmax(0, 1fr) minmax(0, 1fr)",
+          height: 680,
+          gap: "0.75rem",
+          minWidth: 0,
+          alignItems: "stretch",
+        }}
+      >
+        <Surface
           title="Phân bổ nhiệm vụ"
           style={{
             ...surfaceCardStyle,
@@ -525,6 +732,8 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
             display: "flex",
             flexDirection: "column",
             minHeight: 330,
+            gridColumn: 1,
+            gridRow: 1,
           }}
         >
           <div
@@ -645,12 +854,9 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
             display: "flex",
             flexDirection: "column",
             minHeight: 330,
+            gridColumn: 1,
+            gridRow: 2,
           }}
-          aside={
-            <span style={{ fontSize: "0.68rem", color: "var(--foreground-muted)" }}>
-              Cuộn ngang · màu theo trạng thái
-            </span>
-          }
         >
           <div
             style={{
@@ -665,154 +871,10 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
             <ColumnChart height="100%" items={portfolioItems} />
           </div>
         </Surface>
-      </div>
-
-      {/* Row 3 — Overdue + upcoming + activity */}
-      <div
-        ref={riskSectionRef}
-        className="global-dash-risk"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
-          gridTemplateRows: "minmax(0, 1fr) minmax(0, 1fr)",
-          height: 680,
-          gap: "0.75rem",
-          minWidth: 0,
-          alignItems: "stretch",
-        }}
-      >
-        <Surface
-          title="Task quá hạn"
-          style={{
-            ...surfaceCardStyle,
-            height: "100%",
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-            overflow: "hidden",
-            gridColumn: 1,
-            gridRow: 1,
-          }}
-          aside={
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-              <CountBadge value={filteredOverdueTasks.length} tone="red" />
-              <div style={{ minWidth: "150px", maxWidth: "200px", width: "min(200px, 26vw)" }}>
-                <FilterSelect
-                  value={overdueProjectFilter}
-                  onChange={setOverdueProjectFilter}
-                  options={riskProjectOptions}
-                  placeholder="Tất cả dự án"
-                  searchable
-                  searchPlaceholder="Tìm tên dự án..."
-                />
-              </div>
-            </div>
-          }
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              marginTop: "0.1rem",
-              flex: 1,
-              minHeight: 0,
-              overflowY: "auto",
-              paddingRight: "0.1rem",
-              overscrollBehavior: "contain",
-            }}
-          >
-            {filteredOverdueTasks.length > 0 ? (
-              filteredOverdueTasks.map((task) => (
-                <TaskLinkRow
-                  key={task.id}
-                  task={task}
-                  accent="red"
-                  highlightColor="red"
-                />
-              ))
-            ) : (
-              <div
-                style={{
-                  padding: "1rem 0.5rem",
-                  textAlign: "center",
-                  color: "var(--foreground-muted)",
-                  fontSize: "0.78rem",
-                }}
-              >
-                Không có nhiệm vụ quá hạn
-                {overdueProjectFilter ? " cho dự án đã chọn" : ""}
-              </div>
-            )}
-          </div>
-        </Surface>
-
-        <Surface
-          title="Task sắp tới hạn"
-          style={{
-            ...surfaceCardStyle,
-            height: "100%",
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-            overflow: "hidden",
-            gridColumn: 1,
-            gridRow: 2,
-          }}
-          aside={
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-              <CountBadge value={filteredUpcomingDeadlines.length} tone="blue" />
-              <div style={{ minWidth: "150px", maxWidth: "200px", width: "min(200px, 26vw)" }}>
-                <FilterSelect
-                  value={upcomingProjectFilter}
-                  onChange={setUpcomingProjectFilter}
-                  options={riskProjectOptions}
-                  placeholder="Tất cả dự án"
-                  searchable
-                  searchPlaceholder="Tìm tên dự án..."
-                />
-              </div>
-            </div>
-          }
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              marginTop: "0.1rem",
-              flex: 1,
-              minHeight: 0,
-              overflowY: "auto",
-              paddingRight: "0.1rem",
-              overscrollBehavior: "contain",
-            }}
-          >
-            {filteredUpcomingDeadlines.length > 0 ? (
-              filteredUpcomingDeadlines.map((task) => (
-                <TaskLinkRow
-                  key={task.id}
-                  task={task}
-                  accent="blue"
-                  highlightColor="blue"
-                />
-              ))
-            ) : (
-              <div
-                style={{
-                  padding: "1rem 0.5rem",
-                  textAlign: "center",
-                  color: "var(--foreground-muted)",
-                  fontSize: "0.78rem",
-                }}
-              >
-                Không có nhiệm vụ sắp tới hạn trong 7 ngày
-                {upcomingProjectFilter ? " cho dự án đã chọn" : ""}
-              </div>
-            )}
-          </div>
-        </Surface>
 
         <Surface
           title="Hoạt động gần đây"
+          className="global-dash-activity"
           style={{
             ...surfaceCardStyle,
             height: "100%",
@@ -961,118 +1023,258 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
             >
               <div
                 style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  color: "var(--foreground-muted)",
-                  marginBottom: "0.4rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.5rem",
+                  marginBottom: "0.45rem",
                   flexShrink: 0,
                 }}
               >
-                Nhật ký logwork
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      color: "var(--foreground-muted)",
+                    }}
+                  >
+                    Nhật ký logwork
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "0.68rem",
+                      fontWeight: 600,
+                      color: "#1d4ed8",
+                      background: "rgba(219, 234, 254, 0.75)",
+                      padding: "0 0.4rem",
+                      height: "1.25rem",
+                      borderRadius: "999px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {filteredLogworkItems.length}
+                  </span>
+                </div>
+                {logworkProjectOptions.length > 2 && (
+                  <div style={{ minWidth: "120px", maxWidth: "160px" }}>
+                    <FilterSelect
+                      value={logworkProjectFilter}
+                      onChange={setLogworkProjectFilter}
+                      options={logworkProjectOptions}
+                      placeholder="Tất cả dự án"
+                      searchable
+                      searchPlaceholder="Tìm dự án..."
+                      size="sm"
+                      variant="combobox"
+                    />
+                  </div>
+                )}
               </div>
               <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: "0.4rem",
+                  gap: "0.6rem",
                   flex: 1,
                   minHeight: 0,
                   overflowY: "auto",
                   paddingRight: "0.15rem",
-                  overscrollBehavior: "contain",
+                  // Let the main dashboard continue scrolling once this list
+                  // reaches its top or bottom edge.
+                  overscrollBehavior: "auto",
                 }}
               >
-                {logworkItems.length > 0 ? (
-                  logworkItems.map((log) => (
-                    <button
-                      key={log.id}
-                      type="button"
-                      onClick={() => {
-                        setLogworkActionError(null);
-                        setSelectedLogwork(log);
-                      }}
+                {groupedLogworks.length > 0 ? (
+                  groupedLogworks.map((group) => (
+                    <div
+                      key={group.projectId}
                       style={{
-                        textAlign: "left",
-                        width: "100%",
-                        cursor: "pointer",
-                        font: "inherit",
-                        color: "inherit",
-                        display: "grid",
-                        gridTemplateColumns: "auto 1fr auto",
-                        gap: "0.55rem",
-                        alignItems: "center",
-                        padding: "0.5rem 0.65rem",
-                        borderRadius: "8px",
-                        border: "1px solid rgba(148,163,184,0.18)",
-                        background: "rgba(248,250,252,0.9)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.35rem",
                       }}
                     >
                       <div
                         style={{
-                          width: "30px",
-                          height: "30px",
-                          borderRadius: "999px",
-                          background: "rgba(37,99,235,0.12)",
-                          color: "#1d4ed8",
-                          fontSize: "0.68rem",
-                          fontWeight: 700,
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
+                          justifyContent: "space-between",
+                          padding: "0.28rem 0.55rem",
+                          background: "rgba(241, 245, 249, 0.9)",
+                          borderRadius: "6px",
+                          borderLeft: "3px solid #2563eb",
+                          position: "sticky",
+                          top: 0,
+                          zIndex: 1,
+                          backdropFilter: "blur(4px)",
                         }}
-                        title={log.userName}
                       >
-                        {log.userName
-                          .split(" ")
-                          .filter(Boolean)
-                          .slice(-2)
-                          .map((p) => p[0])
-                          .join("")
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div
+                        <span
                           style={{
-                            fontSize: "0.8rem",
-                            fontWeight: 600,
-                            color: "var(--ink)",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            color: "#1e293b",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
                           }}
-                          title={log.taskTitle}
+                          title={group.projectName}
                         >
-                          {log.taskTitle}
-                        </div>
-                        <div style={{ fontSize: "0.7rem", color: "var(--foreground-muted)", marginTop: "0.1rem" }}>
-                          {log.userName} · {log.taskKey}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          {group.projectName}
+                        </span>
                         <div
                           style={{
-                            fontSize: "0.75rem",
-                            fontWeight: 700,
-                            color: "#1d4ed8",
-                            background: "rgba(37,99,235,0.1)",
-                            borderRadius: "999px",
-                            padding: "0.15rem 0.5rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
+                            fontSize: "0.66rem",
+                            color: "var(--foreground-muted)",
+                            fontWeight: 600,
+                            flexShrink: 0,
                           }}
                         >
-                          {log.hours}h
-                        </div>
-                        <div style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", marginTop: "0.15rem" }}>
-                          {log.workDate
-                            ? new Date(log.workDate).toLocaleDateString("vi-VN", {
-                                day: "2-digit",
-                                month: "2-digit",
-                              })
-                            : ""}
+                          <span style={{ color: "#2563eb", fontWeight: 700 }}>
+                            {group.totalHours.toFixed(group.totalHours % 1 === 0 ? 0 : 1)}h
+                          </span>
+                          <span>·</span>
+                          <span>{group.items.length} log</span>
                         </div>
                       </div>
-                    </button>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                        {group.items.map((log) => {
+                          const href = canApproveLogwork
+                            ? `/logwork-approvals?highlightLogworkId=${encodeURIComponent(log.id)}`
+                            : (log.taskId ? `/tasks?taskId=${log.taskId}` : `/logwork-approvals`);
+
+                          return (
+                            <Link
+                              key={log.id}
+                              href={href}
+                              style={{
+                                textAlign: "left",
+                                width: "100%",
+                                textDecoration: "none",
+                                color: "inherit",
+                                cursor: "pointer",
+                                font: "inherit",
+                                display: "grid",
+                                gridTemplateColumns: "auto 1fr auto",
+                                gap: "0.55rem",
+                                alignItems: "center",
+                                padding: "0.5rem 0.65rem",
+                                borderRadius: "8px",
+                                border: "1px solid rgba(148,163,184,0.18)",
+                                background: "rgba(248,250,252,0.9)",
+                                transition: "background-color 0.15s ease, border-color 0.15s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = "rgba(241, 245, 249, 0.95)";
+                                e.currentTarget.style.borderColor = "rgba(148, 163, 184, 0.35)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = "rgba(248, 250, 252, 0.9)";
+                                e.currentTarget.style.borderColor = "rgba(148, 163, 184, 0.18)";
+                              }}
+                            >
+                            <div
+                              style={{
+                                width: "30px",
+                                height: "30px",
+                                borderRadius: "999px",
+                                background: "rgba(37,99,235,0.12)",
+                                color: "#1d4ed8",
+                                fontSize: "0.68rem",
+                                fontWeight: 700,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                              title={log.userName}
+                            >
+                              {log.userName
+                                .split(" ")
+                                .filter(Boolean)
+                                .slice(-2)
+                                .map((p) => p[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontSize: "0.8rem",
+                                  fontWeight: 600,
+                                  color: "var(--ink)",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                                title={log.taskTitle}
+                              >
+                                {log.taskTitle}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: "0.7rem",
+                                  color: "var(--foreground-muted)",
+                                  marginTop: "0.15rem",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "0.35rem",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <span>{log.userName}</span>
+                                <span>·</span>
+                                <span>{log.taskKey}</span>
+                                <span>·</span>
+                                <span
+                                  className={`logwork-status-pill ${logworkStatusClassName(log.status)}`}
+                                  style={{
+                                    fontSize: "0.62rem",
+                                    padding: "0.08rem 0.42rem",
+                                    borderRadius: "999px",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {logworkStatusLabel(log.status)}
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                              <div
+                                style={{
+                                  fontSize: "0.75rem",
+                                  fontWeight: 700,
+                                  color: "#1d4ed8",
+                                  background: "rgba(37,99,235,0.1)",
+                                  borderRadius: "999px",
+                                  padding: "0.15rem 0.5rem",
+                                  display: "inline-block",
+                                }}
+                              >
+                                {log.hours}h
+                              </div>
+                              <div style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", marginTop: "0.15rem" }}>
+                                {log.workDate
+                                  ? new Date(log.workDate).toLocaleDateString("vi-VN", {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                    })
+                                  : ""}
+                              </div>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                      </div>
+                    </div>
                   ))
                 ) : (
                   <div
@@ -1083,7 +1285,7 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
                       fontSize: "0.82rem",
                     }}
                   >
-                    Chưa có logwork gần đây
+                    {logworkProjectFilter ? "Không có logwork cho dự án này" : "Chưa có logwork gần đây"}
                   </div>
                 )}
               </div>
@@ -1349,263 +1551,6 @@ export function GlobalDashboardOverview({ overview }: GlobalDashboardOverviewPro
                   Chưa có nhiệm vụ hoàn thành
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedLogwork && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.4)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 9999,
-            padding: "1.5rem",
-          }}
-          onClick={() => {
-            if (!logworkActionLoading) setSelectedLogwork(null);
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="logwork-detail-title"
-            style={{
-              background: "#ffffff",
-              borderRadius: "20px",
-              width: "100%",
-              maxWidth: "960px",
-              maxHeight: "88vh",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-              boxShadow: "0 20px 40px -16px rgba(15, 23, 42, 0.28)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                padding: "1.75rem 2rem 0.5rem",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: "1rem",
-              }}
-            >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    fontSize: "0.875rem",
-                    color: "var(--foreground-muted)",
-                    marginBottom: "0.35rem",
-                  }}
-                >
-                  {selectedLogwork.taskKey}
-                  {selectedLogwork.projectName ? ` · ${selectedLogwork.projectName}` : ""}
-                </div>
-                <h3
-                  id="logwork-detail-title"
-                  style={{
-                    margin: 0,
-                    fontSize: "1.35rem",
-                    fontWeight: 700,
-                    color: "var(--ink)",
-                    lineHeight: 1.35,
-                  }}
-                >
-                  {selectedLogwork.taskTitle}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!logworkActionLoading) setSelectedLogwork(null);
-                }}
-                aria-label="Đóng"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  fontSize: "1.6rem",
-                  cursor: "pointer",
-                  lineHeight: 1,
-                  color: "var(--foreground-muted)",
-                  padding: "0.15rem 0.35rem",
-                  flexShrink: 0,
-                }}
-              >
-                &times;
-              </button>
-            </div>
-
-            <div
-              style={{
-                padding: "1.25rem 2rem 1.75rem",
-                overflowY: "auto",
-                flex: 1,
-              }}
-            >
-              <article
-                style={{
-                  padding: "1.35rem 1.5rem",
-                  borderRadius: "14px",
-                  border: "1px solid rgba(148, 163, 184, 0.2)",
-                  background: "#fff",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.85rem",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "1.25rem",
-                    flexWrap: "wrap",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <div>
-                    <strong
-                      style={{
-                        display: "block",
-                        marginBottom: "0.2rem",
-                        fontSize: "1.05rem",
-                        color: "var(--ink)",
-                      }}
-                    >
-                      {selectedLogwork.userName}
-                    </strong>
-                    <span style={{ color: "var(--foreground-muted)", fontSize: "0.9rem" }}>
-                      Ngày logwork: {formatDate(selectedLogwork.workDate)}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      textAlign: "right",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-end",
-                      gap: "0.35rem",
-                    }}
-                  >
-                    <strong style={{ fontSize: "1.15rem" }}>{selectedLogwork.hours}h</strong>
-                    <span
-                      style={{
-                        fontSize: "0.78rem",
-                        fontWeight: 600,
-                        padding: "0.2rem 0.6rem",
-                        borderRadius: "999px",
-                        ...logworkStatusTone(selectedLogwork.status),
-                      }}
-                    >
-                      {logworkStatusLabel(selectedLogwork.status)}
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    lineHeight: 1.6,
-                    color: "var(--ink)",
-                    fontSize: "1rem",
-                  }}
-                >
-                  {selectedLogwork.note || "Không có mô tả công việc."}
-                </div>
-
-                {selectedLogwork.progressPercent != null ? (
-                  <div style={{ fontSize: "0.9rem", color: "var(--foreground-muted)" }}>
-                    Tiến độ báo cáo:{" "}
-                    <strong style={{ color: "var(--ink)" }}>
-                      {selectedLogwork.progressPercent}%
-                    </strong>
-                  </div>
-                ) : null}
-              </article>
-
-              {logworkActionError ? (
-                <div
-                  style={{
-                    marginTop: "1rem",
-                    color: "#b91c1c",
-                    fontSize: "0.875rem",
-                  }}
-                >
-                  {logworkActionError}
-                </div>
-              ) : null}
-            </div>
-
-            <div
-              style={{
-                padding: "1rem 2rem 1.5rem",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "0.65rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                disabled={logworkActionLoading}
-                onClick={() => setSelectedLogwork(null)}
-                style={{
-                  border: "1px solid rgba(148, 163, 184, 0.3)",
-                  background: "#fff",
-                  borderRadius: "12px",
-                  padding: "0.7rem 1.2rem",
-                  fontWeight: 600,
-                  fontSize: "0.9rem",
-                  cursor: "pointer",
-                  color: "var(--ink)",
-                }}
-              >
-                Đóng
-              </button>
-              {selectedLogwork.status === "PENDING" && selectedLogwork.canApprove ? (
-                <>
-                  <button
-                    type="button"
-                    disabled={logworkActionLoading}
-                    onClick={() => void handleRejectLogwork()}
-                    style={{
-                      border: "1px solid rgba(185, 28, 28, 0.28)",
-                      background: "#fff",
-                      color: "#b91c1c",
-                      borderRadius: "12px",
-                      padding: "0.7rem 1.2rem",
-                      fontWeight: 700,
-                      fontSize: "0.9rem",
-                      cursor: logworkActionLoading ? "wait" : "pointer",
-                    }}
-                  >
-                    {logworkActionLoading ? "Đang xử lý..." : "Từ chối"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={logworkActionLoading}
-                    onClick={() => void handleApproveLogwork()}
-                    style={{
-                      border: "none",
-                      background: "#16a34a",
-                      color: "#fff",
-                      borderRadius: "12px",
-                      padding: "0.7rem 1.35rem",
-                      fontWeight: 700,
-                      fontSize: "0.9rem",
-                      boxShadow: "0 8px 18px -8px rgba(22, 163, 74, 0.55)",
-                      cursor: logworkActionLoading ? "wait" : "pointer",
-                    }}
-                  >
-                    {logworkActionLoading ? "Đang xử lý..." : "Duyệt"}
-                  </button>
-                </>
-              ) : null}
             </div>
           </div>
         </div>

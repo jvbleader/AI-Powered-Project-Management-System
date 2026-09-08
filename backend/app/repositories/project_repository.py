@@ -1,16 +1,28 @@
+import re
+import unicodedata
 from datetime import date
 from typing import List, Optional, Tuple
 
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.department_model import Department
 from app.models.project_model import Project, ProjectMember, Role
 from app.models.task_model import Task
 from app.models.user_model import User
+from app.utils.personnel_rank import personnel_rank_sql_order
 
 
 def _active_project_member_filter():
     return or_(ProjectMember.is_active.is_(True), ProjectMember.is_active.is_(None))
+
+
+def remove_accents(input_str: str) -> str:
+    if not input_str:
+        return ""
+    s = input_str.replace("đ", "d").replace("Đ", "D")
+    nfkd_form = unicodedata.normalize("NFD", s)
+    return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).lower()
 
 
 def get_role_by_name(db: Session, name: str) -> Optional[Role]:
@@ -37,7 +49,9 @@ def get_project_by_id(db: Session, project_id: int) -> Optional[Project]:
 
 
 def get_project_by_name(db: Session, name: str) -> Optional[Project]:
-    return db.query(Project).filter(Project.name == name).first()
+    if not name:
+        return None
+    return db.query(Project).filter(func.lower(Project.name) == func.lower(name.strip())).first()
 
 
 def list_all_project_ids(db: Session) -> List[int]:
@@ -82,15 +96,6 @@ def list_projects(
             return [], 0
         query = query.filter(Project.id.in_(project_ids))
 
-    if search:
-        term = f"%{search.lower()}%"
-        query = query.filter(
-            or_(
-                Project.name.ilike(term),
-                Project.description.ilike(term),
-            )
-        )
-
     if db_status:
         query = query.filter(Project.status == db_status)
 
@@ -104,6 +109,34 @@ def list_projects(
         if not manager_project_ids:
             return [], 0
         query = query.filter(Project.id.in_(manager_project_ids))
+
+    if search:
+        search_stripped = search.strip()
+        clean_search = remove_accents(search_stripped)
+        code_match = re.match(r"^PRJ-(\d+)$", search_stripped, re.IGNORECASE)
+        searched_id = (
+            int(code_match.group(1))
+            if code_match
+            else (int(search_stripped) if search_stripped.isdigit() else None)
+        )
+
+        all_rows = query.order_by(desc(Project.updated_at), desc(Project.id)).all()
+        matched_rows = []
+        for p in all_rows:
+            p_name = remove_accents(p.name or "")
+            p_desc = remove_accents(p.description or "")
+            p_code = f"prj-{p.id:03d}"
+            if (
+                clean_search in p_name
+                or clean_search in p_desc
+                or clean_search in p_code
+                or (searched_id is not None and p.id == searched_id)
+            ):
+                matched_rows.append(p)
+
+        total = len(matched_rows)
+        projects = matched_rows[(page - 1) * page_size : page * page_size]
+        return projects, total
 
     total = query.count()
     projects = (
@@ -161,6 +194,7 @@ def list_project_members(
         db.query(ProjectMember, User, Role)
         .join(User, ProjectMember.user_id == User.id)
         .join(Role, User.role_id == Role.id)
+        .outerjoin(Department, User.department_id == Department.id)
         .options(joinedload(User.department), joinedload(User.team), joinedload(User.role_ref))
         .filter(ProjectMember.project_id == project_id)
     )
@@ -169,7 +203,12 @@ def list_project_members(
     if search:
         term = f"%{search.lower()}%"
         query = query.filter(or_(User.full_name.ilike(term), User.email.ilike(term)))
-    return query.order_by(desc(ProjectMember.joined_at), desc(ProjectMember.id)).all()
+    return query.order_by(
+        personnel_rank_sql_order(Role.name, Department.name).asc(),
+        Role.name.asc(),
+        User.full_name.asc(),
+        ProjectMember.id.asc(),
+    ).all()
 
 
 def list_project_user_ids(

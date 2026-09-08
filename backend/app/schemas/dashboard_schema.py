@@ -127,3 +127,4 @@ class GlobalDashboardOverviewResponse(BaseModel):
     projectHealths: List[ProjectHealthPreviewResponse] = Field(default_factory=list)
     activeSprints: List[DashboardSprintSummaryResponse] = Field(default_factory=list)
     recentLogworks: List[DashboardRecentLogworkResponse] = Field(default_factory=list)
+    canViewRecentLogworks: bool = True

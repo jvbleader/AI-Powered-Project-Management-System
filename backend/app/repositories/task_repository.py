@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.logworks import LogWork
 from app.models.project_model import ProjectMember
+from app.models.task_log_model import TaskLog
 from app.models.task_model import Task, TaskAssignees, TaskAttachment
 from app.models.user_model import User
 
@@ -77,10 +78,11 @@ def update_task(db: Session, task: Task, update_data: dict) -> Task:
 
 
 def delete_task(db: Session, task: Task) -> None:
-    db.query(TaskAssignees).filter(TaskAssignees.task_id == task.id).delete()
-    db.query(TaskAttachment).filter(TaskAttachment.task_id == task.id).delete()
-    db.query(LogWork).filter(LogWork.task_id == task.id).delete()
-    db.query(Task).filter(Task.parent_task_id == task.id).update({"parent_task_id": None})
+    db.query(TaskLog).filter(TaskLog.task_id == task.id).delete(synchronize_session=False)
+    db.query(TaskAssignees).filter(TaskAssignees.task_id == task.id).delete(synchronize_session=False)
+    db.query(TaskAttachment).filter(TaskAttachment.task_id == task.id).delete(synchronize_session=False)
+    db.query(LogWork).filter(LogWork.task_id == task.id).delete(synchronize_session=False)
+    db.query(Task).filter(Task.parent_task_id == task.id).update({"parent_task_id": None}, synchronize_session=False)
     db.delete(task)
     db.flush()
 

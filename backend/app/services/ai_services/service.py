@@ -1,10 +1,12 @@
 import json
 import logging
+import re
 
 from langchain_core.messages import HumanMessage
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.connection import SessionLocal
+from app.models.ai_model import AiDraft
 from app.models.user_model import User
 from app.repositories import ai_repository
 from app.schemas.ai_schema import ClassifyIntentResponse, QuickResponseRequest
@@ -34,7 +36,7 @@ def handle_classify_intent(
     decision_dict = supervisor_node(initial_state)
     intent = decision_dict.get("router_decision", "out_of_scope")
     logger.info("=========================================")
-    logger.info(f"[SUPERVISOR] Phân loại ý định người dùng:")
+    logger.info("[SUPERVISOR] Phân loại ý định người dùng:")
     logger.info(f"- Prompt: {payload.prompt}")
     logger.info(f"- Kết quả phân loại: {intent}")
     logger.info("=========================================")
@@ -54,10 +56,6 @@ async def stream_chat_sse(
     SSE stream dùng SessionLocal riêng — không dùng session từ Depends(get_db).
     FastAPI đóng request DB khi StreamingResponse bắt đầu gửi, gây 'read of closed file'.
     """
-    if not session_id.isdigit():
-        yield f"data: {json.dumps({'error': 'Invalid session ID'})}\n\n"
-        return
-
     db = SessionLocal()
     try:
         current_user = (
@@ -70,13 +68,17 @@ async def stream_chat_sse(
             yield f"data: {json.dumps({'error': 'User not found'})}\n\n"
             return
 
-        db_session_id = int(session_id)
-
-        session = ai_repository.get_session_by_id_and_user(db, db_session_id, current_user.id)
-        if not session:
+        if not session_id.isdigit():
             session = ai_repository.create_session(db, current_user.id, "Đoạn chat mới")
             db_session_id = session.id
             yield f"data: {json.dumps({'new_session_id': str(db_session_id)})}\n\n"
+        else:
+            db_session_id = int(session_id)
+            session = ai_repository.get_session_by_id_and_user(db, db_session_id, current_user.id)
+            if not session:
+                session = ai_repository.create_session(db, current_user.id, "Đoạn chat mới")
+                db_session_id = session.id
+                yield f"data: {json.dumps({'new_session_id': str(db_session_id)})}\n\n"
 
         ai_repository.create_message(db, db_session_id, "user", message)
 
@@ -92,6 +94,7 @@ async def stream_chat_sse(
                 "thread_id": thread_id,
                 "db": db,
                 "project_id": project_id,
+                "conversation_project_id": getattr(session, "project_id", None),
                 "current_user": current_user,
             }
         }
@@ -182,15 +185,22 @@ async def stream_chat_sse(
                         yield f"data: {json.dumps({'replace': full_ai_response})}\n\n"
 
             if full_ai_response:
-                db_msg = ai_repository.create_message(
-                    db, db_session_id, "assistant", full_ai_response
+                clean_response = re.sub(
+                    r"```(json_(?:task_draft|sprint_draft|sprint_status_draft))_(?:confirmed|rejected)\b",
+                    r"```\1",
+                    full_ai_response,
                 )
-                yield f"data: {json.dumps({'message_id': db_msg.id})}\n\n"
+                db_msg = ai_repository.create_message(db, db_session_id, "assistant", clean_response)
+                drafts = create_message_drafts(db, db_msg.id, clean_response)
+                yield f"data: {json.dumps({'message_id': db_msg.id, 'drafts': drafts})}\n\n"
 
             yield "data: [DONE]\n\n"
         except Exception as e:
             logger.exception("Error in stream_chat_sse")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            # A failed stream is not a completed assistant response.  Let the
+            # client present an error/retry affordance and keep history clean.
+            yield f"data: {json.dumps({'error': 'AI stream failed'})}\n\n"
+            yield "data: [DONE]\n\n"
     finally:
         db.close()
 
@@ -207,7 +217,49 @@ def get_user_session_messages(db: Session, current_user: User, session_id: int):
     session = ai_repository.get_session_by_id_and_user(db, session_id, current_user.id)
     if not session:
         return []
-    return ai_repository.get_messages_by_session(db, session_id)
+    messages = ai_repository.get_messages_by_session(db, session_id)
+    drafts_by_message = ai_repository.get_drafts_by_message_ids(db, [message.id for message in messages])
+    return [
+        {
+            "id": message.id,
+            "sender": message.sender,
+            "content": message.content,
+            "created_at": message.created_at,
+            "drafts": serialize_drafts(drafts_by_message.get(message.id, [])),
+        }
+        for message in messages
+    ]
+
+
+_DRAFT_BLOCK_RE = re.compile(
+    r"```(json_task_draft|json_sprint_draft|json_sprint_status_draft)\s*(.*?)\s*```",
+    re.DOTALL,
+)
+
+
+def serialize_drafts(drafts: list[AiDraft]) -> list[dict]:
+    return [
+        {"id": draft.id, "fence": draft.fence, "block_index": draft.block_index,
+         "payload": draft.payload, "status": draft.status}
+        for draft in drafts
+    ]
+
+
+def create_message_drafts(db: Session, message_id: int, content: str) -> list[dict]:
+    drafts: list[AiDraft] = []
+    for block_index, match in enumerate(_DRAFT_BLOCK_RE.finditer(content)):
+        payload = match.group(2).strip()
+        try:
+            json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        drafts.append(AiDraft(message_id=message_id, fence=match.group(1), block_index=block_index, payload=payload, status="pending"))
+    if drafts:
+        db.add_all(drafts)
+        db.commit()
+        for draft in drafts:
+            db.refresh(draft)
+    return serialize_drafts(drafts)
 
 
 def update_user_session(db: Session, current_user: User, session_id: int, title: str):

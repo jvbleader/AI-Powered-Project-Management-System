@@ -99,30 +99,6 @@
   color: var(--ink);
 }
 
-.statusBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.12rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.status_PENDING {
-  background: rgba(234, 179, 8, 0.15);
-  color: var(--warning-fg, #b45309);
-}
-
-.status_APPROVED {
-  background: rgba(34, 197, 94, 0.15);
-  color: var(--success-fg, #15803d);
-}
-
-.status_REJECTED {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--critical-fg, #b91c1c);
-}
-
 .sectionLabel {
   display: block;
   padding: 0.55rem 0.85rem;

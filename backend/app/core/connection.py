@@ -8,7 +8,12 @@ DATABASE_URL = settings.database_url
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is required")
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    connect_args=settings.database_connect_args,
+)
 
 SessionLocal = sessionmaker(
     autocommit=False,

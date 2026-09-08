@@ -15,11 +15,28 @@ Desktop.ini
 .env
 .env.*
 !.env.example
+/infra/azure/deploy.env
 
 # Logs / temp
 logs/
 tmp/
 temp/
+/.tmp-*/
+*.inspect.ndjson
+
+# Generated presentation artifacts
+/*.pptx
+/FlowPilot_AI_Gioi_thieu_nghiep_vu*/
+
+# Test and build caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+.next/
+.swc/
+*.tsbuildinfo
 
 # Docker override
 docker-compose.override.yml
@@ -28,6 +45,9 @@ docker-compose.override.yml
 *.bak
 *.backup
 *.tmp
+*.db
+*.sqlite
+*.sqlite3
 __pycache__/
 *.py[cod]
 

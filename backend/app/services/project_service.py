@@ -17,8 +17,8 @@ from app.utils.project_helpers import (
     ROLE_ADMIN,
     ROLE_PM,
     get_user_role_name,
+    has_companywide_project_access,
     is_admin_user,
-    is_head_of_dev_user,
     list_accessible_project_ids,
     list_managed_project_ids,
     to_db_status,
@@ -46,10 +46,10 @@ def _count_active_project_managers(db: Session, project_id: int) -> int:
 
 
 def _can_create_projects(current_user: User) -> bool:
-    """Chỉ PM/PO/GM hoặc mọi thành viên phòng Head of Dev được tạo dự án."""
+    """Giám đốc, PM/PO/GM hoặc mọi thành viên phòng Head of Dev được tạo dự án."""
     if is_admin_user(current_user):
         return False
-    if is_head_of_dev_user(current_user):
+    if has_companywide_project_access(current_user):
         return True
     return get_user_role_name(current_user) == ROLE_PM
 
@@ -141,7 +141,7 @@ def create_project(db: Session, current_user: User, data: ProjectCreate) -> Proj
     if not dept:
         raise HTTPException(status_code=400, detail="Phòng ban không tồn tại.")
 
-    if not is_head_of_dev_user(current_user):
+    if not has_companywide_project_access(current_user):
         if not current_user.department_id:
             raise HTTPException(status_code=400, detail="Tài khoản chưa gắn phòng ban.")
         if department_id != current_user.department_id:
@@ -190,13 +190,16 @@ def update_project(
     numeric_id = parse_project_id(project_id)
     project = require_project_access(db, numeric_id, current_user, require_manager=True)
 
-    if data.name:
-        existing_project = project_repository.get_project_by_name(db, data.name)
+    if data.name is not None:
+        stripped_name = data.name.strip()
+        if not stripped_name:
+            raise HTTPException(status_code=400, detail="Trường này không được để trống.")
+        existing_project = project_repository.get_project_by_name(db, stripped_name)
         if existing_project and existing_project.id != project.id:
             raise HTTPException(
                 status_code=400, detail="Tên dự án đã tồn tại. Vui lòng chọn tên khác."
             )
-        project.name = data.name.strip()
+        project.name = stripped_name
     if data.project_type is not None:
         project.project_type = data.project_type.strip()
     if data.description is not None:
@@ -206,12 +209,23 @@ def update_project(
     if data.start_date is not None:
         project.start_date = data.start_date
     if data.end_date is not None:
-        if data.start_date and data.end_date < data.start_date:
-            raise HTTPException(status_code=400, detail="Ngày kết thúc phải sau ngày bắt đầu.")
-        if not data.start_date and project.start_date and data.end_date < project.start_date:
-            raise HTTPException(status_code=400, detail="Ngày kết thúc phải sau ngày bắt đầu.")
         project.end_date = data.end_date
+
+    if project.start_date and project.end_date and project.end_date < project.start_date:
+        raise HTTPException(status_code=400, detail="Ngày kết thúc phải sau ngày bắt đầu.")
+
     if data.department_id is not None:
+        from app.models.department_model import Department
+
+        dept = db.query(Department).filter(Department.id == data.department_id).first()
+        if not dept:
+            raise HTTPException(status_code=400, detail="Phòng ban không tồn tại.")
+        if not has_companywide_project_access(current_user):
+            if not current_user.department_id or data.department_id != current_user.department_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bạn chỉ được chuyển dự án thuộc phòng ban của mình.",
+                )
         project.department_id = data.department_id
 
     project.updated_at = datetime.now(timezone.utc)

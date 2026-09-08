@@ -40,6 +40,10 @@ services:
 
   db-migrate:
     image: flowpilot-backend:prod
+    pull_policy: never
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
     restart: "no"
     depends_on:
       mysql:
@@ -72,6 +76,7 @@ services:
 
   backend:
     image: flowpilot-backend:prod
+    pull_policy: never
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
@@ -89,8 +94,9 @@ services:
       MYSQL_PORT: ${MYSQL_PORT}
       BACKEND_WORKERS: ${BACKEND_WORKERS}
       PYTHONPATH: /app
-    ports:
-      - "${BACKEND_HOST_PORT}:${BACKEND_PORT}"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://127.0.0.1}
+    expose:
+      - "${BACKEND_PORT}"
     healthcheck:
       test:
         [
@@ -108,8 +114,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${BACKEND_HOST_PORT}}
-        NEXT_PUBLIC_API_PORT: ${NEXT_PUBLIC_API_PORT:-${BACKEND_HOST_PORT}}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-same-origin}
+        NEXT_PUBLIC_API_PORT: ${NEXT_PUBLIC_API_PORT:-}
     restart: always
     depends_on:
       backend:
@@ -117,12 +123,58 @@ services:
     env_file:
       - ./frontend/.env
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_HOST_PORT}
-      NEXT_PUBLIC_API_PORT: ${BACKEND_HOST_PORT}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-same-origin}
+      NEXT_PUBLIC_API_PORT: ${NEXT_PUBLIC_API_PORT:-}
       API_BASE_URL_INTERNAL: http://backend:${BACKEND_PORT}
+    expose:
+      - "${FRONTEND_PORT}"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:${FRONTEND_PORT}').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 40s
+
+  nginx:
+    image: flowpilot-nginx:prod
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     ports:
-      - "${FRONTEND_HOST_PORT}:${FRONTEND_PORT}"
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/www:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    environment:
+      TZ: ${TZ}
+    command: ["/bin/sh", "-c", "nginx -t && exec nginx -g 'daemon off;'"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1/nginx-health >/dev/null || exit 1",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
 
 volumes:
   mysql_data_prod:
   redis_data_prod:
+  nginx_logs:

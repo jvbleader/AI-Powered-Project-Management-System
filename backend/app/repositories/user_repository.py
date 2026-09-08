@@ -1,11 +1,12 @@
 import math
 
-from sqlalchemy import desc, or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.department_model import Department
 from app.models.project_model import Role
 from app.models.user_model import User
+from app.utils.personnel_rank import personnel_rank_sql_order
 
 
 def _base_query(db: Session):
@@ -21,7 +22,9 @@ def get_by_id(db: Session, user_id: int) -> User | None:
 
 
 def get_by_email(db: Session, email: str) -> User | None:
-    return _base_query(db).filter(User.email == email).first()
+    if not email:
+        return None
+    return _base_query(db).filter(func.lower(User.email) == email.strip().lower()).first()
 
 
 def get_users(
@@ -34,7 +37,11 @@ def get_users(
     page: int = 1,
     page_size: int = 10,
 ):
-    query = _base_query(db)
+    query = (
+        _base_query(db)
+        .outerjoin(Role, User.role_id == Role.id)
+        .outerjoin(Department, User.department_id == Department.id)
+    )
 
     if user_ids is not None:
         if not user_ids:
@@ -57,19 +64,25 @@ def get_users(
             query = query.filter(User.is_active.is_(False))
 
     if role and role != "ALL":
-        query = query.join(User.role_ref).filter(Role.name == role)
+        query = query.filter(Role.name == role)
 
     if department and department != "ALL":
         if department == "UNASSIGNED":
             query = query.filter(User.department_id.is_(None))
         else:
-            query = query.join(User.department).filter(Department.name == department)
+            query = query.filter(Department.name == department)
 
     total = query.count()
     total_pages = math.ceil(total / page_size) if total > 0 else 1
 
     users = (
-        query.order_by(desc(User.created_at), desc(User.id))
+        query.order_by(
+            personnel_rank_sql_order(Role.name, Department.name).asc(),
+            Role.name.asc(),
+            Department.name.asc(),
+            User.full_name.asc(),
+            User.id.asc(),
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
@@ -108,7 +121,12 @@ def list_active_by_department_name(
             )
         )
 
-    return query.order_by(User.full_name.asc(), User.id.asc()).all()
+    return query.order_by(
+        personnel_rank_sql_order(Role.name, Department.name).asc(),
+        Role.name.asc(),
+        User.full_name.asc(),
+        User.id.asc(),
+    ).all()
 
 
 def list_user_ids_by_department_ids(db: Session, department_ids: list[int]) -> list[int]:

@@ -38,10 +38,12 @@ from app.utils.dashboard_helpers import (
 )
 from app.utils.project_helpers import (
     build_project_response,
+    can_view_global_dashboard_team_activity,
     list_accessible_project_ids,
     to_frontend_status,
     user_can_manage_project,
 )
+
 
 def _normalize_sprint_status(status: str | None) -> str:
     normalized = (status or "planning").strip().lower()
@@ -120,6 +122,9 @@ def get_dashboard_overview(
     selected_project, accessible_projects = _resolve_selected_project(db, current_user, project_id)
     if not selected_project:
         return DashboardOverviewResponse()
+    can_view_team_scope = user_can_manage_project(
+        db, selected_project.id, current_user
+    )
 
     accessible_project_responses = [
         build_project_response(db, project) for project in accessible_projects
@@ -149,8 +154,8 @@ def get_dashboard_overview(
     project_logworks = [row[0] for row in project_logwork_rows]
     task_progress_map = build_task_progress_map(project_logworks)
     leaf_tasks = list_leaf_tasks(project_tasks)
-    task_counts = count_task_statuses(project_tasks)
-    overdue_tasks_all = list_overdue_tasks(project_tasks, include_parent_tasks=True)
+    task_counts = count_task_statuses(leaf_tasks)
+    overdue_tasks_all = list_overdue_tasks(leaf_tasks)
     overdue_count = len(overdue_tasks_all)
     estimated_hours_total = sum_estimated_hours(project_tasks)
     estimated_hours_done = sum_estimated_hours(
@@ -161,16 +166,27 @@ def get_dashboard_overview(
     assignee_rows = task_repository.list_task_assignee_users(
         db, [task.id for task in project_tasks]
     )
-    assignee_by_task_id = {
-        task_id: {
+    assignee_user_ids_by_task_id: dict[int, set[int]] = defaultdict(set)
+    for task_id, user_id, _, _ in assignee_rows:
+        assignee_user_ids_by_task_id[task_id].add(user_id)
+
+    assignee_names_by_task_id: dict[int, list[str]] = defaultdict(list)
+    assignee_by_task_id = {}
+    for task_id, user_id, full_name, email in assignee_rows:
+        if full_name and full_name not in assignee_names_by_task_id[task_id]:
+            assignee_names_by_task_id[task_id].append(full_name)
+        assignee_by_task_id[task_id] = {
             "user_id": user_id,
-            "name": full_name,
+            "name": ", ".join(assignee_names_by_task_id[task_id]),
             "email": email,
         }
-        for task_id, user_id, full_name, email in assignee_rows
-    }
 
-    sprint_rows = sprint_repository.list_sprints(db, selected_project.id)
+    is_agile_project = (selected_project.project_type or "").strip().lower() == "agile"
+    sprint_rows = (
+        sprint_repository.list_sprints(db, selected_project.id)
+        if is_agile_project
+        else []
+    )
     sprint_by_id = {sprint.id: sprint for sprint in sprint_rows}
     sprint_summaries: list[DashboardSprintSummaryResponse] = []
 
@@ -231,10 +247,35 @@ def get_dashboard_overview(
 
     project_progress = calculate_progress_percent(project_tasks, task_progress_map)
 
-    overdue_tasks = sorted(overdue_tasks_all, key=lambda task: (task.deadline, task.id))[:6]
+    attention_overdue_tasks = (
+        overdue_tasks_all
+        if can_view_team_scope
+        else [
+            task
+            for task in overdue_tasks_all
+            if current_user.id in assignee_user_ids_by_task_id.get(task.id, set())
+        ]
+    )
+    overdue_tasks = sorted(
+        attention_overdue_tasks, key=lambda task: (task.deadline, task.id)
+    )[:6]
+    overdue_task_ids = {task.id for task in overdue_tasks_all}
+    upcoming_until = current_day + timedelta(days=7)
     active_tasks = sorted(
-        [task for task in leaf_tasks if normalize_task_status(task.status) != "done"],
-        key=lambda task: (task.deadline or datetime.max.date(), task.id),
+        [
+            task
+            for task in leaf_tasks
+            if normalize_task_status(task.status) != "done"
+            and task.id not in overdue_task_ids
+            and task.deadline is not None
+            and current_day <= task.deadline <= upcoming_until
+            and (
+                can_view_team_scope
+                or current_user.id
+                in assignee_user_ids_by_task_id.get(task.id, set())
+            )
+        ],
+        key=lambda task: (task.deadline, task.id),
     )[:8]
 
     workload_board: list[DashboardWorkloadMemberResponse] = []
@@ -248,7 +289,17 @@ def get_dashboard_overview(
     for logwork, _, _, user in project_logwork_rows:
         member_logworks[user.id].append(logwork)
 
-    for member, user, role in members:
+    workload_members = (
+        members
+        if can_view_team_scope
+        else [
+            row
+            for row in members
+            if row[1].id == current_user.id
+        ]
+    )
+
+    for member, user, role in workload_members:
         assigned_tasks = tasks_by_assignee_id.get(user.id, [])
         assigned_counts = count_task_statuses(assigned_tasks)
         workload_board.append(
@@ -271,6 +322,17 @@ def get_dashboard_overview(
 
     workload_board.sort(key=lambda item: (-item.loggedHours, -item.estimatedHours, item.name))
 
+    can_view_project_logwork = user_can_manage_project(
+        db, selected_project.id, current_user
+    )
+    if can_view_project_logwork:
+        logwork_rows_for_recent = project_logwork_rows
+    else:
+        # Nhân viên (Member) chỉ xem logwork của chính mình trong dự án này
+        logwork_rows_for_recent = [
+            row for row in project_logwork_rows if row[3].id == current_user.id
+        ]
+
     recent_logwork = [
         DashboardRecentLogworkResponse(
             id=logwork.id,
@@ -285,10 +347,12 @@ def get_dashboard_overview(
             progressPercent=decimal_to_float(logwork.progress_percent),
             status=(logwork.status or "PENDING").upper(),
             projectId=task.project_id,
-            projectName=selected_project_response.name if selected_project_response else None,
+            projectName=selected_project_response.name
+            if selected_project_response
+            else None,
             canApprove=False,
         )
-        for logwork, task, _, user in project_logwork_rows[:6]
+        for logwork, task, _, user in logwork_rows_for_recent[:10]
     ]
 
     critical_sprint_count = sum(
@@ -346,15 +410,30 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
 
     accessible_projects = _load_accessible_projects(db, current_user)
     project_ids = [p.id for p in accessible_projects]
+    can_view_team_activity = can_view_global_dashboard_team_activity(current_user)
 
     if not project_ids:
-        return GlobalDashboardOverviewResponse()
+        return GlobalDashboardOverviewResponse(canViewRecentLogworks=can_view_team_activity)
 
     # Pre-fetch all tasks
     all_tasks = db.query(Task).filter(Task.project_id.in_(project_ids)).all()
     tasks_by_project = defaultdict(list)
     for t in all_tasks:
         tasks_by_project[t.project_id].append(t)
+
+    assignee_rows = task_repository.list_task_assignee_users(
+        db, [task.id for task in all_tasks]
+    )
+    assignee_names_by_task_id: dict[int, list[str]] = defaultdict(list)
+    assigned_task_ids_for_user: set[int] = set()
+    for task_id, user_id, full_name, _email in assignee_rows:
+        if full_name and full_name not in assignee_names_by_task_id[task_id]:
+            assignee_names_by_task_id[task_id].append(full_name)
+        if user_id == current_user.id:
+            assigned_task_ids_for_user.add(task_id)
+    assignee_name_by_task_id = {
+        task_id: ", ".join(names) for task_id, names in assignee_names_by_task_id.items()
+    }
 
     global_todo = 0
     global_in_progress = 0
@@ -420,13 +499,30 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
             if today <= task.deadline <= upcoming_until:
                 upcoming_deadlines.append((task, project))
 
+    if not can_view_team_activity:
+        global_overdue_tasks_list = [
+            (task, project)
+            for task, project in global_overdue_tasks_list
+            if task.id in assigned_task_ids_for_user
+        ]
+        upcoming_deadlines = [
+            (task, project)
+            for task, project in upcoming_deadlines
+            if task.id in assigned_task_ids_for_user
+        ]
+        global_overdue = len(global_overdue_tasks_list)
+
+    recent_logworks = []
     global_logwork_rows = task_repository.list_project_logworks_with_context(
         db, project_ids=project_ids
     )
-    project_name_by_id = {p.id: p.name for p in accessible_projects}
+    all_projects = db.query(Project.id, Project.name).all()
+    project_name_by_id = {p[0]: p[1] for p in all_projects}
 
-    recent_logworks = []
-    for logwork, task, _, user in global_logwork_rows[:10]:
+    if not can_view_team_activity:
+        global_logwork_rows = [row for row in global_logwork_rows if row[3].id == current_user.id]
+
+    for logwork, task, _, user in global_logwork_rows[:50]:
         status = (logwork.status or "PENDING").upper()
         can_approve = status == "PENDING" and user_can_manage_project(
             db, task.project_id, current_user
@@ -481,8 +577,18 @@ def get_global_overview(db: Session, current_user: User) -> GlobalDashboardOverv
         ),
         taskSummary=task_summary,
         projectHealths=project_healths,
-        upcomingDeadlines=[_build_task_preview(t, None, None, p) for t, p in top_upcoming],
-        overdueTasks=[_build_task_preview(t, None, None, p) for t, p in top_overdue],
-        completedTasks=[_build_task_preview(t, None, None, p) for t, p in top_completed],
+        upcomingDeadlines=[
+            _build_task_preview(t, assignee_name_by_task_id.get(t.id), None, p)
+            for t, p in top_upcoming
+        ],
+        overdueTasks=[
+            _build_task_preview(t, assignee_name_by_task_id.get(t.id), None, p)
+            for t, p in top_overdue
+        ],
+        completedTasks=[
+            _build_task_preview(t, assignee_name_by_task_id.get(t.id), None, p)
+            for t, p in top_completed
+        ],
         recentLogworks=recent_logworks,
+        canViewRecentLogworks=True,
     )

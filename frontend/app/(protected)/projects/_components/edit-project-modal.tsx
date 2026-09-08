@@ -108,12 +108,20 @@ export function EditProjectModal({
 
   if (!isOpen || !project) return null;
 
+  const handleInvalid = (event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event.target as HTMLInputElement | HTMLTextAreaElement).setCustomValidity("Vui lòng nhập đầy đủ thông tin trường này");
+  };
+
+  const handleInput = (event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (event.target as HTMLInputElement | HTMLTextAreaElement).setCustomValidity("");
+  };
+
   async function handleUpdateInfo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
 
     if (!editName.trim() || !editStart) {
-      setFormError("Vui lòng nhập đầy đủ tên dự án và ngày bắt đầu.");
+      setFormError("Vui lòng nhập đầy đủ thông tin trường này");
       return;
     }
 
@@ -134,7 +142,7 @@ export function EditProjectModal({
       onProjectUpdated();
       onClose();
     } catch (error: unknown) {
-      setFormError(extractErrorMessage(error, "Cập nhật thất bại."));
+      setFormError(extractErrorMessage(error, "Không thể cập nhật thông tin dự án."));
     }
   }
 
@@ -240,12 +248,14 @@ export function EditProjectModal({
               }}>
                 <div className={styles.inputGroup} style={{ gridColumn: "1 / -1" }}>
                   <label style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)", fontWeight: 600 }}>
-                    Tên dự án
+                    Tên dự án<span className={styles.requiredStar}>*</span>
                   </label>
                   <input
                     className={styles.inputControl}
                     value={editName}
                     onChange={(event) => setEditName(event.target.value)}
+                    onInvalid={handleInvalid}
+                    onInput={handleInput}
                     required
                   />
                 </div>
@@ -292,6 +302,8 @@ export function EditProjectModal({
                     type="date"
                     value={editStart}
                     onChange={(event) => setEditStart(event.target.value)}
+                    onInvalid={handleInvalid}
+                    onInput={handleInput}
                     required
                   />
                 </div>

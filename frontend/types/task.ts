@@ -5,6 +5,12 @@ import type { Sprint } from "./sprint";
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
+export interface TaskAssigneePreview {
+  id: string;
+  name: string;
+  email?: string;
+}
+
 export interface Task {
   id: string;
   key: string;
@@ -16,8 +22,11 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   assigneeId: string;
+  assigneeIds: string[];
   assigneeName?: string;
   assigneeEmail?: string;
+  assignees?: TaskAssigneePreview[];
+  hasChildren?: boolean;
   reporterId: string;
   startDate: string;
   dueDate: string;
@@ -31,6 +40,7 @@ export interface Task {
 
 export interface EnrichedTask extends Task {
   assignee: UserProfile;
+  assignees: UserProfile[];
   reporter: UserProfile;
   project: Project;
   sprint: Sprint | null;

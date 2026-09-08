@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import type { ReactNode, CSSProperties } from "react";
 import { UserAvatar } from "@/components/user-avatar";
+export * from "./ui/table";
 
 type Tone = "accent" | "on-track" | "watch" | "critical" | "neutral" | "todo" | "progress" | "done";
 
@@ -15,7 +16,7 @@ export function Surface({
   style,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   kicker?: string;
   aside?: ReactNode;
   className?: string;
@@ -46,11 +47,12 @@ export function Surface({
   );
 }
 
-export function StatusPill({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
-  return <span className={classNames("pill", `pill-${tone}`)}>{label}</span>;
+export function StatusPill({ label, tone = "neutral", style }: { label: ReactNode; tone?: Tone; style?: CSSProperties }) {
+  return <span className={classNames("pill", `pill-${tone}`)} style={style}>{label}</span>;
 }
 
 export function ProgressBar({ value, label }: { value: number; label?: string }) {
+  const isZero = value <= 0;
   return (
     <div className="progress-block">
       {label ? (
@@ -62,7 +64,7 @@ export function ProgressBar({ value, label }: { value: number; label?: string })
       <div className="progress-track">
         <span
           className="progress-fill"
-          style={{ width: `${Math.max(6, Math.min(100, value))}%` }}
+          style={{ width: isZero ? "0%" : `${Math.max(6, Math.min(100, value))}%` }}
         />
       </div>
     </div>
@@ -145,7 +147,7 @@ export function SegmentBar({
     <div className="segment-bar-stack">
       <div className="segment-bar-track" aria-hidden="true">
         {segments.map((segment) => {
-          const width = total ? Math.max(6, (segment.value / total) * 100) : 0;
+          const width = total && segment.value > 0 ? Math.max(6, (segment.value / total) * 100) : 0;
 
           return (
             <span
@@ -237,7 +239,7 @@ export function MiniBars({
           <div className="mini-bar-track">
             <span
               className="mini-bar-fill"
-              style={{ width: `${Math.max(8, (item.value / max) * 100)}%` }}
+              style={{ width: `${item.value <= 0 ? 0 : Math.max(8, (item.value / max) * 100)}%` }}
             />
           </div>
           {item.note ? <small>{item.note}</small> : null}
@@ -309,7 +311,8 @@ export function ColumnChart({
         }}
       >
         {items.map((item) => {
-          const barPct = Math.max(4, (item.value / max) * 100);
+          const isZero = item.value <= 0;
+          const barPct = isZero ? 0 : Math.max(8, (item.value / max) * 100);
           const color = COLUMN_STATUS_COLORS[item.tone ?? "accent"];
 
           const content = (
@@ -339,34 +342,37 @@ export function ColumnChart({
                     flexDirection: "column",
                     alignItems: "center",
                     width: "100%",
-                    height: `${barPct}%`,
-                    minHeight: "28px",
+                    height: isZero ? "auto" : `${barPct}%`,
+                    minHeight: isZero ? "auto" : "18px",
+                    justifyContent: "flex-end",
                   }}
                 >
                   <span
                     style={{
                       fontSize: "0.72rem",
                       fontWeight: 700,
-                      color: "var(--ink)",
+                      color: isZero ? "var(--foreground-muted)" : "var(--ink)",
                       flexShrink: 0,
                       lineHeight: 1,
-                      marginBottom: "0.25rem",
+                      marginBottom: isZero ? "0.15rem" : "0.25rem",
                     }}
                   >
                     {item.value}%
                   </span>
-                  <div
-                    style={{
-                      width: "36px",
-                      flex: 1,
-                      minHeight: "6px",
-                      backgroundColor: color,
-                      borderRadius: "6px 6px 0 0",
-                      transition: "height 0.4s ease",
-                      boxShadow: "0 2px 4px -1px rgba(0, 0, 0, 0.05)",
-                    }}
-                    title={`${item.label}: ${item.value}%`}
-                  />
+                  {!isZero && (
+                    <div
+                      style={{
+                        width: "36px",
+                        flex: 1,
+                        minHeight: "6px",
+                        backgroundColor: color,
+                        borderRadius: "6px 6px 0 0",
+                        transition: "height 0.4s ease",
+                        boxShadow: "0 2px 4px -1px rgba(0, 0, 0, 0.05)",
+                      }}
+                      title={`${item.label}: ${item.value}%`}
+                    />
+                  )}
                 </div>
               </div>
               <span

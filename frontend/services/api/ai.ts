@@ -43,30 +43,75 @@ export const aiApi = {
     return response.data;
   },
 
-  async confirmTasks(projectId: number | null, tasksData: any[], messageId?: number | null) {
+  async confirmTasks(
+    draftId: number,
+    options: { projectId?: number | null; rejectedPaths?: string[] } = {}
+  ) {
     const response = await requestApi<any>(
       { path: "/api/ai/confirm-tasks", method: "POST" },
       {
         body: JSON.stringify({
-          project_id: projectId,
-          tasks_data: tasksData,
-          message_id: messageId ?? null,
+          draft_id: draftId,
+          project_id: options.projectId ?? null,
+          rejected_paths: options.rejectedPaths ?? [],
         }),
       }
     );
     return response.data;
   },
 
-  async confirmSprintStatus(
-    updates: Array<{ sprint_id: number; status: string }>,
-    messageId?: number | null
-  ) {
+  async confirmSprints(draftId: number, projectId?: number | null) {
+    const response = await requestApi<any>(
+      { path: "/api/ai/confirm-sprints", method: "POST" },
+      {
+        body: JSON.stringify({
+          draft_id: draftId,
+          project_id: projectId ?? null,
+        }),
+      }
+    );
+    return response.data;
+  },
+
+  async confirmSprintStatus(draftId: number) {
     const response = await requestApi<any>(
       { path: "/api/ai/confirm-sprint-status", method: "POST" },
       {
         body: JSON.stringify({
-          updates,
-          message_id: messageId ?? null,
+          draft_id: draftId,
+        }),
+      }
+    );
+    return response.data;
+  },
+
+  async rejectDraft(
+    draftId: number,
+  ) {
+    const response = await requestApi<any>(
+      { path: "/api/ai/reject-draft", method: "POST" },
+      {
+        body: JSON.stringify({
+          draft_id: draftId,
+        }),
+      }
+    );
+    return response.data;
+  },
+
+  async updateDraft(
+    draftId: number,
+    payload: object[]
+  ) {
+    const response = await requestApi<{
+      status: string;
+      payload: Array<Record<string, unknown>>;
+    }>(
+      { path: "/api/ai/draft", method: "PUT" },
+      {
+        body: JSON.stringify({
+          draft_id: draftId,
+          payload,
         }),
       }
     );

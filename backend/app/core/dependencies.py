@@ -19,13 +19,15 @@ def get_current_user(
         )
 
     try:
-        if redis_client.exists(f"blacklist_token:{access_token}"):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Phiên đăng nhập đã bị thu hồi",
-            )
+        is_blacklisted = bool(redis_client.exists(f"blacklist_token:{access_token}"))
     except Exception:
-        pass
+        is_blacklisted = False
+
+    if is_blacklisted:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Phiên đăng nhập đã bị thu hồi",
+        )
 
     try:
         payload = decode_token(access_token)
@@ -39,15 +41,18 @@ def get_current_user(
 
     try:
         logout_all_ts = redis_client.get(f"user:{user_id}:logout_all")
-        if logout_all_ts and iat:
+    except Exception:
+        logout_all_ts = None
+
+    if logout_all_ts and iat:
+        try:
             if int(iat) < int(logout_all_ts):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Phiên đăng nhập đã bị thu hồi từ thiết bị khác",
                 )
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
+        except (ValueError, TypeError):
+            pass
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy user")

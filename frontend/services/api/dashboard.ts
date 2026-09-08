@@ -233,7 +233,8 @@ export const dashboardApi = {
 
     const params = new URLSearchParams();
     if (projectId) {
-      params.append("project_id", projectId);
+      const cleanId = projectId.replace(/^prj-/, "");
+      params.append("project_id", cleanId);
     }
 
     const path = params.size

@@ -1,5 +1,6 @@
 const AVATAR_STORAGE_KEY = "flowpilot-user-avatars";
 const DEFAULT_AVATAR_VARIANTS = 70;
+const GENERATED_AVATAR_HOST = "i.pravatar.cc";
 
 type AvatarMap = Record<string, string>;
 export type AvatarIdentity = {
@@ -52,10 +53,22 @@ function normalizeUserId(userId?: string | number | null) {
   }
 
   if (typeof userId === "string" && userId.trim()) {
-    return userId.startsWith("usr-") ? userId : `usr-${userId}`;
+    const trimmedUserId = userId.trim().toLowerCase();
+    return trimmedUserId.startsWith("usr-") ? trimmedUserId : `usr-${trimmedUserId}`;
   }
 
   return null;
+}
+
+function normalizeStandaloneSeed(identity: string | number) {
+  if (typeof identity === "number") {
+    return normalizeUserId(identity) as string;
+  }
+
+  const trimmedIdentity = identity.trim().toLowerCase();
+  return /^(?:usr-)?\d+$/.test(trimmedIdentity)
+    ? (normalizeUserId(trimmedIdentity) as string)
+    : trimmedIdentity;
 }
 
 function hashAvatarSeed(seed: string) {
@@ -66,13 +79,31 @@ function hashAvatarSeed(seed: string) {
   return hash;
 }
 
+/**
+ * Older clients persisted generated pravatar URLs as if users had uploaded
+ * them. Treat those URLs as fallbacks so old per-browser session snapshots can
+ * be remapped from the canonical user ID.
+ */
+export function isGeneratedDefaultAvatarUrl(avatarUrl?: string | null) {
+  if (!avatarUrl?.trim()) {
+    return false;
+  }
+
+  try {
+    const url = new URL(avatarUrl);
+    return url.hostname === GENERATED_AVATAR_HOST && url.searchParams.has("img");
+  } catch {
+    return false;
+  }
+}
+
 export function buildDefaultAvatarUrl(identity?: Omit<AvatarIdentity, "avatarUrl"> | string | number | null) {
   const seed =
     typeof identity === "string" || typeof identity === "number"
-      ? String(identity)
-      : identity?.email?.trim() ||
-        normalizeUserId(identity?.userId) ||
-        identity?.name?.trim() ||
+      ? normalizeStandaloneSeed(identity)
+      : normalizeUserId(identity?.userId) ||
+        identity?.email?.trim().toLowerCase() ||
+        identity?.name?.trim().replace(/\s+/g, " ").toLowerCase() ||
         "flowpilot-demo";
 
   const variant = (hashAvatarSeed(seed) % DEFAULT_AVATAR_VARIANTS) + 1;
@@ -80,7 +111,12 @@ export function buildDefaultAvatarUrl(identity?: Omit<AvatarIdentity, "avatarUrl
 }
 
 export function resolveAvatarUrl(identity: AvatarIdentity) {
-  return identity.avatarUrl ?? buildDefaultAvatarUrl(identity);
+  const explicitAvatar = identity.avatarUrl?.trim();
+  if (explicitAvatar && !isGeneratedDefaultAvatarUrl(explicitAvatar)) {
+    return explicitAvatar;
+  }
+
+  return buildDefaultAvatarUrl(identity);
 }
 
 export function storeUserAvatar(userId: string, avatarUrl: string) {

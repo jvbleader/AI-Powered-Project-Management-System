@@ -92,7 +92,15 @@ def update_profile(db: Session, current_user: User, data: UpdateProfile) -> User
 
 
 def update_avatar(db: Session, current_user: User, data: UpdateAvatar) -> User:
-    avatar_url = azure_blob_service.upload_base64_avatar(data.avatar_url, current_user.id)
+    try:
+        avatar_url = azure_blob_service.upload_base64_avatar(data.avatar_url, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Không thể tải ảnh đại diện lên. Vui lòng thử lại.",
+        ) from exc
 
     current_user.avatar_url = avatar_url
     current_user.updated_at = datetime.now(timezone.utc)

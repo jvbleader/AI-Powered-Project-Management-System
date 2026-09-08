@@ -85,6 +85,24 @@ export function formatPercent(value: number) {
   return `${value}%`;
 }
 
+export function formatAssigneeNames(
+  task?: {
+    assignees?: Array<{ name?: string | null } | null> | null;
+    assignee?: { name?: string | null } | null;
+    assigneeName?: string | null;
+  } | null,
+  emptyLabel = "Chưa giao",
+) {
+  const names = (task?.assignees ?? [])
+    .map((assignee) => (assignee?.name || "").trim())
+    .filter(Boolean);
+  if (names.length) {
+    return names.join(", ");
+  }
+  const fallback = (task?.assignee?.name || task?.assigneeName || "").trim();
+  return fallback || emptyLabel;
+}
+
 export function roleLabel(role: UserRole) {
   const normalized = (role || "").trim();
 
@@ -111,6 +129,45 @@ export function roleLabel(role: UserRole) {
   return labels[normalized] ?? normalized;
 }
 
+/** Tách role ghép (vd. "Project Manager / Product Owner / Group Member") thành từng nhãn xếp cột. */
+export function expandRoleDisplayLabels(
+  roleOrRoles: UserRole | UserRole[] | null | undefined,
+): string[] {
+  const roles = (Array.isArray(roleOrRoles)
+    ? roleOrRoles
+    : roleOrRoles
+      ? [roleOrRoles]
+      : []
+  )
+    .map((role) => (role || "").trim())
+    .filter(Boolean);
+
+  const parts: string[] = [];
+
+  const pushUnique = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed && !parts.includes(trimmed)) {
+      parts.push(trimmed);
+    }
+  };
+
+  for (const role of roles) {
+    // Tách chuỗi gốc trước để giữ đủ các nhánh role người dùng đang thấy trên UI
+    const rawParts = role.split(/\s*\/\s*/).map((part) => part.trim()).filter(Boolean);
+    if (rawParts.length > 1) {
+      rawParts.forEach(pushUnique);
+      continue;
+    }
+
+    // Role đơn — dùng nhãn localize (có thể vẫn chứa "/")
+    roleLabel(role)
+      .split(/\s*\/\s*/)
+      .forEach(pushUnique);
+  }
+
+  return parts;
+}
+
 export function isAdminRole(role: UserRole) {
   return (role || "").trim() === ROLE_ADMIN || (role || "").trim() === "ADMIN";
 }
@@ -132,7 +189,7 @@ export function isLeaderRole(role: UserRole) {
 export function getRoleTone(role: UserRole) {
   // Legend: đỏ Manager | be Leader | xanh lá Giám đốc | còn lại xám / trung tính
   const roleStr = (role || "").trim();
-  if (roleStr.includes("Manager") || roleStr.includes("PM") || roleStr.includes("Owner") || isManagerRole(roleStr)) {
+  if (roleStr.includes("Manager") || roleStr.includes("PM") || roleStr.includes("Owner") || roleStr.includes("Group Member") || roleStr === "GM" || isManagerRole(roleStr)) {
     return "critical" as const;
   }
   if (isDirectorRole(roleStr)) {
@@ -154,6 +211,38 @@ export function isHeadOfDevDepartment(department?: string | null) {
   return (department || "").trim() === HEAD_OF_DEV_DEPARTMENT;
 }
 
+/**
+ * Thứ tự cấp bậc Nhân sự (thấp hơn = cao hơn):
+ * 0 Giám đốc
+ * 1 PM/PO/GM phòng Head of Dev
+ * 2 PM/PO/GM các dự án
+ * 3 Leader
+ * 4 còn lại
+ */
+export function personnelRank(role?: string | null, department?: string | null) {
+  const roleName = (role || "").trim();
+  const departmentName = (department || "").trim();
+
+  if (isDirectorRole(roleName)) return 0;
+  if (isManagerRole(roleName) && isHeadOfDevDepartment(departmentName)) return 1;
+  if (isManagerRole(roleName)) return 2;
+  if (isLeaderRole(roleName)) return 3;
+  return 4;
+}
+
+export function comparePersonnelByRank(
+  left: { role?: string | null; department?: string | null; name?: string | null },
+  right: { role?: string | null; department?: string | null; name?: string | null },
+) {
+  const rankDiff = personnelRank(left.role, left.department) - personnelRank(right.role, right.department);
+  if (rankDiff !== 0) return rankDiff;
+
+  const roleDiff = (left.role || "").localeCompare(right.role || "", "vi", { sensitivity: "base" });
+  if (roleDiff !== 0) return roleDiff;
+
+  return (left.name || "").localeCompare(right.name || "", "vi");
+}
+
 export function hasCompanywideProjectAccess(
   role: UserRole,
   department?: string | null,
@@ -161,17 +250,18 @@ export function hasCompanywideProjectAccess(
   return isDirectorRole(role) || isHeadOfDevDepartment(department);
 }
 
-export function canManageUsers(role: UserRole) {
-  return isAdminRole(role);
+export function canManageUsers(role: UserRole, isAdmin?: boolean) {
+  return isAdmin ?? isAdminRole(role);
 }
 
 export function canAccessTeamDirectoryRole(
   role: UserRole,
   _department?: string | null,
+  isAdmin?: boolean,
 ) {
   // Admin (quản trị TK) + PM/PO/GM + Giám đốc + Leader
   return (
-    canManageUsers(role) ||
+    canManageUsers(role, isAdmin) ||
     isDirectorRole(role) ||
     isManagerRole(role) ||
     isLeaderRole(role)
@@ -183,14 +273,71 @@ export function canAccessLogworkApprovalsRole(role: UserRole) {
   return isDirectorRole(role) || isManagerRole(role) || isLeaderRole(role);
 }
 
+export function canDeleteTaskRole(
+  role: UserRole | undefined,
+  department?: string | null,
+) {
+  if (!role) return false;
+  return (
+    isAdminRole(role) ||
+    isDirectorRole(role) ||
+    isHeadOfDevDepartment(department) ||
+    isManagerRole(role) ||
+    isLeaderRole(role)
+  );
+}
+
+export function canEditPendingLogwork(
+  status: string | undefined,
+  entryUserId: string | undefined,
+  viewerId: string | undefined,
+) {
+  if ((status || "PENDING").toUpperCase() !== "PENDING") {
+    return false;
+  }
+  const ownerId = (entryUserId || "").replace(/^usr-/, "");
+  const actorId = (viewerId || "").replace(/^usr-/, "");
+  return Boolean(ownerId && actorId && ownerId === actorId);
+}
+
+export type LogworkStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export function normalizeLogworkStatus(status?: string | null): LogworkStatus {
+  const normalized = (status || "PENDING").toUpperCase();
+  if (normalized === "APPROVED" || normalized === "REJECTED") return normalized;
+  return "PENDING";
+}
+
+export function logworkStatusLabel(status?: string | null) {
+  switch (normalizeLogworkStatus(status)) {
+    case "APPROVED":
+      return "Đã duyệt";
+    case "REJECTED":
+      return "Từ chối";
+    default:
+      return "Đang chờ";
+  }
+}
+
+export function logworkStatusClassName(status?: string | null) {
+  switch (normalizeLogworkStatus(status)) {
+    case "APPROVED":
+      return "logwork-status-approved";
+    case "REJECTED":
+      return "logwork-status-rejected";
+    default:
+      return "logwork-status-pending";
+  }
+}
+
 export function canCreateProjects(
   role: UserRole,
   department?: string | null,
 ) {
-  // Chỉ PM/PO/GM hoặc mọi thành viên phòng Head of Dev.
+  // PM/PO/GM, Giám đốc, hoặc mọi thành viên phòng Head of Dev.
   return (
     !isAdminRole(role) &&
-    (isHeadOfDevDepartment(department) || isManagerRole(role))
+    (hasCompanywideProjectAccess(role, department) || isManagerRole(role))
   );
 }
 
@@ -199,6 +346,32 @@ export function canManageProjectsByRole(
   department?: string | null,
 ) {
   return hasCompanywideProjectAccess(role, department) || isManagerRole(role) || isLeaderRole(role);
+}
+
+/** PM, Leader, Giám đốc, Head of Dev, Admin: xem task team + nhật ký logwork trên Dashboard tổng. */
+export function canViewGlobalDashboardTeamActivity(
+  role: UserRole,
+  department?: string | null,
+) {
+  return (
+    isAdminRole(role) ||
+    hasCompanywideProjectAccess(role, department) ||
+    isManagerRole(role) ||
+    isLeaderRole(role)
+  );
+}
+
+/** Chỉ PM/PO/GM hoặc Leader đang là thành viên của đúng dự án đó được tạo/sửa sprint. */
+export function canManageProjectSprints(
+  viewer: { id: string; role: UserRole },
+  project: { managerId?: string | null; memberIds?: string[] | null },
+) {
+  const viewerId = String(viewer.id);
+  const managerId = project.managerId ? String(project.managerId) : "";
+  const memberIds = project.memberIds ?? [];
+  const isMember =
+    managerId === viewerId || memberIds.some((id) => String(id) === viewerId);
+  return isMember && (isManagerRole(viewer.role) || isLeaderRole(viewer.role));
 }
 
 /** Aligns with backend `user_can_manage_project`: any PM/PO/GM (or Leader) who is a member can manage, not only `manager_id`. */
@@ -292,11 +465,11 @@ export function toWorkflowTaskStatus(status: TaskStatus): "TODO" | "IN_PROGRESS"
 export function getTaskBgColor(status: TaskStatus) {
   switch (toWorkflowTaskStatus(status)) {
     case "TODO":
-      return "#fef08a";
+      return "#fef9c3";
     case "IN_PROGRESS":
-      return "#bfdbfe";
+      return "#dbeafe";
     case "DONE":
-      return "#bbf7d0";
+      return "#dcfce7";
     default:
       return "var(--surface)";
   }
@@ -404,4 +577,14 @@ export function generateDateRange(start: string, end: string) {
   }
 
   return dates;
+}
+
+export function formatEmployeeCode(codeOrId: string | undefined | null) {
+  if (!codeOrId) return "";
+  const str = String(codeOrId);
+  if (str.startsWith("usr-")) {
+    const numStr = str.replace("usr-", "");
+    return `APMS-${numStr.padStart(4, "0")}`;
+  }
+  return str;
 }

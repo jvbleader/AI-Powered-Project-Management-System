@@ -9,9 +9,10 @@ interface AvatarCropperProps {
   imageSrc: string;
   onSave: (croppedImageBase64: string) => void;
   onCancel: () => void;
+  onError: () => void;
 }
 
-export function AvatarCropper({ imageSrc, onSave, onCancel }: AvatarCropperProps) {
+export function AvatarCropper({ imageSrc, onSave, onCancel, onError }: AvatarCropperProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
@@ -26,9 +27,8 @@ export function AvatarCropper({ imageSrc, onSave, onCancel }: AvatarCropperProps
       if (croppedImage) {
         onSave(croppedImage);
       }
-    } catch (e) {
-      console.error(e);
-      onCancel();
+    } catch {
+      onError();
     }
   };
 

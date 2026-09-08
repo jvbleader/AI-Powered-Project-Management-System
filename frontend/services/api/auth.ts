@@ -28,15 +28,14 @@ export const authApi = {
   },
 
   async restoreSession() {
-    try {
-      const currentUser = await fetchCurrentUserProfile();
-      return wrapBackendResponse(toAuthSession(currentUser));
-    } catch {
-      await requestApi<{ message: string; user_id: number }>(apiEndpoints.auth.refresh);
-      const currentUser = await fetchCurrentUserProfile();
-      return wrapBackendResponse(toAuthSession(currentUser));
-    }
+    // Only call /me — if the access token is expired, the Axios interceptor
+    // in core.ts will automatically call /refresh through the queue mechanism.
+    // Previously this method manually called /refresh which bypassed the queue
+    // and caused double-refresh race conditions leading to unexpected signouts.
+    const currentUser = await fetchCurrentUserProfile();
+    return wrapBackendResponse(toAuthSession(currentUser));
   },
+
 
   async logout() {
     try {

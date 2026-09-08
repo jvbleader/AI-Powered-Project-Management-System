@@ -43,6 +43,15 @@ class TaskAttachmentBase(BaseModel):
     file_url: str
     file_name: str
 
+    @field_validator("file_url")
+    @classmethod
+    def validate_file_url(cls, v: str) -> str:
+        stripped = v.strip()
+        lower = stripped.lower()
+        if lower.startswith("javascript:") or lower.startswith("vbscript:") or lower.startswith("data:text/html"):
+            raise ValueError("URL tệp đính kèm không hợp lệ hoặc chứa nội dung không an toàn.")
+        return stripped
+
 
 class TaskAttachmentCreate(TaskAttachmentBase):
     pass
@@ -84,6 +93,7 @@ class LogWorkCreate(LogWorkBase):
 
 
 class LogWorkUpdate(BaseModel):
+    work_date: Optional[date] = None
     hours_spent: Optional[float] = None
     work_content: Optional[str] = None
     comment: Optional[str] = None
@@ -103,10 +113,12 @@ class LogWorkResponse(LogWorkBase):
     project_member_id: int
     user_id: Optional[int] = None
     user_name: Optional[str] = None
+    user_email: Optional[str] = None
     project_id: Optional[int] = None
     project_name: Optional[str] = None
     task_title: Optional[str] = None
     status: str
+    reject_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -152,8 +164,11 @@ class TaskBase(BaseModel):
     @field_validator("estimated_hours")
     @classmethod
     def validate_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
-        if value is not None and value < 0:
-            raise ValueError("Thời gian ước tính không được âm.")
+        if value is not None:
+            if value < 0:
+                raise ValueError("Thời gian ước tính không được âm.")
+            if value > 99999:
+                raise ValueError("Thời gian ước tính không được vượt quá 99.999 giờ.")
         return value
 
 
@@ -214,8 +229,11 @@ class TaskUpdate(BaseModel):
     @field_validator("estimated_hours")
     @classmethod
     def validate_optional_estimated_hours(cls, value: Optional[float]) -> Optional[float]:
-        if value is not None and value < 0:
-            raise ValueError("Thời gian ước tính không được âm.")
+        if value is not None:
+            if value < 0:
+                raise ValueError("Thời gian ước tính không được âm.")
+            if value > 99999:
+                raise ValueError("Thời gian ước tính không được vượt quá 99.999 giờ.")
         return value
 
 
@@ -230,6 +248,7 @@ class TaskResponse(TaskBase):
     key: Optional[str] = None  # Ví dụ: TASK-123
     assignees: List[TaskAssigneeResponse] = []
     spent_hours: float = 0.0
+    has_children: bool = False
 
     @field_validator("created_at", "updated_at", "completed_at")
     @classmethod

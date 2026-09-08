@@ -24,9 +24,9 @@ class ClassifyIntentResponse(BaseModel):
 
 
 class ConfirmTasksRequest(BaseModel):
+    draft_id: int
     project_id: Optional[int] = None
-    tasks_data: list[dict] = Field(description="Danh sách task nháp được UI gửi lên để confirm")
-    message_id: Optional[int] = None
+    rejected_paths: list[str] = Field(default_factory=list)
 
 
 class ConfirmTasksResponse(BaseModel):
@@ -34,11 +34,18 @@ class ConfirmTasksResponse(BaseModel):
     created_task_ids: list[int]
 
 
+class ConfirmSprintsRequest(BaseModel):
+    draft_id: int
+    project_id: Optional[int] = None
+
+
+class ConfirmSprintsResponse(BaseModel):
+    message: str
+    created_sprint_ids: list[int]
+
+
 class ConfirmSprintStatusRequest(BaseModel):
-    updates: list[dict] = Field(
-        description="Danh sách cập nhật trạng thái sprint: sprint_id, status"
-    )
-    message_id: Optional[int] = None
+    draft_id: int
 
 
 class ConfirmSprintStatusResponse(BaseModel):
@@ -46,11 +53,21 @@ class ConfirmSprintStatusResponse(BaseModel):
     updated: list[dict]
 
 
+class RejectDraftRequest(BaseModel):
+    draft_id: int
+
+
+class UpdateDraftRequest(BaseModel):
+    draft_id: int
+    payload: list[dict]
+
+
 class AiMessageResponse(BaseModel):
     id: int
     sender: str
     content: str
     created_at: datetime
+    drafts: list[dict] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

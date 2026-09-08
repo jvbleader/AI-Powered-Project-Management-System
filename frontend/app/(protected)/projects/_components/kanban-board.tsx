@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { taskApi } from "@/services/api";
 import { EnrichedTask } from "@/types";
 import { StatusPill } from "@/components/ui";
-import { UserAvatar } from "@/components/user-avatar";
+import { AssigneeAvatars } from "@/components/assignee-avatars";
 import { formatDate, taskPriorityLabel, toWorkflowTaskStatus, getTaskBgColor } from "@/lib/utils/format";
 
 interface KanbanBoardProps {
@@ -184,33 +184,10 @@ export function KanbanBoard({ tasks, onTaskUpdated, onTaskClick }: KanbanBoardPr
                       fontSize: "0.875rem",
                     }}
                   >
-                    {task.assignee ? (
-                      <UserAvatar
-                        userId={task.assignee.id}
-                        email={task.assignee.email}
-                        name={task.assignee.name}
-                        avatarUrl={task.assignee.avatarUrl}
-                        size={24}
-                        style={{ fontSize: "0.75rem" }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: "50%",
-                          border: "1px dashed var(--border)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "0.75rem",
-                          color: "var(--foreground-muted)",
-                        }}
-                        title="Chưa phân công"
-                      >
-                        ?
-                      </div>
-                    )}
+                    <AssigneeAvatars
+                      assignees={task.assignees?.length ? task.assignees : task.assignee ? [task.assignee] : []}
+                      size={24}
+                    />
                   </div>
                   {task.dueDate && (
                     <div
